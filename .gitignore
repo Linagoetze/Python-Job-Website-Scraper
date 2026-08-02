@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+*.log
+
+# Machine-local Claude Code permissions (contains absolute paths).
+.claude/settings.local.json
+
+# Generated output.
+data/*.csv
+data/*.xlsx
+
+# Your personal search config. The .example versions are the tracked templates.
+job_scraper/config/sources.yaml
+job_scraper/config/rules.json
+
+# Hand-maintained personal data. blocklist.example.csv is the tracked template;
+# your real blocklist and research notes stay local.
+data/curated/blocklist.csv
+data/curated/excluded_sources.csv
+data/curated/candidate_sources.xlsx
+
+# Pre-publish backup of the original repo history (local only).
+.git.backup/

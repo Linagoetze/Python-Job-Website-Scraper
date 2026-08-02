@@ -1,0 +1,53 @@
+# Example source list. Copy this to sources.yaml and edit it:
+#
+#   cp job_scraper/config/sources.example.yaml job_scraper/config/sources.yaml
+#
+# Each entry needs:
+#   name      identifier — MUST match a key in job_scraper/extractors/registry.py,
+#             or the source is skipped with a log line
+#   url       the career page or job board to fetch
+#   strategy  `static` for plain HTTP, `dynamic` to render in headless Chromium
+#             first (needed when jobs only appear after JavaScript runs)
+#
+# The nine entries below are chosen to exercise a different extractor each, so
+# you can see one working example per supported ATS. Add your own employers by
+# registering them in registry.py — most big ATS platforms already have a
+# generic extractor, so a new employer usually needs one registry line and no
+# new code.
+sources:
+  # --- Greenhouse ---
+  - name: canonical
+    url: https://job-boards.greenhouse.io/canonical
+    strategy: static
+  # --- Ashby ---
+  - name: strava
+    url: https://jobs.ashbyhq.com/strava
+    strategy: static
+  # --- Teamtailor ---
+  - name: storytel
+    url: https://jobs.storytel.com/jobs
+    strategy: static
+  # --- Workable ---
+  - name: simprints
+    url: https://apply.workable.com/simprints/
+    strategy: static
+  # --- Personio ---
+  - name: outdooractive
+    url: https://outdooractive.jobs.personio.de/?language=en
+    strategy: static
+  # --- SmartRecruiters ---
+  - name: oecd
+    url: https://careers.smartrecruiters.com/OECD/oecd---en
+    strategy: static
+  # --- Lever ---
+  - name: wave
+    url: https://www.waveapps.com/about-us/culture
+    strategy: static
+  # --- Breezy ---
+  - name: new_incentives
+    url: https://new-incentives.breezy.hr
+    strategy: static
+  # --- Workday (needs Playwright) ---
+  - name: slack
+    url: https://salesforce.wd12.myworkdayjobs.com/Slack
+    strategy: dynamic

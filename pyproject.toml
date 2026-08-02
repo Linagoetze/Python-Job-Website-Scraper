@@ -1,0 +1,9 @@
+[project]
+name = "job-scraper"
+version = "0.1.0"
+description = "Scrapes configured career pages and filters postings against local rules."
+requires-python = ">=3.10"
+# Dependencies live in requirements.txt so there is one source of truth.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

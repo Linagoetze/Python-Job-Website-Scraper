@@ -1,0 +1,37 @@
+{
+  "_comment": "Example rules. Copy to rules.json and edit: cp job_scraper/config/rules.example.json job_scraper/config/rules.json — see the README for what every key does.",
+
+  "include_keywords": [],
+  "exclude_keywords": [],
+
+  "locations": [
+    "Berlin",
+    "Amsterdam",
+    "London",
+    "Dublin"
+  ],
+
+  "remote_keywords": ["remote", "anywhere"],
+
+  "match_in": "title_and_description",
+
+  "seniority_filter_enabled": true,
+  "seniority_exclude_titles": [
+    "Senior",
+    "Lead",
+    "Principal",
+    "Staff Engineer",
+    "Director",
+    "Head of",
+    "VP",
+    "Vice President",
+    "Architect",
+    "CTO",
+    "CPO",
+    "COO",
+    "CMO",
+    "CISO",
+    "CEO",
+    "C-Level"
+  ]
+}
