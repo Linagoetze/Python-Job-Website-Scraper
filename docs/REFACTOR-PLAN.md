@@ -34,7 +34,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 
 | WP | Title | Time | Model | Effort cue | Status | Branch |
 |----|-------|------|-------|-----------|--------|--------|
-| 0 | Fixture capture script | 1 hr | Sonnet 5 | none | not started | `wp0-fixtures` |
+| 0 | Fixture capture script | 1 hr | Sonnet 5 | none | done | `wp0-fixtures` |
 | 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | not started | `wp1-data-safety` |
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | not started | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | not started | `wp3-company-field` |
@@ -175,6 +175,43 @@ Branch wp0-fixtures. Commit, do not push. Update the plan file.
 
 After it runs, look at the printed sizes. Anything under a few kilobytes
 probably failed. Tell the same session and let it investigate.
+
+### Result
+
+`scripts/capture_fixtures.py` fetches a source's listing URL with the same
+fetcher the pipeline uses (`fetch_text` for `static`, `fetch_rendered` for
+`dynamic`), guesses HTML vs JSON by attempting a JSON parse, and writes
+`tests/fixtures/<name>.html` or `.json` atomically (temp file + `os.replace()`).
+One source at a time, three-second pause between them.
+
+Captured on first run, all six landed comfortably above empty-page size:
+
+```
+givewell:   tests/fixtures/givewell.html    (30,373 bytes)
+kognity:    tests/fixtures/kognity.html     (12,727 bytes)
+storytel:   tests/fixtures/storytel.html    (99,914 bytes)
+busuu:      tests/fixtures/busuu.html      (139,645 bytes)
+dsv:        tests/fixtures/dsv.html         (57,961 bytes)
+impactpool: tests/fixtures/impactpool.html (126,917 bytes)
+```
+
+### Re-running when a fixture goes stale
+
+A career site redesign will eventually break a golden-file test from WP2
+before it breaks the real pipeline — that's the fixture doing its job. To
+refresh one or more fixtures:
+
+```
+python scripts/capture_fixtures.py <source_name> [<source_name> ...]
+```
+
+Source names must match an entry in `job_scraper/config/sources.yaml`. The
+script overwrites the existing fixture for each name given — check the printed
+byte size against the old one before trusting it (a page returning a login
+wall or a cookie-consent interstitial is still "successful" HTTP-wise but
+much smaller than the real listing). After refreshing, re-run the golden-file
+tests (WP2) and update the expected job counts/fields if the site's structure
+genuinely changed.
 
 ---
 
