@@ -35,6 +35,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | WP | Title | Time | Model | Effort cue | Status | Branch |
 |----|-------|------|-------|-----------|--------|--------|
 | 0 | Fixture capture script | 1 hr | Sonnet 5 | none | done | `wp0-fixtures` |
+| 0c | Sanitise fixtures | 1 hr | Opus 5 | `think hard` | done | `wp0c-sanitise-fixtures` |
 | 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | not started | `wp1-data-safety` |
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | not started | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | not started | `wp3-company-field` |
@@ -183,22 +184,81 @@ probably failed. Tell the same session and let it investigate.
 
 ### Result
 
-`scripts/capture_fixtures.py` fetches a source's listing URL with the same
-fetcher the pipeline uses (`fetch_text` for `static`, `fetch_rendered` for
-`dynamic`), guesses HTML vs JSON by attempting a JSON parse, and writes
+`scripts/capture_fixtures.py` fetches with the same fetcher the pipeline uses
+(`fetch_text` for `static`, `fetch_rendered` for `dynamic`), guesses HTML vs
+JSON by attempting a JSON parse, sanitises HTML (see below), and writes
 `tests/fixtures/<name>.html` or `.json` atomically (temp file + `os.replace()`).
 One source at a time, three-second pause between them.
 
-Captured on first run, all six landed comfortably above empty-page size:
+Sizes after the sanitising pass described below:
 
 ```
-givewell:   tests/fixtures/givewell.html    (30,373 bytes)
-kognity:    tests/fixtures/kognity.html     (12,727 bytes)
-storytel:   tests/fixtures/storytel.html    (99,914 bytes)
-busuu:      tests/fixtures/busuu.html      (139,645 bytes)
-dsv:        tests/fixtures/dsv.html         (57,961 bytes)
-impactpool: tests/fixtures/impactpool.html (126,917 bytes)
+givewell:   tests/fixtures/givewell.html    (15,292 bytes, was 30,373)
+kognity:    tests/fixtures/kognity.html     (12,566 bytes, was 12,727)
+storytel:   tests/fixtures/storytel.html    (86,941 bytes, was 99,914)
+busuu:      tests/fixtures/busuu.html      (133,876 bytes, was 139,645)
+dsv:        tests/fixtures/dsv.html         (31,671 bytes, was 57,961)
+impactpool: tests/fixtures/impactpool.html (107,966 bytes, was 126,917)
 ```
+
+### Sanitising captured HTML (WP0c)
+
+Captured HTML now passes through `sanitise_html` before it is written. It uses
+BeautifulSoup, never a regex, and removes only `<script>` elements that carry
+no job data. A script is kept when its `type` is a data MIME type
+(`application/ld+json`, `application/json`) or when its body or `id` contains a
+payload marker: `window.__appData`, `__NEXT_DATA__`, `__NUXT__`,
+`__INITIAL_STATE__`, `__APOLLO_STATE__`. It also blanks the value of hidden
+`*token*` form inputs, which are CSRF tokens indistinguishable from credentials
+to a scanner and read by no extractor.
+
+**Stripping all scripts would be a bug.** `extractors/ashby.py` finds jobs by
+searching the raw HTML for `window.__appData` and decoding the JSON that
+follows, so a blanket strip would silently reduce `kognity.html` to zero jobs.
+Grepping the extractors for the word "script" does not reveal this — `ashby.py`
+never uses the word. `tests/test_capture_fixtures.py` guards it by running each
+extractor over its fixture and asserting the job count is above zero. Never
+replace that with an assertion that fixtures contain no `<script>`.
+
+### Secret-scanning incident (2026-08-07)
+
+GitHub secret scanning flagged `tests/fixtures/givewell.html`. The value was
+Greenhouse's own public Google Picker key, embedded in their front-end
+`window.ENV` config — a third party's public key, not a credential of this
+project. **No rotation and no history rewrite were needed.** The fix is the
+sanitiser above: the capture script was saving whole pages including
+third-party inline config. The six existing fixtures were re-sanitised in
+place, without re-fetching. `test_fixture_contains_no_secret_shaped_values`
+now fails the build if a secret-shaped value reappears in any fixture.
+
+### Fixtures must match the URL the extractor actually reads
+
+Several extractors never parse the listing page. Greenhouse, Lever and
+SmartRecruiters call a JSON API instead, and paginating extractors ask for
+`?page=1` or `?startrow=0` rather than the bare URL. The first version of the
+capture script always saved the listing URL, so `givewell.html` was a page its
+extractor never looks at — `greenhouse.extract` raised `JSONDecodeError` on it.
+
+Of the six fixtures, only **givewell** is wrong for this reason. `wave` (Lever)
+and `oecd` (SmartRecruiters) would be wrong the same way if they were ever
+captured. The other five parse correctly: kognity 5 jobs, storytel 6, busuu 6,
+dsv 10, impactpool 40.
+
+The fix: rather than duplicating each extractor's URL-building, `capture_one`
+runs the real extractor with a recording fetcher and keeps the first response
+the extractor asks for, stopping it there so only one request is made. It then
+re-parses the saved payload and prints the job count, so a cookie wall or an
+unrendered dynamic page is visible at capture time rather than at WP2 time.
+
+**Re-run `python scripts/capture_fixtures.py givewell` to replace the stale
+HTML fixture with the boards API JSON.** Delete `tests/fixtures/givewell.html`
+afterwards; the parse test skips until `givewell.json` exists.
+
+Known caveat: `workday.py` upgrades `fetch_rendered` with a `wait_for_selector`
+only when it is passed that exact function object. The recording fetcher is a
+wrapper, so that identity check does not fire during capture and Workday pages
+are captured on the default wait. The printed job count makes an early capture
+obvious; fix it properly when WP9 restructures `fetch_rendered`.
 
 ### Re-running when a fixture goes stale
 
@@ -268,6 +328,9 @@ The fixtures from WP0 are in tests/fixtures/.
 1. Golden-file extractor tests. For each fixture, assert the parsed output:
    count of jobs, and the full dict of the first job. These catch selector drift
    at test time rather than at run time. Never fetch live sites in a test.
+   Note: a fixture for an API-based extractor (Greenhouse, Lever,
+   SmartRecruiters) must be the API response, not the listing page — see WP0.
+   tests/test_capture_fixtures.py already has the parse-check scaffolding.
 
 2. Pipeline test. Test run_pipeline end to end with a fake extractor and a fake
    fetch function. Assert the RunSummary funnel counts are internally
