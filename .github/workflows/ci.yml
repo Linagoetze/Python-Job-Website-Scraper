@@ -1,0 +1,43 @@
+# Lint and test on every push and pull request.
+#
+# What this can and cannot check: `sources.yaml`, `rules.json` and everything
+# under `data/` are gitignored, so CI has no search config and no store and
+# therefore cannot run the pipeline. What it verifies is the code and the
+# committed fixtures — the extractors still parse what they parsed, the funnel
+# arithmetic still reconciles, dedupe keys still survive a CSV round trip. A
+# green build does not mean a live run works. See docs/REFACTOR-PLAN.md, WP2.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # No `playwright install`: http.py imports playwright lazily and nothing
+      # in the test suite renders a page, so the browser binaries (~400 MB)
+      # would be downloaded on every run for nothing.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest -q
