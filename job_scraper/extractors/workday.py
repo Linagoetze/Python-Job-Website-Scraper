@@ -30,13 +30,16 @@ def extract(
     fetch_text: Callable[[str], str],
     source_name: str,
 ) -> list[dict[str, Any]]:
-    from job_scraper.http import fetch_rendered  # local import to avoid circular deps
+    from job_scraper.http import is_rendering_fetcher  # local import to avoid circular deps
 
-    # When running under the dynamic pipeline, upgrade fetch_rendered with a
+    # When running under the dynamic pipeline, upgrade the fetcher with a
     # selector-based wait so Playwright blocks until job cards are in the DOM
     # rather than relying on a fixed sleep (Airbus's Workday instance is slower).
-    if fetch_text is fetch_rendered:
-        fetch_text = partial(fetch_rendered, wait_for_selector=_SELECTOR)
+    # Test by capability, not identity, and wrap the fetcher we were given
+    # rather than substituting fetch_rendered: the caller's wrapper may be
+    # doing something (the fixture capture script records the URL through it).
+    if is_rendering_fetcher(fetch_text):
+        fetch_text = partial(fetch_text, wait_for_selector=_SELECTOR)
 
     html = fetch_text(listing_url)
     soup = BeautifulSoup(html, "lxml")
