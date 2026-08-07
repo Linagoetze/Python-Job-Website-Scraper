@@ -37,7 +37,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 0 | Fixture capture script | 1 hr | Sonnet 5 | none | done | `wp0-fixtures` |
 | 0c | Sanitise fixtures | 1 hr | Opus 5 | `think hard` | done | `wp0c-sanitise-fixtures` |
 | 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | done | `wp1-data-safety` |
-| 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | not started | `wp2-test-net` |
+| 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | done | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | not started | `wp3-company-field` |
 | 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | not started | `wp4-sqlite-schema` |
 | 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | not started | `wp5-sqlite-cutover` |
@@ -400,6 +400,119 @@ The fixtures from WP0 are in tests/fixtures/.
 
 Branch wp2-test-net. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+150 tests pass, up from 123. `ruff check .` is clean.
+
+**Shared fixture table.** `_FIXTURE_CASES` moved out of
+`tests/test_capture_fixtures.py` into `tests/fixture_cases.py`, which three
+test modules now import. It also owns the `sys.path` amendment that makes
+`scripts/capture_fixtures.py` importable, and re-exports both the module and
+`single_response_fetch`, so no other test touches `sys.path`.
+
+That re-export is not tidiness. The first version left
+`test_capture_fixtures.py` with two imports that had to stay in order — the
+`sys.path` line first, `import capture_fixtures` second — and ruff's import
+sorter immediately hoisted the second above the first, breaking collection with
+`ModuleNotFoundError`. Ordering constraints an import-sorter cannot see are a
+trap; the fix is to have nothing to sort. Keep it that way.
+
+**Golden-file tests** (`tests/test_extractors_golden.py`). Job count plus the
+complete first-job dict for all six fixtures: givewell 20, kognity 5, storytel
+6, busuu 6, dsv 10, impactpool 40. `test_every_fixture_has_a_golden` fails if a
+newly captured fixture is added without pinning it. Five sources produce eight
+keys; impactpool produces nine — it sets `company`, being an aggregator.
+
+Two extractor quirks are pinned as they are, not fixed (WP2 observes):
+
+- **storytel**: `teamtailor.py`'s first match on that page is a department
+  heading, so job 1 has `title` and `raw_snippet` of `"Product & Tech ·
+  Stockholm"` and an empty `location`. Layer 0 drops it at run time, so it has
+  never been visible in the output.
+- **dsv**: `successfactors_html.py` puts the posting date (`"7 Aug 2026"`) in
+  `department`.
+
+`test_fixture_still_parses` was deliberately kept alongside the goldens. It is
+the weaker assertion, but it fails for a different reason and its message points
+at the sanitiser rather than at selector drift.
+
+**Pipeline funnel test** (`tests/test_pipeline_funnel.py`). `run_pipeline` end
+to end over a fake extractor and fake fetcher, asserting the arithmetic
+`format_summary` performs but nothing checked: sources processed + skipped =
+total; the keyword/title/language/blocklist chain equals already-stored +
+new-checked + stored-rechecked; Layer 2 intake minus exclusions equals
+`jobs_kept_new`; `rows_written == jobs_kept_new` against an empty store. A
+second test pins that each stage actually excluded the job aimed at it, so the
+invariants cannot pass trivially with every counter at zero.
+
+**Round-trip test** (`tests/test_csv_roundtrip.py`). extractor dict → CSV →
+`_dedupe_key`, for all six fixtures plus three cases the fixtures do not reach:
+Oatly (where `canonical_detail_url` adds a locale prefix on write and only
+`dedupe_key_from_url` folds the variants back together), an `apply_url`-only
+job, and an http→https job. Plus: a job with no URL is skipped rather than
+stored keyless.
+
+### Two behaviours WP2 found and pinned rather than fixed
+
+Both are pre-existing, both are in code WP5 rewrites, and both now have a test
+that will notice when they change.
+
+1. **Content dedup churns a row on every run, for ever.**
+   `_collapse_content_duplicates` keys on source + company + title. Two
+   impactpool postings advertise the same role for the same employer under
+   different URLs, so one is collapsed away — and its URL key then no longer
+   exists in the store, so the next run does not recognise it, appends it, and
+   collapses it again. Measured: 40 offered, 39 stored, then exactly 1 row
+   written on every subsequent run indefinitely. Consequences are cosmetic but
+   real — "New rows written" never settles to zero, and the two postings
+   alternate in the table. Pinned by
+   `test_content_dedupe_churns_a_row_on_every_run`. If WP5 makes it settle,
+   **delete that test rather than weakening it**: that is the fix landing.
+
+2. **Layer-2 rejections are re-fetched every run.** A job excluded by the
+   detail-page filter is never written to the store, so nothing records that it
+   was already judged, and it costs a detail fetch on every subsequent run.
+   `jobs_new_checked` therefore does not fall to zero on a repeat run. WP6's
+   stored descriptions are what would let the pipeline skip it.
+
+### Tooling
+
+`ruff` in `pyproject.toml`, `select = ["E", "F", "W", "I", "UP", "B"]`,
+`line-length = 100`. Rules that argue about design rather than mechanics were
+left out on purpose: the structure of this codebase is the refactor plan's
+business, not the linter's.
+
+`target-version` is deliberately **not** set. Ruff infers it from
+`requires-python = ">=3.10"`, so the `UP` rules can never rewrite code into
+syntax newer than the floor the project claims. (Note the standing
+inconsistency: CLAUDE.md says Python 3.13 while `requires-python` says 3.10.
+Worth settling, but not in this package.)
+
+51 findings, all fixed mechanically: 16 auto-fixed (import ordering, five unused
+imports, one deprecated `typing.Callable`), 34 lines rewrapped, and one dead
+local removed — `title_tag` in `extractors/niras.py`, superseded by the
+`children_text` logic directly beneath it. No behaviour changed. No rule was
+suppressed to make the run pass, and there are no `per-file-ignores`: the only
+suppression in the tree is an inline `# noqa: E402` at each of the two
+`sys.path`-amending imports, which documents itself at the point it applies and
+stops applying if the import moves.
+
+### CI, and what it cannot do
+
+`.github/workflows/ci.yml` runs `ruff check .` and `pytest -q` on push and pull
+request, on Python 3.13. No `playwright install` — `http.py` imports playwright
+lazily and no test renders a page, so the browser binaries would be a ~400 MB
+download for nothing.
+
+**CI cannot run the pipeline itself.** `job_scraper/config/sources.yaml`,
+`job_scraper/config/rules.json`, `data/jobs.csv` and `data/jobs.xlsx` are all
+gitignored, so a clean checkout has no search config and no store;
+`run_pipeline` would fail at `_require()` before fetching anything. What CI
+verifies is the code and the committed fixtures. A green build does not mean a
+live run works — step 6 of the session checklist above, running
+`.venv/bin/python -m job_scraper.run` and eyeballing the funnel, is still the
+only thing that checks that, and still has to be done by hand.
 
 ---
 
