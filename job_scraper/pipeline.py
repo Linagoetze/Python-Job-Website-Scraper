@@ -48,6 +48,7 @@ class RunSummary:
     jobs_blocklist_excluded: int
     jobs_already_stored: int
     jobs_new_checked: int
+    jobs_stored_rechecked: int
     jobs_detail_excluded: int
     jobs_phd_excluded: int
     jobs_hybrid_excluded: int
@@ -66,6 +67,8 @@ def run_pipeline(
     sources = load_sources(sources_path)
     rules = load_rules(rules_path)
     title_keywords = load_title_exclude_keywords(title_keywords_path) if title_keywords_path else []
+    # Compiled once for the whole run and passed down — never rebuilt per job.
+    hybrid_pattern = build_hybrid_pattern(rules)
 
     jobs_extracted = 0
     jobs_kept = 0
@@ -116,7 +119,7 @@ def run_pipeline(
         source_scraped_keys[name] = {k for r in rows if (k := _dedupe_key(r))}
 
         for job in rows:
-            ok, reason_list = matches_rules(job, rules)
+            ok, reason_list = matches_rules(job, rules, hybrid_pattern)
             if not ok:
                 continue
             job = dict(job)
@@ -200,14 +203,24 @@ def run_pipeline(
     # and only those that do not say "hybrid" in the title.
     existing_keys = _read_existing_keys(out_csv_path)
 
-    def _needs_detail(job: JobRecord) -> bool:
-        return (
-            _dedupe_key(job) not in existing_keys
-            or _HYBRID_PENDING_REASON in (job.get("matched_reasons") or [])
-        )
+    def _is_stored(job: JobRecord) -> bool:
+        return _dedupe_key(job) in existing_keys
 
+    def _is_hybrid_pending(job: JobRecord) -> bool:
+        return _HYBRID_PENDING_REASON in (job.get("matched_reasons") or [])
+
+    def _needs_detail(job: JobRecord) -> bool:
+        return not _is_stored(job) or _is_hybrid_pending(job)
+
+    # new_jobs is everything that needs a detail-page fetch: genuinely new jobs,
+    # plus already-stored conditional-city jobs re-earning their hybrid
+    # confirmation (see the module docstring above). The two are reported
+    # separately below so "new, detail-checked" reconciles against "new rows
+    # written" — a re-check is not a new row.
     new_jobs = [j for j in kept_rows if _needs_detail(j)]
     cached_jobs = [j for j in kept_rows if not _needs_detail(j)]
+    truly_new_jobs = [j for j in new_jobs if not _is_stored(j)]
+    stored_rechecked_jobs = [j for j in new_jobs if _is_stored(j)]
     if cached_jobs:
         logger.debug("Layer 2: skipped %d already-stored jobs", len(cached_jobs))
 
@@ -216,7 +229,7 @@ def run_pipeline(
         new_jobs,
         fetch_text,
         source_fetch_map=source_fetch_map,
-        hybrid_pattern=build_hybrid_pattern(rules),
+        hybrid_pattern=hybrid_pattern,
     )
 
     jobs_phd_excluded = sum(1 for j in detail_excluded if j.get("experience_level") == "phd_required")
@@ -277,7 +290,8 @@ def run_pipeline(
         jobs_title_excluded=jobs_title_excluded,
         jobs_blocklist_excluded=jobs_blocklist_excluded,
         jobs_already_stored=len(cached_jobs),
-        jobs_new_checked=len(new_jobs),
+        jobs_new_checked=len(truly_new_jobs),
+        jobs_stored_rechecked=len(stored_rechecked_jobs),
         jobs_detail_excluded=jobs_detail_excluded,
         jobs_phd_excluded=jobs_phd_excluded,
         jobs_hybrid_excluded=jobs_hybrid_excluded,

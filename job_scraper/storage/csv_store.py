@@ -245,6 +245,7 @@ def clean_existing_rows(
         apply_language_filter,
         apply_non_english_text_filter,
         apply_title_keyword_filter,
+        build_hybrid_pattern,
         matches_rules,
     )
 
@@ -277,8 +278,10 @@ def clean_existing_rows(
                 row["location"] = parts[2] if len(parts) >= 3 else loc
                 counts["mammut_fixed"] += 1
 
-    # Rules filter (location / keyword matching)
-    kept = [r for r in rows if matches_rules(r, rules)[0]]
+    # Rules filter (location / keyword matching). Compiled once for the whole
+    # pass, not rebuilt per row inside matches_rules.
+    hybrid_pattern = build_hybrid_pattern(rules)
+    kept = [r for r in rows if matches_rules(r, rules, hybrid_pattern)[0]]
     counts["rules"] = len(rows) - len(kept)
 
     # Seniority title filter

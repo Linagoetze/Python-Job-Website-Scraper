@@ -54,7 +54,12 @@ a week is six or seven weeks. Nothing breaks if you stop after any package.
 
 Record any decision a future session would otherwise have to re-derive.
 
-- (empty)
+- Conditional hybrid-gated locations (cities too far to commute to daily,
+  admitted only when the role is hybrid — `filtering.py`'s
+  `build_hybrid_pattern`/`matches_rules`, `experience_filter.py`'s
+  `_resolve_hybrid`) are a deliberate feature the owner wrote before this plan
+  existed, not accidental scope creep. Keep it; do not propose deleting it as
+  part of the filter-ladder cleanup in WP8.
 
 ---
 
@@ -379,6 +384,13 @@ Make SQLite authoritative and delete the accreted CSV logic.
 6. Replace the delisting rule from WP1 with the better version now possible:
    mark delisted only after N consecutive successful runs without seeing the job.
    Default N=2, configurable.
+7. Store the hybrid confirmation for conditional-location jobs (see the
+   decisions log) as a column, e.g. on the `jobs` table. Today
+   `matched_reasons` is not a jobs.csv column, so the pending/confirmed marker
+   never survives a run and the pipeline re-fetches the detail page for every
+   stored conditional-city job on every run to re-earn it. Once there is
+   somewhere to persist the confirmation, that job should be skipped like any
+   other already-stored job.
 
 Expect to remove roughly 250 lines net. If you find yourself keeping a CSV
 helper "just in case", say so and explain why rather than keeping it silently.

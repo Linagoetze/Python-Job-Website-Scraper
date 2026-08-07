@@ -62,6 +62,7 @@ def format_summary(summary: RunSummary, table_total: int) -> str:
         cut("blocklisted (rejected)", summary.jobs_blocklist_excluded,
             (after_blocklist, "after blocklist")),
         row("already in table (skipped)", f"{summary.jobs_already_stored:,}", indent=6),
+        row("stored, hybrid recheck", f"{summary.jobs_stored_rechecked:,}", indent=6),
         row("new, detail-checked", f"{summary.jobs_new_checked:,}", indent=6),
         cut(f"needs 3+ yrs / PhD ({summary.jobs_phd_excluded} PhD)",
             summary.jobs_detail_excluded - summary.jobs_hybrid_excluded),

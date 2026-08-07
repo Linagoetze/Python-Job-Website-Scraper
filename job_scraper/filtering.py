@@ -242,7 +242,11 @@ def _haystack(job: JobRecord, match_in: str) -> str:
     return " ".join((title, snippet, dept, loc))
 
 
-def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str]]:
+def matches_rules(
+    job: JobRecord,
+    rules: dict[str, Any],
+    hybrid_pattern: re.Pattern[str] | None,
+) -> tuple[bool, list[str]]:
     """
     Return (passes, reasons).
 
@@ -256,6 +260,10 @@ def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str
       admit the job when a `conditional_location_keywords` term (e.g. "hybrid") is
       present. If the keyword is not visible at this layer the job passes with
       `_HYBRID_PENDING_REASON` for Layer 2 to confirm against the description.
+
+    `hybrid_pattern` gates `conditional_locations` and must be built once via
+    `build_hybrid_pattern(rules)` by the caller and passed down — never rebuilt
+    here, since this runs once per job.
     """
     reasons: list[str] = []
     match_in = str(rules.get("match_in") or "title_and_description")
@@ -296,7 +304,7 @@ def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str
             reasons.append("locations: matched")
         elif remote_ok:
             reasons.append("locations: matched via remote_keywords")
-        elif (hybrid_pattern := build_hybrid_pattern(rules)) is not None and any(
+        elif hybrid_pattern is not None and any(
             _lower(loc) in loc_field for loc in conditional_locations
         ):
             # A hybrid-gated city. Confirm from a marker already on the job, else
