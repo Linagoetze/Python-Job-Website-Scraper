@@ -28,7 +28,13 @@ def _job(source: str, title: str, url: str) -> dict[str, str]:
 def _write_config(tmp_path: Path) -> tuple[Path, Path]:
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(
-        yaml.dump({"sources": [{"name": "acme", "url": "https://acme.example/jobs", "strategy": "static"}]}),
+        yaml.dump(
+            {
+                "sources": [
+                    {"name": "acme", "url": "https://acme.example/jobs", "strategy": "static"}
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     rules_path = tmp_path / "rules.json"
@@ -62,7 +68,9 @@ def _run(
     out_csv = tmp_path / "jobs.csv"
     _seed_existing_csv(out_csv, "acme", "https://acme.example/jobs/existing")
 
-    monkeypatch.setattr(pipeline_mod, "get_extractor", lambda name: lambda url, fetch_fn: extractor_result)
+    monkeypatch.setattr(
+        pipeline_mod, "get_extractor", lambda name: lambda url, fetch_fn: extractor_result
+    )
     monkeypatch.setattr(pipeline_mod, "load_blocklist_keys", lambda: set())
     monkeypatch.setattr(pipeline_mod, "fetch_text", lambda url: "")
 
@@ -77,7 +85,9 @@ def _run(
     return summary, rows
 
 
-def test_empty_scrape_does_not_delist_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_empty_scrape_does_not_delist_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     summary, rows = _run(tmp_path, monkeypatch, extractor_result=[])
     assert summary.rows_delisted == 0
     assert len(rows) == 1
@@ -92,13 +102,17 @@ def test_empty_scrape_logs_error_naming_the_source(
     assert any("acme" in r.message and r.levelno == logging.ERROR for r in caplog.records)
 
 
-def test_empty_scrape_delists_when_flag_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_empty_scrape_delists_when_flag_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     summary, rows = _run(tmp_path, monkeypatch, extractor_result=[], allow_empty_delist=True)
     assert summary.rows_delisted == 1
     assert rows == []
 
 
-def test_nonempty_scrape_still_delists_missing_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nonempty_scrape_still_delists_missing_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fresh = [_job("acme", "New Job", "https://acme.example/jobs/new")]
     summary, rows = _run(tmp_path, monkeypatch, extractor_result=fresh)
     assert summary.rows_delisted == 1

@@ -61,7 +61,11 @@ def extract(
                 (c for c in a.children if isinstance(c, Tag) and c.name == "div"),
                 None,
             )
-            title = first_div.get_text(" ", strip=True) if first_div else a.get_text(" ", strip=True)
+            title = (
+                first_div.get_text(" ", strip=True)
+                if first_div
+                else a.get_text(" ", strip=True)
+            )
 
         if not title:
             continue
@@ -87,7 +91,9 @@ def extract(
 
         work_type = ""
         if meta_tag and _MIDDOT in meta_tag.get_text():
-            dept, location, work_type = _split_meta(meta_tag.get_text(" ", strip=True), skip_first=skip_first)
+            dept, location, work_type = _split_meta(
+                meta_tag.get_text(" ", strip=True), skip_first=skip_first
+            )
 
         raw_snippet = " ".join(x for x in [title, dept, location, work_type] if x)
         out.append(

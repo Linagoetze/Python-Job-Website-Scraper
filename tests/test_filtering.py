@@ -10,7 +10,6 @@ from job_scraper.filtering import (
     apply_non_english_text_filter,
     apply_title_keyword_filter,
     build_hybrid_pattern,
-    load_title_exclude_keywords,
     matches_rules,
 )
 
@@ -47,7 +46,12 @@ _COND_HYBRID_PATTERN = build_hybrid_pattern(_COND)
 
 class TestMatchesRules:
     def test_empty_rules_passes_everything(self):
-        rules = {"include_keywords": [], "exclude_keywords": [], "locations": [], "remote_keywords": []}
+        rules = {
+            "include_keywords": [],
+            "exclude_keywords": [],
+            "locations": [],
+            "remote_keywords": [],
+        }
         ok, _ = matches_rules(_job(), rules, None)
         assert ok
 
@@ -95,7 +99,9 @@ class TestMatchesRules:
         assert any("locations: matched" == r for r in reasons)
 
     def test_conditional_location_hybrid_in_title_confirmed(self):
-        ok, reasons = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), _COND, _COND_HYBRID_PATTERN)
+        ok, reasons = matches_rules(
+            _job(title="Analyst (Hybrid)", location="Stockholm"), _COND, _COND_HYBRID_PATTERN
+        )
         assert ok
         assert _HYBRID_CONFIRMED_REASON in reasons
 
@@ -124,7 +130,9 @@ class TestMatchesRules:
         assert _HYBRID_CONFIRMED_REASON in reasons
 
     def test_hybrid_does_not_admit_unlisted_city(self):
-        ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Uppsala"), _COND, _COND_HYBRID_PATTERN)
+        ok, _ = matches_rules(
+            _job(title="Analyst (Hybrid)", location="Uppsala"), _COND, _COND_HYBRID_PATTERN
+        )
         assert not ok
 
     def test_unconditional_location_unaffected_by_hybrid_gate(self):
@@ -179,7 +187,8 @@ class TestTitleKeywordFilter:
     def test_prefix_does_not_match_mid_word(self):
         entries = [("design", "prefix")]
         kept, excluded = apply_title_keyword_filter([_job(title="Redesign Lead")], entries)
-        # "design" as prefix should match at word boundary — "Redesign" starts with "Re" not "design"
+        # "design" as prefix should match at a word boundary — "Redesign" starts
+        # with "Re", not "design"
         assert len(kept) == 1
 
     def test_empty_entries_keeps_all(self):
@@ -280,13 +289,17 @@ def _langdetect_mock_raising() -> MagicMock:
 class TestNonEnglishTextFilter:
     def test_keeps_english_job(self):
         with patch.dict(sys.modules, {"langdetect": _langdetect_mock("en")}):
-            kept, excluded = apply_non_english_text_filter([_job(title="Product Manager in Berlin")])
+            kept, excluded = apply_non_english_text_filter(
+            [_job(title="Product Manager in Berlin")]
+        )
         assert len(kept) == 1
         assert len(excluded) == 0
 
     def test_excludes_swedish_job(self):
         with patch.dict(sys.modules, {"langdetect": _langdetect_mock("sv")}):
-            kept, excluded = apply_non_english_text_filter([_job(title="Produktchef i Malmö", location="Malmö, Sweden")])
+            kept, excluded = apply_non_english_text_filter(
+            [_job(title="Produktchef i Malmö", location="Malmö, Sweden")]
+        )
         assert len(excluded) == 1
         assert len(kept) == 0
 
@@ -298,7 +311,9 @@ class TestNonEnglishTextFilter:
 
     def test_excludes_danish_job(self):
         with patch.dict(sys.modules, {"langdetect": _langdetect_mock("da")}):
-            kept, excluded = apply_non_english_text_filter([_job(title="Projektleder søges", location="Frederiksberg, København")])
+            kept, excluded = apply_non_english_text_filter(
+            [_job(title="Projektleder søges", location="Frederiksberg, København")]
+        )
         assert len(excluded) == 1
 
     def test_keeps_on_short_text(self):
@@ -311,7 +326,9 @@ class TestNonEnglishTextFilter:
 
     def test_keeps_on_detection_failure(self):
         with patch.dict(sys.modules, {"langdetect": _langdetect_mock_raising()}):
-            kept, excluded = apply_non_english_text_filter([_job(title="Some long enough title here")])
+            kept, excluded = apply_non_english_text_filter(
+            [_job(title="Some long enough title here")]
+        )
         assert len(kept) == 1
         assert len(excluded) == 0
 

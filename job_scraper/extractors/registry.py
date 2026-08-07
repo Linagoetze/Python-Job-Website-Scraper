@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
-from typing import Any
 
 from job_scraper import JobRecord
-
 from job_scraper.extractors import (
     against_malaria,
     asana,
@@ -82,7 +80,9 @@ REGISTRY: dict[str, ExtractorFn] = {
     # --- Custom HTML ---
     "coefficient_giving": partial(coefficient.extract, source_name="coefficient_giving"),
     "oatly": partial(oatly.extract, source_name="oatly"),
-    "against_malaria_foundation": partial(against_malaria.extract, source_name="against_malaria_foundation"),
+    "against_malaria_foundation": partial(
+        against_malaria.extract, source_name="against_malaria_foundation"
+    ),
     "probably_good": partial(probably_good.extract, source_name="probably_good"),
     "mammut": partial(mammut.extract, source_name="mammut"),
     "unops": partial(unops.extract, source_name="unops"),

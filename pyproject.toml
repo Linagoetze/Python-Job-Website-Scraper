@@ -7,3 +7,23 @@ requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+# target-version is deliberately not set: ruff infers it from requires-python
+# above, so the `UP` rules can never rewrite code into syntax newer than the
+# floor this project claims to support.
+
+[tool.ruff.lint]
+# E/W/F are the pyflakes-and-pycodestyle baseline, I keeps imports ordered, UP
+# catches syntax left behind by older Python, B catches the bug-shaped ones
+# (mutable defaults, loop-variable capture). Deliberately not enabled: rules
+# that argue about design rather than mechanics — this project's structure is
+# the refactor plan's business, not the linter's.
+select = ["E", "F", "W", "I", "UP", "B"]
+
+# No per-file-ignores. The only rule that needs suppressing is E402, in the two
+# modules that amend sys.path before importing the project (scripts/ is outside
+# the package), and both carry an inline `# noqa: E402` at the import itself —
+# which says why at the place it applies, and stops applying the moment the
+# import moves.

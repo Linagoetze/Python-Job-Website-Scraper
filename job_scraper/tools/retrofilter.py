@@ -27,7 +27,11 @@ def main() -> None:
     # stay out of the total.
     total = sum(v for k, v in counts.items() if k != "mammut_fixed")
     print(f"Removed {counts['title_keywords']} rows matched by title keywords")
-    print(f"Removed {counts['rules']} rows by rules, {counts['title']} by seniority, {counts['language']} by language speaker pattern")
+    print(
+        f"Removed {counts['rules']} rows by rules, "
+        f"{counts['title']} by seniority, "
+        f"{counts['language']} by language speaker pattern"
+    )
     print(f"Removed {counts['non_english_text']} rows with non-English title/description")
     print(f"Total rows removed: {total}")
 

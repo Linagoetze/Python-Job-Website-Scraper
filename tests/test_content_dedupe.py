@@ -92,7 +92,10 @@ def test_non_allowlisted_source_untouched(tmp_path: Path) -> None:
 
 def test_normalization_equivalence() -> None:
     assert _normalize_text("Division Manager Food & Pharma") == "division manager food pharma"
-    assert _normalize_text("M365 Copilot &amp; Compliance konsult.") == "m365 copilot compliance konsult"
+    assert (
+        _normalize_text("M365 Copilot &amp; Compliance konsult.")
+        == "m365 copilot compliance konsult"
+    )
     assert _normalize_text("Elektronikingenjör") == "elektronikingenjör"
 
 

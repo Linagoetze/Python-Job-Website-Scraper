@@ -1,6 +1,5 @@
 """Tests for job_scraper.experience_filter."""
 
-import pytest
 
 from job_scraper.experience_filter import (
     _extract_min_years,
@@ -13,7 +12,6 @@ from job_scraper.filtering import (
     _HYBRID_PENDING_REASON,
     build_hybrid_pattern,
 )
-
 
 # ---------------------------------------------------------------------------
 # _extract_min_years

@@ -16,7 +16,11 @@ _ASHBY_JOB = re.compile(
 )
 
 
-def extract(listing_url: str, fetch_text: Callable[[str], str], source_name: str = "coefficient_giving") -> list[dict[str, Any]]:
+def extract(
+    listing_url: str,
+    fetch_text: Callable[[str], str],
+    source_name: str = "coefficient_giving",
+) -> list[dict[str, Any]]:
     html = fetch_text(listing_url)
     soup = BeautifulSoup(html, "lxml")
     h2 = soup.find(id="0-open-roles")

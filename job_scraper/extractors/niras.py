@@ -37,7 +37,6 @@ def _parse_page(html: str, listing_url: str, source_name: str) -> list[dict[str,
     for a in soup.find_all("a", href=lambda h: h and _JOB_PATH in h):
         href = str(a["href"]).strip()
         detail_url = urljoin(listing_url, href)
-        title_tag = a.find(string=True, recursive=False) or a.get_text(" ", strip=True)
         # Job cards wrap text in <generic> tags; grab the first non-empty child text
         children_text = [
             c.get_text(" ", strip=True)
