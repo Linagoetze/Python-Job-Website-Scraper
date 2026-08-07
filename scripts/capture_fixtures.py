@@ -136,6 +136,10 @@ def capture_one(source: dict[str, str]) -> tuple[bool, str]:
         recorded.append((url, fetch(url, *args, **kwargs)))
         raise _CaptureComplete
 
+    # Carry the rendering mark through the wrapper, so extractors that add a
+    # selector wait for JS-heavy pages still do so during capture.
+    recording_fetch.renders = getattr(fetch, "renders", False)  # type: ignore[attr-defined]
+
     try:
         if extractor is None:
             # No registry entry: fall back to the listing URL as-is.
@@ -161,10 +165,31 @@ def capture_one(source: dict[str, str]) -> tuple[bool, str]:
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(dest)
 
+    stale = _remove_stale_sibling(name, ext)
+
     size = dest.stat().st_size
     jobs = _verify(extractor, listing_url, text)
     rel = dest.relative_to(default_project_root())
-    return True, f"{name}: saved {rel} ({size:,} bytes, {jobs} jobs) from {fetched_url}"
+    message = f"{name}: saved {rel} ({size:,} bytes, {jobs} jobs) from {fetched_url}"
+    if stale:
+        message += f"; removed stale {stale}"
+    return True, message
+
+
+def _remove_stale_sibling(name: str, ext: str) -> str | None:
+    """Delete a previous fixture for *name* saved under the other extension.
+
+    A source changes artefact type when its extractor is corrected — givewell
+    went from listing HTML to the Greenhouse API's JSON. Leaving the old file
+    behind is a trap: it looks like a valid fixture and nothing parses it.
+    Only ever removes the sibling this script itself would have written.
+    """
+    other = "json" if ext == "html" else "html"
+    sibling = FIXTURES_DIR / f"{name}.{other}"
+    if not sibling.exists():
+        return None
+    sibling.unlink()
+    return sibling.name
 
 
 def _guess_extension(text: str) -> str:
