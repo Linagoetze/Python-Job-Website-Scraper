@@ -5,6 +5,7 @@ from __future__ import annotations
 import ssl
 import subprocess
 import time
+from collections.abc import Callable
 
 import certifi
 import requests
@@ -121,3 +122,16 @@ def fetch_rendered(
             return page.content()
         finally:
             browser.close()
+
+
+# Extractors that want a selector-based wait need to know whether the fetcher
+# they were handed renders JavaScript. Comparing identity against
+# `fetch_rendered` breaks the moment anything passes a wrapper — the fixture
+# capture script wraps it to record URLs, and WP9 will replace it outright.
+# Mark the capability instead, and let wrappers copy the mark.
+fetch_rendered.renders = True  # type: ignore[attr-defined]
+
+
+def is_rendering_fetcher(fetch: Callable[..., str]) -> bool:
+    """True if *fetch* renders JavaScript, through any number of wrappers."""
+    return bool(getattr(fetch, "renders", False))
