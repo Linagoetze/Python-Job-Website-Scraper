@@ -193,7 +193,7 @@ One source at a time, three-second pause between them.
 Sizes after the sanitising pass described below:
 
 ```
-givewell:   tests/fixtures/givewell.html    (15,292 bytes, was 30,373)
+givewell:   tests/fixtures/givewell.json    (14,119 bytes, 20 jobs; re-captured)
 kognity:    tests/fixtures/kognity.html     (12,566 bytes, was 12,727)
 storytel:   tests/fixtures/storytel.html    (86,941 bytes, was 99,914)
 busuu:      tests/fixtures/busuu.html      (133,876 bytes, was 139,645)
@@ -239,9 +239,9 @@ SmartRecruiters call a JSON API instead, and paginating extractors ask for
 capture script always saved the listing URL, so `givewell.html` was a page its
 extractor never looks at — `greenhouse.extract` raised `JSONDecodeError` on it.
 
-Of the six fixtures, only **givewell** is wrong for this reason. `wave` (Lever)
+Of the six fixtures, only **givewell** was wrong for this reason. `wave` (Lever)
 and `oecd` (SmartRecruiters) would be wrong the same way if they were ever
-captured. The other five parse correctly: kognity 5 jobs, storytel 6, busuu 6,
+captured. All six now parse: givewell 20 jobs, kognity 5, storytel 6, busuu 6,
 dsv 10, impactpool 40.
 
 The fix: rather than duplicating each extractor's URL-building, `capture_one`
@@ -249,16 +249,27 @@ runs the real extractor with a recording fetcher and keeps the first response
 the extractor asks for, stopping it there so only one request is made. It then
 re-parses the saved payload and prints the job count, so a cookie wall or an
 unrendered dynamic page is visible at capture time rather than at WP2 time.
+givewell was re-captured as `givewell.json` on 2026-08-07 and the stale
+`givewell.html` deleted.
 
-**Re-run `python scripts/capture_fixtures.py givewell` to replace the stale
-HTML fixture with the boards API JSON.** Delete `tests/fixtures/givewell.html`
-afterwards; the parse test skips until `givewell.json` exists.
+When a source's artefact type changes like that, `capture_one` deletes the
+fixture it previously wrote under the other extension. An orphaned fixture
+looks valid and is parsed by nothing.
 
-Known caveat: `workday.py` upgrades `fetch_rendered` with a `wait_for_selector`
-only when it is passed that exact function object. The recording fetcher is a
-wrapper, so that identity check does not fire during capture and Workday pages
-are captured on the default wait. The printed job count makes an early capture
-obvious; fix it properly when WP9 restructures `fetch_rendered`.
+### Detecting a rendering fetcher
+
+`workday.py` decides whether to wait for job cards to appear before reading the
+DOM. It used to test `fetch_text is fetch_rendered`, which is false for any
+wrapper — including the capture script's recording fetcher, so Workday fixtures
+were captured on the plain settle delay. `http.py` now marks `fetch_rendered`
+with `renders = True` and exposes `is_rendering_fetcher()`; wrappers copy the
+mark. Extractors must wrap the fetcher they were given rather than substituting
+`fetch_rendered`, or the caller's wrapper is silently discarded.
+
+Prefer this over identity checks in WP9, which replaces `fetch_rendered` with a
+reused-browser implementation and would break every such check.
+`niras.py` has the same identity check, but both of its branches are identical,
+so it is inert — tidy it in WP9.
 
 ### Re-running when a fixture goes stale
 
@@ -330,7 +341,9 @@ The fixtures from WP0 are in tests/fixtures/.
    at test time rather than at run time. Never fetch live sites in a test.
    Note: a fixture for an API-based extractor (Greenhouse, Lever,
    SmartRecruiters) must be the API response, not the listing page — see WP0.
-   tests/test_capture_fixtures.py already has the parse-check scaffolding.
+   tests/test_capture_fixtures.py already has the parse-check scaffolding and
+   covers capture_one itself with the network faked out; extend rather than
+   duplicate it.
 
 2. Pipeline test. Test run_pipeline end to end with a fake extractor and a fake
    fetch function. Assert the RunSummary funnel counts are internally
