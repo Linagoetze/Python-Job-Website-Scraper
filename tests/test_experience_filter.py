@@ -5,7 +5,13 @@ import pytest
 from job_scraper.experience_filter import (
     _extract_min_years,
     _strip_html,
+    apply_detail_filter,
     apply_title_filter,
+)
+from job_scraper.filtering import (
+    _HYBRID_CONFIRMED_REASON,
+    _HYBRID_PENDING_REASON,
+    build_hybrid_pattern,
 )
 
 
@@ -99,3 +105,84 @@ class TestApplyTitleFilter:
         rules = {"seniority_filter_enabled": True, "seniority_exclude_titles": ["Director"]}
         _, excluded = apply_title_filter([self._job("Director of Marketing")], rules)
         assert len(excluded) == 1
+
+
+# ---------------------------------------------------------------------------
+# apply_detail_filter — hybrid resolution for conditional locations
+# ---------------------------------------------------------------------------
+
+class TestHybridResolution:
+    _PATTERN = build_hybrid_pattern({"conditional_location_keywords": ["hybrid"]})
+
+    @staticmethod
+    def _job(reasons, url="https://example.com/job"):
+        return {
+            "source_name": "test",
+            "title": "Analyst",
+            "location": "Stockholm",
+            "detail_url": url,
+            "apply_url": "",
+            "raw_snippet": "Analyst Stockholm",
+            "matched_reasons": list(reasons),
+        }
+
+    def _run(self, job, html="<p>A great role.</p>"):
+        return apply_detail_filter([job], lambda _url: html, hybrid_pattern=self._PATTERN)
+
+    def test_hybrid_in_description_confirms(self):
+        kept, excluded = self._run(
+            self._job([_HYBRID_PENDING_REASON]),
+            "<p>This is a hybrid role, two days on site.</p>",
+        )
+        assert len(kept) == 1
+        assert not excluded
+        assert kept[0]["matched_reasons"] == [_HYBRID_CONFIRMED_REASON]
+
+    def test_no_hybrid_in_description_excludes(self):
+        kept, excluded = self._run(self._job([_HYBRID_PENDING_REASON]))
+        assert not kept
+        assert len(excluded) == 1
+
+    def test_swedish_compound_in_description_confirms(self):
+        kept, _ = self._run(
+            self._job([_HYBRID_PENDING_REASON]), "<p>Vi erbjuder hybridarbete.</p>"
+        )
+        assert len(kept) == 1
+
+    def test_pending_job_fails_closed_on_fetch_error(self):
+        def boom(_url):
+            raise RuntimeError("network down")
+
+        kept, excluded = apply_detail_filter(
+            [self._job([_HYBRID_PENDING_REASON])], boom, hybrid_pattern=self._PATTERN
+        )
+        assert not kept
+        assert len(excluded) == 1
+
+    def test_pending_job_fails_closed_without_url(self):
+        kept, excluded = self._run(self._job([_HYBRID_PENDING_REASON], url=""))
+        assert not kept
+        assert len(excluded) == 1
+
+    def test_non_pending_job_still_fails_open_on_fetch_error(self):
+        def boom(_url):
+            raise RuntimeError("network down")
+
+        kept, excluded = apply_detail_filter(
+            [self._job(["locations: matched"])], boom, hybrid_pattern=self._PATTERN
+        )
+        assert len(kept) == 1
+        assert not excluded
+
+    def test_non_pending_job_untouched_by_hybrid_check(self):
+        kept, _ = self._run(self._job(["locations: matched"]))
+        assert len(kept) == 1
+        assert kept[0]["matched_reasons"] == ["locations: matched"]
+
+    def test_confirmed_hybrid_job_still_experience_filtered(self):
+        kept, excluded = self._run(
+            self._job([_HYBRID_PENDING_REASON]),
+            "<p>Hybrid role. Requires 8 years of experience.</p>",
+        )
+        assert not kept
+        assert excluded[0]["experience_level"] == "senior (8+yr)"

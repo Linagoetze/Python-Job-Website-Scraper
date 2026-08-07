@@ -4,9 +4,12 @@ import sys
 from unittest.mock import MagicMock, patch
 
 from job_scraper.filtering import (
+    _HYBRID_CONFIRMED_REASON,
+    _HYBRID_PENDING_REASON,
     apply_language_filter,
     apply_non_english_text_filter,
     apply_title_keyword_filter,
+    build_hybrid_pattern,
     load_title_exclude_keywords,
     matches_rules,
 )
@@ -26,6 +29,18 @@ def _job(title="Analyst", location="Berlin", source_name="test", **kw):
     }
 
 
+# Rules with hybrid-gated conditional locations, mirroring config/rules.json.
+_COND = {
+    "locations": ["Malmö", "Lund"],
+    "conditional_locations": ["Karlskrona", "Gothenburg", "Göteborg", "Goteborg", "Stockholm"],
+    "conditional_location_keywords": ["hybrid"],
+    "remote_keywords": [],
+}
+# Built once, mirroring how the real pipeline compiles it once per run and
+# passes it down rather than rebuilding it inside matches_rules.
+_COND_HYBRID_PATTERN = build_hybrid_pattern(_COND)
+
+
 # ---------------------------------------------------------------------------
 # matches_rules
 # ---------------------------------------------------------------------------
@@ -33,36 +48,36 @@ def _job(title="Analyst", location="Berlin", source_name="test", **kw):
 class TestMatchesRules:
     def test_empty_rules_passes_everything(self):
         rules = {"include_keywords": [], "exclude_keywords": [], "locations": [], "remote_keywords": []}
-        ok, _ = matches_rules(_job(), rules)
+        ok, _ = matches_rules(_job(), rules, None)
         assert ok
 
     def test_location_match(self):
         rules = {"locations": ["Berlin", "London"], "remote_keywords": []}
-        ok, reasons = matches_rules(_job(location="Berlin, Germany"), rules)
+        ok, reasons = matches_rules(_job(location="Berlin, Germany"), rules, None)
         assert ok
         assert any("locations" in r for r in reasons)
 
     def test_location_no_match(self):
         rules = {"locations": ["London"], "remote_keywords": []}
-        ok, _ = matches_rules(_job(location="Berlin"), rules)
+        ok, _ = matches_rules(_job(location="Berlin"), rules, None)
         assert not ok
 
     def test_remote_keyword_matches(self):
         rules = {"locations": ["London"], "remote_keywords": ["remote"]}
-        ok, reasons = matches_rules(_job(location="", raw_snippet="Analyst remote"), rules)
+        ok, reasons = matches_rules(_job(location="", raw_snippet="Analyst remote"), rules, None)
         assert ok
         assert any("remote" in r for r in reasons)
 
     def test_remote_keyword_pure_remote_location_matches(self):
         rules = {"locations": ["Malmö"], "remote_keywords": ["remote", "anywhere"]}
-        ok, reasons = matches_rules(_job(location="Remote"), rules)
+        ok, reasons = matches_rules(_job(location="Remote"), rules, None)
         assert ok
         assert any("remote" in r for r in reasons)
 
     def test_remote_keyword_home_based_matches(self):
         rules = {"locations": ["Malmö"], "remote_keywords": ["remote"]}
         ok, _ = matches_rules(
-            _job(location="Remote | Home Based - May require travel"), rules
+            _job(location="Remote | Home Based - May require travel"), rules, None
         )
         assert ok
 
@@ -70,28 +85,72 @@ class TestMatchesRules:
         # "Remote | Nairobi" is a city-specific role; the leading "Remote" tag
         # must not admit it when Nairobi isn't a listed location.
         rules = {"locations": ["Malmö"], "remote_keywords": ["remote"]}
-        ok, _ = matches_rules(_job(location="Remote | Nairobi"), rules)
+        ok, _ = matches_rules(_job(location="Remote | Nairobi"), rules, None)
         assert not ok
 
     def test_remote_tagged_listed_city_still_matches(self):
         rules = {"locations": ["Copenhagen"], "remote_keywords": ["remote"]}
-        ok, reasons = matches_rules(_job(location="Remote | Copenhagen"), rules)
+        ok, reasons = matches_rules(_job(location="Remote | Copenhagen"), rules, None)
         assert ok
         assert any("locations: matched" == r for r in reasons)
 
+    def test_conditional_location_hybrid_in_title_confirmed(self):
+        ok, reasons = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), _COND, _COND_HYBRID_PATTERN)
+        assert ok
+        assert _HYBRID_CONFIRMED_REASON in reasons
+
+    def test_conditional_location_without_hybrid_is_pending(self):
+        # Not rejected — Layer 2 still has to look at the description.
+        ok, reasons = matches_rules(_job(location="Stockholm"), _COND, _COND_HYBRID_PATTERN)
+        assert ok
+        assert _HYBRID_PENDING_REASON in reasons
+
+    def test_conditional_location_confirmed_marker_short_circuits(self):
+        job = _job(location="Stockholm", matched_reasons=[_HYBRID_CONFIRMED_REASON])
+        ok, reasons = matches_rules(job, _COND, _COND_HYBRID_PATTERN)
+        assert ok
+        assert _HYBRID_CONFIRMED_REASON in reasons
+
+    def test_conditional_location_all_gothenburg_spellings(self):
+        for spelling in ("Gothenburg", "Göteborg", "Goteborg"):
+            ok, reasons = matches_rules(_job(location=spelling), _COND, _COND_HYBRID_PATTERN)
+            assert ok, spelling
+            assert _HYBRID_PENDING_REASON in reasons, spelling
+
+    def test_conditional_location_swedish_compound_confirms(self):
+        job = _job(location="Karlskrona", raw_snippet="Analyst hybridarbete två dagar")
+        ok, reasons = matches_rules(job, _COND, _COND_HYBRID_PATTERN)
+        assert ok
+        assert _HYBRID_CONFIRMED_REASON in reasons
+
+    def test_hybrid_does_not_admit_unlisted_city(self):
+        ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Uppsala"), _COND, _COND_HYBRID_PATTERN)
+        assert not ok
+
+    def test_unconditional_location_unaffected_by_hybrid_gate(self):
+        ok, reasons = matches_rules(_job(location="Malmö"), _COND, _COND_HYBRID_PATTERN)
+        assert ok
+        assert reasons == ["locations: matched"]
+
+    def test_conditional_locations_inert_without_keywords(self):
+        rules = {"locations": ["Malmö"], "conditional_locations": ["Stockholm"],
+                 "conditional_location_keywords": [], "remote_keywords": []}
+        ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), rules, None)
+        assert not ok
+
     def test_exclude_keyword_rejects(self):
         rules = {"exclude_keywords": ["intern"], "locations": []}
-        ok, _ = matches_rules(_job(title="Marketing Intern"), rules)
+        ok, _ = matches_rules(_job(title="Marketing Intern"), rules, None)
         assert not ok
 
     def test_include_keyword_required(self):
         rules = {"include_keywords": ["data"], "locations": []}
-        ok, _ = matches_rules(_job(title="Marketing Analyst"), rules)
+        ok, _ = matches_rules(_job(title="Marketing Analyst"), rules, None)
         assert not ok
 
     def test_include_keyword_matches(self):
         rules = {"include_keywords": ["analyst"], "locations": []}
-        ok, _ = matches_rules(_job(title="Marketing Analyst"), rules)
+        ok, _ = matches_rules(_job(title="Marketing Analyst"), rules, None)
         assert ok
 
 

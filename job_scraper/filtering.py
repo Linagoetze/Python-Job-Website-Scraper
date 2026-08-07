@@ -160,6 +160,54 @@ _GENERIC_LOCATION_TOKENS = ("home based", "home-based", "homebased")
 _LOCATION_SPLIT = re.compile(r"[|/\n]+")
 
 
+# ---------------------------------------------------------------------------
+# Conditional locations (hybrid-gated cities)
+# ---------------------------------------------------------------------------
+#
+# Cities in `conditional_locations` are too far to commute to daily, so they only
+# qualify when the role is hybrid. "hybrid" may appear in the title (visible at
+# Layer 1) or only in the job description (visible at Layer 2, which is the sole
+# place the detail-page body text is ever fetched). So the check is two-stage and
+# these two reason strings are the contract between the stages:
+#
+#   PENDING   — Layer 1 admitted the job provisionally; Layer 2 must confirm it
+#               against the description, and drops it if it cannot.
+#   CONFIRMED — hybrid was seen, either in the Layer 1 text or by Layer 2.
+#
+# matched_reasons is *not* a jobs.csv column (see _REMOVED_COLUMNS in
+# storage/csv_store.py), so neither marker survives a run. That is why the
+# pipeline re-runs Layer 2 for pending jobs even when they are already stored:
+# the confirmation has to be re-earned from the description every run. It also
+# means clean_existing_rows() sees a stored conditional-city row as PENDING and
+# keeps it — correct, since Layer 2 is what put it there in the first place.
+_HYBRID_PENDING_REASON = "locations: conditional (hybrid unconfirmed)"
+_HYBRID_CONFIRMED_REASON = "locations: conditional (hybrid confirmed)"
+
+
+def build_hybrid_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
+    """Compile the keyword matcher that gates `conditional_locations`.
+
+    Keywords match as word-start prefixes, so "hybrid" also covers the Swedish
+    compounds hybridarbete / hybridjobb / hybridlösning, and "hybrid-remote".
+    Returns None when the feature is unconfigured.
+    """
+    keywords = [
+        str(x).strip()
+        for x in (rules.get("conditional_location_keywords") or [])
+        if str(x).strip()
+    ]
+    return _build_title_keyword_pattern([(kw, "prefix") for kw in keywords])
+
+
+def _has_confirmed_hybrid(job: JobRecord) -> bool:
+    """True if this job already carries the confirmed marker.
+
+    Matches on the stringified form so it also holds for a job dict that has been
+    round-tripped through CSV, where the list becomes its repr.
+    """
+    return _HYBRID_CONFIRMED_REASON in str(job.get("matched_reasons") or "")
+
+
 def _location_names_specific_city(loc_field_cf: str, remote_keywords: list[str]) -> bool:
     """Return True if the (casefolded) location field names a concrete place.
 
@@ -194,7 +242,11 @@ def _haystack(job: JobRecord, match_in: str) -> str:
     return " ".join((title, snippet, dept, loc))
 
 
-def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str]]:
+def matches_rules(
+    job: JobRecord,
+    rules: dict[str, Any],
+    hybrid_pattern: re.Pattern[str] | None,
+) -> tuple[bool, list[str]]:
     """
     Return (passes, reasons).
 
@@ -204,6 +256,14 @@ def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str
     - `exclude_keywords`: if any matches haystack, reject.
     - When `locations` is non-empty: pass if any location string matches the `location`
       field, OR any `remote_keyword` appears in title/snippet/dept/location (OR).
+    - `conditional_locations` match the `location` field like `locations`, but only
+      admit the job when a `conditional_location_keywords` term (e.g. "hybrid") is
+      present. If the keyword is not visible at this layer the job passes with
+      `_HYBRID_PENDING_REASON` for Layer 2 to confirm against the description.
+
+    `hybrid_pattern` gates `conditional_locations` and must be built once via
+    `build_hybrid_pattern(rules)` by the caller and passed down — never rebuilt
+    here, since this runs once per job.
     """
     reasons: list[str] = []
     match_in = str(rules.get("match_in") or "title_and_description")
@@ -211,6 +271,9 @@ def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str
     include_keywords = [str(x) for x in (rules.get("include_keywords") or []) if str(x).strip()]
     exclude_keywords = [str(x) for x in (rules.get("exclude_keywords") or []) if str(x).strip()]
     locations = [str(x) for x in (rules.get("locations") or []) if str(x).strip()]
+    conditional_locations = [
+        str(x) for x in (rules.get("conditional_locations") or []) if str(x).strip()
+    ]
     remote_keywords = [str(x) for x in (rules.get("remote_keywords") or []) if str(x).strip()]
 
     hay = _haystack(job, match_in)
@@ -227,7 +290,7 @@ def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str
             return False, ["include_keywords: no match"]
         reasons.append(f"include_keywords: {', '.join(matched_kw)}")
 
-    if locations:
+    if locations or conditional_locations:
         loc_ok = any(_lower(loc) in loc_field for loc in locations)
         # A remote_keyword only admits a job when its location field does not
         # name a specific (non-listed) city. This stops sources like Impactpool —
@@ -237,16 +300,27 @@ def matches_rules(job: JobRecord, rules: dict[str, Any]) -> tuple[bool, list[str
         remote_ok = remote_kw_present and not _location_names_specific_city(
             loc_field, remote_keywords
         )
-        if not loc_ok and not remote_ok:
-            return False, ["locations: no match (and no remote_keywords match)"]
         if loc_ok:
             reasons.append("locations: matched")
         elif remote_ok:
             reasons.append("locations: matched via remote_keywords")
+        elif hybrid_pattern is not None and any(
+            _lower(loc) in loc_field for loc in conditional_locations
+        ):
+            # A hybrid-gated city. Confirm from a marker already on the job, else
+            # from the Layer 1 text, else defer to Layer 2's detail fetch.
+            # (With no conditional_location_keywords configured the gate can never
+            # be satisfied, so the whole conditional list stays inert.)
+            if _has_confirmed_hybrid(job) or hybrid_pattern.search(hay):
+                reasons.append(_HYBRID_CONFIRMED_REASON)
+            else:
+                reasons.append(_HYBRID_PENDING_REASON)
+        else:
+            return False, ["locations: no match (and no remote_keywords match)"]
 
-    if not reasons and (include_keywords or locations):
+    if not reasons and (include_keywords or locations or conditional_locations):
         reasons.append("matched rules")
-    if not reasons and not include_keywords and not locations:
+    if not reasons and not include_keywords and not locations and not conditional_locations:
         reasons.append("no filters (pass)")
 
     return True, reasons
