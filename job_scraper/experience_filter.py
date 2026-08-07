@@ -22,7 +22,11 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from job_scraper import JobRecord
-from job_scraper.filtering import _build_title_keyword_pattern
+from job_scraper.filtering import (
+    _HYBRID_CONFIRMED_REASON,
+    _HYBRID_PENDING_REASON,
+    _build_title_keyword_pattern,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,28 +197,56 @@ def _has_phd_required(text: str) -> bool:
 def _fetch_and_analyze(
     job: JobRecord,
     fn: Callable[[str], str],
-) -> tuple[JobRecord, int | None, bool, bool]:
+    hybrid_pattern: re.Pattern[str] | None = None,
+) -> tuple[JobRecord, int | None, bool, bool, bool | None]:
     """Fetch a job's detail page and extract experience/PhD signals.
 
-    Returns (job, min_years, phd_required, fetch_failed).
+    Returns (job, min_years, phd_required, fetch_failed, hybrid_found).
     min_years is None when no numeric requirement was found or there was no URL.
+    hybrid_found is None when the description could not be read at all (no URL,
+    fetch failed, or no pattern configured) — the caller decides what that means.
     """
     url = str(job.get("detail_url") or job.get("apply_url") or "").strip()
     if not url:
-        return job, None, False, False
+        return job, None, False, False, None
     try:
         html = fn(url)
         text = _strip_html(html)
-        return job, _extract_min_years(text), _has_phd_required(text), False
+        hybrid = bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None
+        return job, _extract_min_years(text), _has_phd_required(text), False, hybrid
     except Exception as exc:
         logger.debug("Layer 2: fetch failed for %r — keeping job. Error: %s", url, exc)
-        return job, None, False, True
+        return job, None, False, True, None
+
+
+def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | None:
+    """Settle a conditional-location job against what the description said.
+
+    Returns the job with its pending marker rewritten to confirmed, or None if it
+    must be excluded. Jobs not awaiting a hybrid decision are returned unchanged.
+
+    Unlike the rest of Layer 2 this fails *closed*: a conditional location is out
+    of range by default, so a job whose description could not be read has not
+    earned its exception.
+    """
+    reasons = job.get("matched_reasons") or []
+    if _HYBRID_PENDING_REASON not in reasons:
+        return job
+    if not hybrid_found:
+        return None
+    return dict(
+        job,
+        matched_reasons=[
+            _HYBRID_CONFIRMED_REASON if r == _HYBRID_PENDING_REASON else r for r in reasons
+        ],
+    )
 
 
 def apply_detail_filter(
     jobs: list[JobRecord],
     fetch_text: Callable[[str], str],
     source_fetch_map: dict[str, Callable[[str], str]] | None = None,
+    hybrid_pattern: re.Pattern[str] | None = None,
 ) -> tuple[list[JobRecord], list[JobRecord]]:
     """Fetch each job's detail page and filter by experience requirement and PhD.
 
@@ -224,6 +256,9 @@ def apply_detail_filter(
     Annotates each job dict with an `experience_level` string.
     source_fetch_map maps source_name → fetch_fn so dynamic sources use the
     correct renderer (e.g. fetch_rendered for Playwright-backed sources).
+    hybrid_pattern resolves jobs that Layer 1 admitted provisionally from a
+    conditional location: the same fetched description is searched for it, so
+    those jobs cost no extra HTTP request. They fail closed — see _resolve_hybrid.
     Fetches run in parallel with up to _DETAIL_WORKERS threads.
     Returns (kept_jobs, excluded_jobs).
     """
@@ -231,16 +266,24 @@ def apply_detail_filter(
     excluded: list[dict[str, Any]] = []
     fetch_failed = 0
     no_requirement = 0
+    hybrid_excluded = 0
 
-    def _task(job: JobRecord) -> tuple[JobRecord, int | None, bool, bool]:
+    def _task(job: JobRecord) -> tuple[JobRecord, int | None, bool, bool, bool | None]:
         source = str(job.get("source_name") or "")
         fn = (source_fetch_map or {}).get(source, fetch_text)
-        return _fetch_and_analyze(job, fn)
+        return _fetch_and_analyze(job, fn, hybrid_pattern)
 
     with ThreadPoolExecutor(max_workers=_DETAIL_WORKERS) as pool:
         results = list(pool.map(_task, jobs))
 
-    for job, min_years, phd_req, failed in results:
+    for job, min_years, phd_req, failed, hybrid_found in results:
+        resolved = _resolve_hybrid(job, hybrid_found)
+        if resolved is None:
+            hybrid_excluded += 1
+            excluded.append(dict(job, experience_level="non_hybrid_conditional_location"))
+            continue
+        job = resolved
+
         if failed:
             fetch_failed += 1
             kept.append(dict(job, experience_level="unspecified"))
@@ -257,9 +300,11 @@ def apply_detail_filter(
     if jobs:
         logger.debug(
             "Layer 2: %d/%d jobs failed to fetch (kept fail-open); "
-            "%d had no numeric requirement",
+            "%d had no numeric requirement; "
+            "%d dropped as non-hybrid in a conditional location",
             fetch_failed,
             len(jobs),
             no_requirement,
+            hybrid_excluded,
         )
     return kept, excluded

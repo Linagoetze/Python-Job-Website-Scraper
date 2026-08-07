@@ -11,6 +11,13 @@
     "Dublin"
   ],
 
+  "conditional_locations": [
+    "Munich",
+    "Paris"
+  ],
+
+  "conditional_location_keywords": ["hybrid"],
+
   "remote_keywords": ["remote", "anywhere"],
 
   "match_in": "title_and_description",

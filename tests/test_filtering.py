@@ -4,6 +4,8 @@ import sys
 from unittest.mock import MagicMock, patch
 
 from job_scraper.filtering import (
+    _HYBRID_CONFIRMED_REASON,
+    _HYBRID_PENDING_REASON,
     apply_language_filter,
     apply_non_english_text_filter,
     apply_title_keyword_filter,
@@ -24,6 +26,15 @@ def _job(title="Analyst", location="Berlin", source_name="test", **kw):
         "raw_snippet": f"{title} {location}",
         **kw,
     }
+
+
+# Rules with hybrid-gated conditional locations, mirroring config/rules.json.
+_COND = {
+    "locations": ["Malmö", "Lund"],
+    "conditional_locations": ["Karlskrona", "Gothenburg", "Göteborg", "Goteborg", "Stockholm"],
+    "conditional_location_keywords": ["hybrid"],
+    "remote_keywords": [],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +89,50 @@ class TestMatchesRules:
         ok, reasons = matches_rules(_job(location="Remote | Copenhagen"), rules)
         assert ok
         assert any("locations: matched" == r for r in reasons)
+
+    def test_conditional_location_hybrid_in_title_confirmed(self):
+        ok, reasons = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), _COND)
+        assert ok
+        assert _HYBRID_CONFIRMED_REASON in reasons
+
+    def test_conditional_location_without_hybrid_is_pending(self):
+        # Not rejected — Layer 2 still has to look at the description.
+        ok, reasons = matches_rules(_job(location="Stockholm"), _COND)
+        assert ok
+        assert _HYBRID_PENDING_REASON in reasons
+
+    def test_conditional_location_confirmed_marker_short_circuits(self):
+        job = _job(location="Stockholm", matched_reasons=[_HYBRID_CONFIRMED_REASON])
+        ok, reasons = matches_rules(job, _COND)
+        assert ok
+        assert _HYBRID_CONFIRMED_REASON in reasons
+
+    def test_conditional_location_all_gothenburg_spellings(self):
+        for spelling in ("Gothenburg", "Göteborg", "Goteborg"):
+            ok, reasons = matches_rules(_job(location=spelling), _COND)
+            assert ok, spelling
+            assert _HYBRID_PENDING_REASON in reasons, spelling
+
+    def test_conditional_location_swedish_compound_confirms(self):
+        job = _job(location="Karlskrona", raw_snippet="Analyst hybridarbete två dagar")
+        ok, reasons = matches_rules(job, _COND)
+        assert ok
+        assert _HYBRID_CONFIRMED_REASON in reasons
+
+    def test_hybrid_does_not_admit_unlisted_city(self):
+        ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Uppsala"), _COND)
+        assert not ok
+
+    def test_unconditional_location_unaffected_by_hybrid_gate(self):
+        ok, reasons = matches_rules(_job(location="Malmö"), _COND)
+        assert ok
+        assert reasons == ["locations: matched"]
+
+    def test_conditional_locations_inert_without_keywords(self):
+        rules = {"locations": ["Malmö"], "conditional_locations": ["Stockholm"],
+                 "conditional_location_keywords": [], "remote_keywords": []}
+        ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), rules)
+        assert not ok
 
     def test_exclude_keyword_rejects(self):
         rules = {"exclude_keywords": ["intern"], "locations": []}

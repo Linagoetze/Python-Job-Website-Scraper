@@ -14,8 +14,10 @@ from job_scraper.blocklist import load_blocklist_keys
 from job_scraper.config_loader import load_rules, load_sources
 from job_scraper.experience_filter import apply_combined_title_filter, apply_detail_filter
 from job_scraper.filtering import (
+    _HYBRID_PENDING_REASON,
     apply_language_filter,
     apply_non_english_text_filter,
+    build_hybrid_pattern,
     load_title_exclude_keywords,
     matches_rules,
 )
@@ -48,6 +50,7 @@ class RunSummary:
     jobs_new_checked: int
     jobs_detail_excluded: int
     jobs_phd_excluded: int
+    jobs_hybrid_excluded: int
     jobs_kept_new: int
     rows_written: int
     rows_delisted: int
@@ -121,6 +124,17 @@ def run_pipeline(
             kept_rows.append(job)
             jobs_kept += 1
 
+    conditional_admits = sum(
+        1
+        for j in kept_rows
+        if any(r.startswith("locations: conditional") for r in j.get("matched_reasons") or [])
+    )
+    if conditional_admits:
+        logger.debug(
+            "Layer 0 (rules): %d jobs admitted from a conditional location, pending hybrid check",
+            conditional_admits,
+        )
+
     sources_csv_path = out_csv_path.parent / "jobs_sources.csv"
     # First write of the run — the output directory may not exist yet (fresh
     # clone, or --output pointing somewhere new).
@@ -179,25 +193,49 @@ def run_pipeline(
 
     # Layer 2 — detail-page experience extraction
     # Skip jobs already stored in jobs.csv: they passed Layer 2 in a prior run.
+    # A job awaiting a hybrid decision must never take the cache shortcut: only
+    # the detail fetch can settle it, and matched_reasons is not a jobs.csv column,
+    # so a stored conditional-city job comes back PENDING every run and has to
+    # re-earn its confirmation. Bounded cost — it is only the conditional cities,
+    # and only those that do not say "hybrid" in the title.
     existing_keys = _read_existing_keys(out_csv_path)
-    new_jobs = [j for j in kept_rows if _dedupe_key(j) not in existing_keys]
-    cached_jobs = [j for j in kept_rows if _dedupe_key(j) in existing_keys]
+
+    def _needs_detail(job: JobRecord) -> bool:
+        return (
+            _dedupe_key(job) not in existing_keys
+            or _HYBRID_PENDING_REASON in (job.get("matched_reasons") or [])
+        )
+
+    new_jobs = [j for j in kept_rows if _needs_detail(j)]
+    cached_jobs = [j for j in kept_rows if not _needs_detail(j)]
     if cached_jobs:
         logger.debug("Layer 2: skipped %d already-stored jobs", len(cached_jobs))
 
     logger.debug("Layer 2 (detail filter): fetching detail pages for %d jobs…", len(new_jobs))
-    kept_new, detail_excluded = apply_detail_filter(new_jobs, fetch_text, source_fetch_map=source_fetch_map)
+    kept_new, detail_excluded = apply_detail_filter(
+        new_jobs,
+        fetch_text,
+        source_fetch_map=source_fetch_map,
+        hybrid_pattern=build_hybrid_pattern(rules),
+    )
 
     jobs_phd_excluded = sum(1 for j in detail_excluded if j.get("experience_level") == "phd_required")
-    jobs_years_excluded = len(detail_excluded) - jobs_phd_excluded
+    jobs_hybrid_excluded = sum(
+        1
+        for j in detail_excluded
+        if j.get("experience_level") == "non_hybrid_conditional_location"
+    )
+    jobs_years_excluded = len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
     jobs_detail_excluded = len(detail_excluded)
 
     if jobs_detail_excluded:
         logger.debug(
-            "Layer 2 (detail filter): excluded %d jobs (%d requiring 3+ years, %d requiring PhD)",
+            "Layer 2 (detail filter): excluded %d jobs "
+            "(%d requiring 3+ years, %d requiring PhD, %d non-hybrid in a conditional location)",
             jobs_detail_excluded,
             jobs_years_excluded,
             jobs_phd_excluded,
+            jobs_hybrid_excluded,
         )
 
     kept_rows = kept_new + [dict(j, experience_level="cached") for j in cached_jobs]
@@ -242,6 +280,7 @@ def run_pipeline(
         jobs_new_checked=len(new_jobs),
         jobs_detail_excluded=jobs_detail_excluded,
         jobs_phd_excluded=jobs_phd_excluded,
+        jobs_hybrid_excluded=jobs_hybrid_excluded,
         jobs_kept_new=len(kept_new),
         rows_written=rows_written,
         rows_delisted=cleaned["delisted"],

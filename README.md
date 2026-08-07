@@ -188,6 +188,8 @@ it.
   "include_keywords": [],
   "exclude_keywords": [],
   "locations": ["Berlin", "Amsterdam", "London"],
+  "conditional_locations": ["Munich", "Paris"],
+  "conditional_location_keywords": ["hybrid"],
   "remote_keywords": ["remote", "anywhere"],
   "match_in": "title_and_description",
   "seniority_filter_enabled": true,
@@ -200,10 +202,24 @@ it.
 | `include_keywords` | A job must contain at least one of these. Empty list = no keyword requirement. |
 | `exclude_keywords` | A job containing any of these is rejected outright. |
 | `locations` | A job's `location` field must contain one of these. Empty list = no location requirement. |
+| `conditional_locations` | Cities admitted **only** for hybrid roles — see below. Empty list = feature off. |
+| `conditional_location_keywords` | What makes a `conditional_locations` job qualify. Matched as word prefixes, so `hybrid` also covers `hybridarbete`. Empty list makes `conditional_locations` inert. |
 | `remote_keywords` | Words that mark a job as location-independent — see the caveat below. |
 | `match_in` | `title_and_description` (title, snippet, department and location) or `title_only`. |
 | `seniority_filter_enabled` | Turns layer 1 on or off. |
 | `seniority_exclude_titles` | Whole-word matches against the title. `"Lead"` will not match `"Leadership"`. |
+
+**Conditional locations.** For a city that is too far to commute to daily but
+workable a couple of days a week, put it in `conditional_locations` instead of
+`locations`. Such a job is admitted only if a `conditional_location_keywords`
+term appears in its title *or its description*. Since extractors never see the
+description, the check runs in two stages: the location filter admits the job
+provisionally, and layer 2 — which already fetches the detail page — confirms it
+against the body text, so no extra HTTP requests are made. Unlike the rest of
+layer 2 this **fails closed**: if the description can't be fetched, the job is
+dropped, because a conditional location is out of range by default. Jobs from
+these cities are re-checked on every run rather than served from the table cache
+(the provisional marker isn't stored in `jobs.csv`).
 
 **The remote caveat.** A `remote_keyword` only admits a job when its location
 field names no specific city. Some job boards tag every single posting
