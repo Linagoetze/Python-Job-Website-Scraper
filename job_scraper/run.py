@@ -114,6 +114,16 @@ def main() -> None:
         help=f"Path to title_exclude_keywords.csv (default: {default_title_keywords_path()})",
     )
     parser.add_argument(
+        "--allow-empty-delist",
+        action="store_true",
+        dest="allow_empty_delist",
+        help=(
+            "Delist stored jobs for a source that returned zero rows this run. "
+            "Off by default: a zero-row result is usually a broken selector, not "
+            "a genuinely empty page, and delisting would erase real history."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -132,6 +142,7 @@ def main() -> None:
             rules_path=args.rules,
             out_csv_path=args.output,
             title_keywords_path=args.title_keywords,
+            allow_empty_delist=args.allow_empty_delist,
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show
