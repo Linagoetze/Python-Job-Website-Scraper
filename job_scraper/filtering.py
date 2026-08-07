@@ -122,7 +122,7 @@ def apply_non_english_text_filter(
     Uses langdetect; keeps the job if detection fails or text is too short (<= 10 chars).
     """
     try:
-        from langdetect import detect, LangDetectException  # type: ignore[import]
+        from langdetect import LangDetectException, detect  # type: ignore[import]
     except ImportError:
         logger.warning(
             "langdetect is not installed; non-English text filter is disabled and "

@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 from typing import Any
-from urllib.parse import urljoin, urlparse, urlencode, parse_qs, urlunparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 

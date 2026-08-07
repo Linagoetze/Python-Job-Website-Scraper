@@ -16,7 +16,11 @@ _JOB_PATH = re.compile(r"/jobs/\d+")
 _MIDDOT = ("\u00b7", "·")
 
 
-def extract(listing_url: str, fetch_text: Callable[[str], str], source_name: str = "oatly") -> list[dict[str, Any]]:
+def extract(
+    listing_url: str,
+    fetch_text: Callable[[str], str],
+    source_name: str = "oatly",
+) -> list[dict[str, Any]]:
     html = fetch_text(listing_url)
     soup = BeautifulSoup(html, "lxml")
     seen: set[str] = set()

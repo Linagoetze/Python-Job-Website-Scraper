@@ -69,7 +69,9 @@ def _fetch_text_curl(url: str, *, timeout: int, user_agent: str) -> str:
 _RETRY_ATTEMPTS = 5
 
 
-def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str = DEFAULT_USER_AGENT) -> str:
+def fetch_text(
+    url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str = DEFAULT_USER_AGENT
+) -> str:
     """GET *url* and return response text. Raises on HTTP errors.
 
     Transient 5xx responses are retried (some hosts, e.g. impactpool.org,
@@ -106,7 +108,9 @@ def fetch_rendered(
     If *wait_for_selector* is given, Playwright waits until that element appears
     before the settle delay — useful for JS-heavy pages like Workday.
     """
-    from playwright.sync_api import sync_playwright  # lazy import — rest of module works without playwright
+    from playwright.sync_api import (
+        sync_playwright,  # lazy import — rest of module works without playwright
+    )
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)

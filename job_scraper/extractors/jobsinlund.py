@@ -13,7 +13,6 @@ import json
 from collections.abc import Callable
 from datetime import date, datetime, timezone
 from typing import Any
-from urllib.parse import urlencode
 
 _STALE_DAYS = 30
 
@@ -71,7 +70,11 @@ def extract(
             raw_date = (job.get("published_at") or "").strip()
             if raw_date:
                 try:
-                    posted = datetime.fromisoformat(raw_date.rstrip("Z")).replace(tzinfo=timezone.utc).date()
+                    posted = (
+                        datetime.fromisoformat(raw_date.rstrip("Z"))
+                        .replace(tzinfo=timezone.utc)
+                        .date()
+                    )
                     if (date.today() - posted).days > _STALE_DAYS:
                         continue
                 except ValueError:

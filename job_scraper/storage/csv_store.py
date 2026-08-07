@@ -12,7 +12,6 @@ from typing import Any
 
 from job_scraper.urlutil import canonical_detail_url, dedupe_key_from_url, normalize_http_url
 
-
 FIELDNAMES = [
     "source_name",
     "title",
@@ -338,7 +337,18 @@ def clean_existing_rows(
             fresh.append(row)
         kept = fresh
 
-    total_removed = counts["rules"] + counts["title"] + counts["title_keywords"] + counts["language"] + counts["non_english_text"] + counts["blocklist"] + counts["delisted"]
+    total_removed = sum(
+        counts[k]
+        for k in (
+            "rules",
+            "title",
+            "title_keywords",
+            "language",
+            "non_english_text",
+            "blocklist",
+            "delisted",
+        )
+    )
     if total_removed or counts["mammut_fixed"]:
         _rewrite_file(path, kept)
 

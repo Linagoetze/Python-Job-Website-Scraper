@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from job_scraper import JobRecord
-
 from job_scraper.blocklist import load_blocklist_keys
 from job_scraper.config_loader import load_rules, load_sources
 from job_scraper.experience_filter import apply_combined_title_filter, apply_detail_filter
+from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
     _HYBRID_PENDING_REASON,
     apply_language_filter,
@@ -22,7 +22,6 @@ from job_scraper.filtering import (
     matches_rules,
 )
 from job_scraper.http import fetch_rendered, fetch_text
-from job_scraper.extractors.registry import get_extractor
 from job_scraper.storage.csv_store import (
     _dedupe_key,
     _read_existing_keys,
@@ -177,7 +176,9 @@ def run_pipeline(
     kept_rows, non_english_excluded = apply_non_english_text_filter(kept_rows)
     jobs_non_english_excluded = len(non_english_excluded)
     if jobs_non_english_excluded:
-        logger.debug("Layer 1c (non-English text filter): excluded %d jobs", jobs_non_english_excluded)
+        logger.debug(
+            "Layer 1c (non-English text filter): excluded %d jobs", jobs_non_english_excluded
+        )
 
     # Layer 1b — language filter ("[Language] Speaker/speaking" in title)
     kept_rows, language_excluded = apply_language_filter(kept_rows)
@@ -246,7 +247,9 @@ def run_pipeline(
         hybrid_pattern=hybrid_pattern,
     )
 
-    jobs_phd_excluded = sum(1 for j in detail_excluded if j.get("experience_level") == "phd_required")
+    jobs_phd_excluded = sum(
+        1 for j in detail_excluded if j.get("experience_level") == "phd_required"
+    )
     jobs_hybrid_excluded = sum(
         1
         for j in detail_excluded
@@ -276,19 +279,32 @@ def run_pipeline(
     if cleaned["blocklist"]:
         logger.debug("Removed %d pre-existing blocklisted rows", cleaned["blocklist"])
     if cleaned["rules"]:
-        logger.debug("Removed %d pre-existing rows that failed location/keyword rules", cleaned["rules"])
+        logger.debug(
+            "Removed %d pre-existing rows that failed location/keyword rules", cleaned["rules"]
+        )
     if cleaned["title"]:
         logger.debug("Removed %d pre-existing senior jobs from %s", cleaned["title"], out_csv_path)
     if cleaned["title_keywords"]:
-        logger.debug("Removed %d pre-existing jobs matching title keywords", cleaned["title_keywords"])
+        logger.debug(
+            "Removed %d pre-existing jobs matching title keywords", cleaned["title_keywords"]
+        )
     if cleaned.get("non_english_text"):
-        logger.debug("Removed %d pre-existing jobs with non-English text", cleaned["non_english_text"])
+        logger.debug(
+            "Removed %d pre-existing jobs with non-English text", cleaned["non_english_text"]
+        )
     if cleaned["language"]:
-        logger.debug("Removed %d pre-existing jobs with language-speaker titles", cleaned["language"])
+        logger.debug(
+            "Removed %d pre-existing jobs with language-speaker titles", cleaned["language"]
+        )
     if cleaned["mammut_fixed"]:
-        logger.debug("Fixed location field for %d pre-existing Mammut rows", cleaned["mammut_fixed"])
+        logger.debug(
+            "Fixed location field for %d pre-existing Mammut rows", cleaned["mammut_fixed"]
+        )
     if cleaned["delisted"]:
-        logger.debug("Removed %d pre-existing rows no longer listed on their source page", cleaned["delisted"])
+        logger.debug(
+            "Removed %d pre-existing rows no longer listed on their source page",
+            cleaned["delisted"],
+        )
 
     sort_jobs_csv(out_csv_path)
 
