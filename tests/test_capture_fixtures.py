@@ -6,30 +6,18 @@ Nothing here touches the network. The fixtures on disk are the input.
 from __future__ import annotations
 
 import re
-import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
+# capture_fixtures lives in scripts/, outside the package. fixture_cases owns
+# the sys.path amendment that makes it importable and re-exports the module, so
+# this is a single ordinary import with no ordering hazard for an import-sorter.
+from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, capture_fixtures, parse_fixture
 
-import capture_fixtures  # noqa: E402
-from capture_fixtures import capture_one, sanitise_html, single_response_fetch  # noqa: E402
-
-from job_scraper.extractors import (  # noqa: E402
-    ashby,
-    greenhouse,
-    impactpool,
-    successfactors_html,
-    teamtailor,
-    workday,
-)
-
-FIXTURES_DIR = _PROJECT_ROOT / "tests" / "fixtures"
-
+capture_one = capture_fixtures.capture_one
+sanitise_html = capture_fixtures.sanitise_html
 
 # --- the sanitiser ----------------------------------------------------------
 
@@ -74,54 +62,6 @@ def test_fixture_contains_no_secret_shaped_values(path: Path) -> None:
         assert match is None, f"{path.name} matches {pattern.pattern}: {match.group(0)[:40]!r}"
 
 
-# --- fixtures still parse ---------------------------------------------------
-#
-# This is the real guard on the sanitiser. Asserting that fixtures contain no
-# <script> would be wrong: kognity's job data lives inside one.
-
-_Extractor = Callable[[str, Callable[..., str]], list[dict[str, Any]]]
-
-# source name -> (fixture filename, listing URL, extractor bound to its args)
-_FIXTURE_CASES: dict[str, tuple[str, str, _Extractor]] = {
-    "givewell": (
-        "givewell.json",
-        "https://job-boards.greenhouse.io/givewell",
-        lambda url, fetch: greenhouse.extract(url, fetch, source_name="givewell"),
-    ),
-    "kognity": (
-        "kognity.html",
-        "https://jobs.ashbyhq.com/kognity",
-        lambda url, fetch: ashby.extract(url, fetch, source_name="kognity"),
-    ),
-    "storytel": (
-        "storytel.html",
-        "https://jobs.storytel.com/jobs",
-        lambda url, fetch: teamtailor.extract(url, fetch, source_name="storytel"),
-    ),
-    "busuu": (
-        "busuu.html",
-        "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
-        lambda url, fetch: workday.extract(url, fetch, source_name="busuu"),
-    ),
-    "dsv": (
-        "dsv.html",
-        "https://jobs.dsv.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="dsv",
-            page_step=10,
-            base_search_url="https://jobs.dsv.com/search/",
-        ),
-    ),
-    "impactpool": (
-        "impactpool.html",
-        "https://www.impactpool.org/search",
-        lambda url, fetch: impactpool.extract(url, fetch, source_name="impactpool"),
-    ),
-}
-
-
 # --- capture_one, with the network faked out --------------------------------
 #
 # Everything about capture_one except the socket itself: which URL the
@@ -164,7 +104,11 @@ def test_capture_uses_the_url_the_extractor_reads(
     monkeypatch.setattr(capture_fixtures, "fetch_text", fake)
 
     ok, message = capture_one(
-        {"name": "givewell", "url": "https://job-boards.greenhouse.io/givewell", "strategy": "static"}
+        {
+            "name": "givewell",
+            "url": "https://job-boards.greenhouse.io/givewell",
+            "strategy": "static",
+        }
     )
 
     assert ok, message
@@ -220,7 +164,11 @@ def test_capture_removes_the_stale_sibling(
     monkeypatch.setattr(capture_fixtures, "fetch_text", fake)
 
     ok, message = capture_one(
-        {"name": "givewell", "url": "https://job-boards.greenhouse.io/givewell", "strategy": "static"}
+        {
+            "name": "givewell",
+            "url": "https://job-boards.greenhouse.io/givewell",
+            "strategy": "static",
+        }
     )
 
     assert ok, message
@@ -257,24 +205,35 @@ def test_capture_keeps_the_rendering_mark_through_the_wrapper(
     monkeypatch.setattr(capture_fixtures, "fetch_rendered", fake)
 
     ok, message = capture_one(
-        {"name": "busuu", "url": "https://osv-chegg.wd5.myworkdayjobs.com/Busuu", "strategy": "dynamic"}
+        {
+            "name": "busuu",
+            "url": "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
+            "strategy": "dynamic",
+        }
     )
 
     assert ok, message
     assert fake.kwargs[0].get("wait_for_selector") == '[data-automation-id="jobTitle"]'
 
 
-@pytest.mark.parametrize("name", sorted(_FIXTURE_CASES))
+# --- fixtures still parse ---------------------------------------------------
+#
+# This is the real guard on the sanitiser. Asserting that fixtures contain no
+# <script> would be wrong: kognity's job data lives inside one.
+#
+# test_extractors_golden.py now pins the exact output of these same fixtures.
+# This check is deliberately kept alongside it: it is the weaker assertion but
+# it fails for a different reason, and its failure message points at the
+# sanitiser rather than at selector drift.
+
+
+@pytest.mark.parametrize("name", sorted(FIXTURE_CASES))
 def test_fixture_still_parses(name: str) -> None:
-    filename, listing_url, extractor = _FIXTURE_CASES[name]
-    path = FIXTURES_DIR / filename
-    if not path.exists():
-        # givewell's captured HTML is the wrong artefact: greenhouse.py reads
-        # the boards API, not the listing page. The capture script now saves
-        # what the extractor asks for, so this skip clears on the next run.
+    filename = FIXTURE_CASES[name][0]
+    if not (FIXTURES_DIR / filename).exists():
         pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py {name}")
 
-    jobs = extractor(listing_url, single_response_fetch(path.read_text(encoding="utf-8")))
+    jobs = parse_fixture(name)
 
     assert len(jobs) > 0, f"{filename} parsed to zero jobs"
     assert all(job["title"] for job in jobs)
