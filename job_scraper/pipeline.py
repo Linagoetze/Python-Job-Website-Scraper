@@ -63,6 +63,7 @@ def run_pipeline(
     rules_path: Path,
     out_csv_path: Path,
     title_keywords_path: Path | None = None,
+    allow_empty_delist: bool = False,
 ) -> RunSummary:
     sources = load_sources(sources_path)
     rules = load_rules(rules_path)
@@ -116,7 +117,20 @@ def run_pipeline(
         processed += 1
         processed_sources.append({"source_name": name, "listing_url": url})
         jobs_extracted += len(rows)
-        source_scraped_keys[name] = {k for r in rows if (k := _dedupe_key(r))}
+        if not rows:
+            # A zero-row result is indistinguishable from a broken selector, so
+            # it must not silently delist everything already stored for this
+            # source (see clean_existing_rows). Log loudly and only delist if
+            # the owner has explicitly said this source genuinely emptied.
+            logger.error(
+                "Source %r returned zero rows this run; not delisting its stored jobs "
+                "(pass --allow-empty-delist if it has genuinely emptied)",
+                name,
+            )
+            if allow_empty_delist:
+                source_scraped_keys[name] = set()
+        else:
+            source_scraped_keys[name] = {k for r in rows if (k := _dedupe_key(r))}
 
         for job in rows:
             ok, reason_list = matches_rules(job, rules, hybrid_pattern)

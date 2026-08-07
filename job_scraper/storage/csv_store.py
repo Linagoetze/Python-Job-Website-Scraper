@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import csv
 import html
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -164,11 +166,27 @@ def _collapse_content_duplicates(path: Path) -> int:
 
 
 def _rewrite_file(path: Path, rows: list[dict[str, Any]]) -> None:
-    with path.open("w", encoding="utf-8", newline="") as f:
-        f.write("\ufeff")
-        w = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
-        w.writeheader()
-        w.writerows(rows)
+    """Replace *path* with *rows*, atomically.
+
+    Every full-file rewrite in this module routes through here. Opening the
+    live file with mode "w" truncates it before the new content is written, so
+    a crash or interrupt mid-write leaves an empty or partial store. Writing to
+    a temp file in the same directory first and swapping it in with
+    os.replace() means a reader only ever sees the old file or the new one,
+    never a truncated one \u2014 os.replace() is atomic on the same filesystem.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write("\ufeff")
+            w = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 def _migrate_csv_schema_if_needed(path: Path) -> None:

@@ -36,7 +36,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 |----|-------|------|-------|-----------|--------|--------|
 | 0 | Fixture capture script | 1 hr | Sonnet 5 | none | done | `wp0-fixtures` |
 | 0c | Sanitise fixtures | 1 hr | Opus 5 | `think hard` | done | `wp0c-sanitise-fixtures` |
-| 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | not started | `wp1-data-safety` |
+| 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | done | `wp1-data-safety` |
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | not started | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | not started | `wp3-company-field` |
 | 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | not started | `wp4-sqlite-schema` |
@@ -331,6 +331,38 @@ csv_store.py; the larger restructuring is WP4/WP5.
 
 Branch wp1-data-safety. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+**Bug 1 (non-atomic writes).** `_rewrite_file` in `storage/csv_store.py` was the
+single place every full-file rewrite already routed through
+(`_collapse_content_duplicates`, `_migrate_csv_schema_if_needed`,
+`_dedupe_file_if_needed`, `clean_existing_rows`, `sort_jobs_csv` all call it),
+so no caller needed touching. It now writes to a `tempfile.mkstemp` file in the
+same directory as the target (same filesystem, so `os.replace()` is atomic),
+and unlinks the temp file if writing raises. `append_jobs_csv`'s append-mode
+write (`"a"`) was left alone — it wasn't in the bug list and a partial append
+can't truncate pre-existing history the way a truncating `"w"` can.
+
+**Bug 2 (empty scrape delisting history).** In `pipeline.py`, a source is only
+added to `source_scraped_keys` when its extractor returns at least one row. A
+zero-row result now logs at ERROR naming the source and is excluded from
+`source_scraped_keys` by default, so `clean_existing_rows` has no entry to
+delist against and leaves that source's stored rows untouched. Added
+`--allow-empty-delist` (`run.py` → `run_pipeline(allow_empty_delist=...)`) for
+the case where a source has genuinely gone to zero vacancies: it adds the
+source with an empty key set, which delists as before.
+
+Tests: `tests/test_csv_store_atomicity.py` (temp file cleaned up on success,
+original file untouched and no stray temp file after a simulated write
+failure, `os.replace` invoked with a sibling path) and
+`tests/test_pipeline_delisting.py` (zero rows keeps stored jobs and logs
+ERROR naming the source; `--allow-empty-delist` still delists; a normal
+non-empty scrape still delists rows genuinely missing from the fresh
+listing). Full suite: 123 passed.
+
+Not touched, per the package scope: no other restructuring of
+`csv_store.py` — that's WP4/WP5.
 
 ---
 
