@@ -25,3 +25,6 @@ data/curated/candidate_sources.xlsx
 
 # Pre-publish backup of the original repo history (local only).
 .git.backup/
+data/*.db
+data/*.sqlite3
+job_scraper/config/profile.md
