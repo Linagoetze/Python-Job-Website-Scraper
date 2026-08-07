@@ -271,6 +271,14 @@ reused-browser implementation and would break every such check.
 `niras.py` has the same identity check, but both of its branches are identical,
 so it is inert — tidy it in WP9.
 
+Verified live on 2026-08-07 by re-capturing busuu, the one dynamic source of
+the six. The re-captured page differed from the committed fixture only in
+React's randomly generated DOM ids, and parsed to the same six jobs with every
+field identical, so the fixture in the repo was not captured too early and the
+churn was discarded. That run is also the only end-to-end exercise of the
+current `capture_one` against a live site; everything else is covered by tests
+with the network faked out.
+
 ### Re-running when a fixture goes stale
 
 A career site redesign will eventually break a golden-file test from WP2
