@@ -1,0 +1,546 @@
+# Refactor plan
+
+Living document. Every Claude Code session reads this first and updates it last.
+Lives at `docs/REFACTOR-PLAN.md`.
+
+## The big picture
+
+This codebase grew one Claude Code session at a time. Each session solved its
+immediate problem correctly without asking whether the surrounding structure
+still fitted. The result is accretion in three places:
+
+1. **`storage/csv_store.py`** (389 lines): six full read-parse-rewrite passes of
+   the same file per run, a schema migration function, and Excel formulas stored
+   in the internal data file so that three modules must parse spreadsheet syntax
+   to recover a URL.
+2. **The filter ladder**: five sequential regex passes, each added to fix a
+   specific false positive, interacting in ways nothing tests.
+3. **`config/title_exclude_keywords.csv`**: grows every time a bad match slips
+   through. Keyword lists do not generalise.
+
+The plan below fixes the data-loss risks first, builds a test net, then removes
+the accretion. It is ordered so that each package is safe to stop after.
+
+**Guiding decisions:**
+
+- Replace hand-rolled CSV state with SQLite.
+- Replace the growing keyword ladder with an LLM scoring stage.
+- Keep the extractor layer and the registry as they are. They are the strongest
+  part of the codebase.
+- Preserve the owner's review history. The existing 265-row blocklist means
+  "already seen", not "rejected", and must not be imported as rejections.
+
+## Status
+
+| WP | Title | Time | Model | Effort cue | Status | Branch |
+|----|-------|------|-------|-----------|--------|--------|
+| 0 | Fixture capture script | 1 hr | Sonnet 5 | none | not started | `wp0-fixtures` |
+| 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | not started | `wp1-data-safety` |
+| 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | not started | `wp2-test-net` |
+| 3 | Company field from config | 1 hr | Sonnet 5 | none | not started | `wp3-company-field` |
+| 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | not started | `wp4-sqlite-schema` |
+| 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | not started | `wp5-sqlite-cutover` |
+| 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | not started | `wp5b-review-workflow` |
+| 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | not started | `wp6-persist-descriptions` |
+| 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | not started | `wp7-llm-scoring` |
+| 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
+| 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
+| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
+
+Total roughly 27 hours. One package per week is about three months. Two evenings
+a week is six or seven weeks. Nothing breaks if you stop after any package.
+
+## Decisions log
+
+Record any decision a future session would otherwise have to re-derive.
+
+- (empty)
+
+---
+
+# How to run one session
+
+Every package follows the same eight steps. Do not run two packages in one
+session: the context cost of the second is what causes Claude Code to start
+patching rather than thinking.
+
+**1. Start clean.**
+
+```
+cd ~/path/to/job_scraper_project
+git checkout main
+git pull
+git checkout -b wp1-data-safety
+```
+
+**2. Open a fresh Claude Code session** in the project folder.
+
+**3. Set the model.** Type `/model` and choose the one in the table above.
+
+**4. Paste the package prompt.** The effort cue is already the first line of
+each prompt below, so pasting the whole block is enough.
+
+**5. Ask it to account for itself.** When it finishes, paste:
+
+```
+Summarise what you changed, file by file. For each file say what it does now
+that it did not before. Then list anything you changed that was NOT asked for in
+the work package, and anything in the package you did not do. Be honest about
+both.
+```
+
+**6. Check the work.**
+
+```
+git diff main --stat
+.venv/bin/pytest
+.venv/bin/python -m job_scraper.run
+```
+
+The first prints changed lines per file: sanity-check the size, not the code.
+The second must pass. The third must produce a funnel summary in your normal
+range. If tests fail, paste the output back into the same session.
+
+**7. Get an adversarial second opinion.** Open a **new** session, switch to
+Fable 5, paste:
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md.
+
+Another session just implemented work package N on the current branch. I cannot
+read code, so I need you to review it for me. Run `git diff main` and check:
+
+- Does it do what the package asked, and only that?
+- Are there bugs, or cases the code does not handle?
+- Does it violate any principle in CLAUDE.md?
+- Is anything half-finished, stubbed, or commented out?
+- Did it weaken or delete any test to make things pass?
+
+Do not fix anything. Report in plain English, assuming I am not a programmer.
+```
+
+**8. Push and merge.**
+
+```
+git status
+git push -u origin wp1-data-safety
+```
+
+`git status` must say "working tree clean". Then open the repo on github.com,
+click through the yellow banner to open a pull request, and merge it. Back in
+Terminal:
+
+```
+git checkout main
+git pull
+```
+
+Before pushing, skim this plan file for real city or company names that may have
+crept into the decisions log. The repo is public.
+
+---
+
+# Session prompts
+
+---
+
+## WP0 — Fixture capture script
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP0 only.
+
+WP2 needs saved copies of real career-page responses so the extractor tests have
+something to run against without hitting live sites. I do not want to capture
+these by hand.
+
+Write a script scripts/capture_fixtures.py that:
+- Reads job_scraper/config/sources.yaml.
+- Takes a list of source names as command-line arguments.
+- For each one, fetches its listing URL using the project's own fetchers, so
+  static sources use fetch_text and dynamic sources use fetch_rendered.
+- Saves the raw response to tests/fixtures/<source_name>.html or .json,
+  choosing the extension based on the content.
+- Prints a clear one-line result per source, including the byte size, so I can
+  see at a glance whether anything came back empty.
+- Is polite: one source at a time, with a short pause between them.
+
+Then run it for these six sources and show me the output:
+givewell, kognity, storytel, busuu, dsv, impactpool
+
+Add a section to docs/REFACTOR-PLAN.md under WP0 explaining how to re-run the
+script when a fixture goes stale.
+
+Branch wp0-fixtures. Commit, do not push. Update the plan file.
+```
+
+After it runs, look at the printed sizes. Anything under a few kilobytes
+probably failed. Tell the same session and let it investigate.
+
+---
+
+## WP1 — Atomic writes and delisting guard
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP1 only.
+
+Two data-loss bugs to fix.
+
+BUG 1: Non-atomic writes.
+Every write to data/jobs.csv opens the live file with mode "w". A crash or
+interrupt mid-write truncates it. Affected: _rewrite_file,
+_collapse_content_duplicates, clean_existing_rows, sort_jobs_csv in
+job_scraper/storage/csv_store.py.
+Fix: write to a temp file in the same directory, then os.replace(). Route every
+write through a single helper.
+
+BUG 2: An empty scrape deletes stored history.
+In pipeline.py, source_scraped_keys[name] is set whenever an extractor returns,
+including when it returns []. clean_existing_rows then deletes every stored row
+for that source as "delisted". A silently broken selector is indistinguishable
+from "no vacancies", so selector drift wipes real data with no error.
+Fix:
+- Do not delist a source that returned zero rows this run.
+- Log at ERROR level when a source returns zero rows, naming the source.
+- Add a --allow-empty-delist flag for the case where a source genuinely emptied.
+
+Write tests for both before or alongside the fix. Do not change anything else in
+csv_store.py; the larger restructuring is WP4/WP5.
+
+Branch wp1-data-safety. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP2 — Test net and tooling
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP2 only.
+
+Goal: enough test coverage to refactor storage safely, plus linting and CI.
+The fixtures from WP0 are in tests/fixtures/.
+
+1. Golden-file extractor tests. For each fixture, assert the parsed output:
+   count of jobs, and the full dict of the first job. These catch selector drift
+   at test time rather than at run time. Never fetch live sites in a test.
+
+2. Pipeline test. Test run_pipeline end to end with a fake extractor and a fake
+   fetch function. Assert the RunSummary funnel counts are internally
+   consistent.
+
+3. Round-trip test. extractor dict -> CSV -> _dedupe_key must be stable, so a
+   job stored in one run is recognised as already-stored in the next.
+
+4. Tooling. Add ruff to pyproject.toml with a sensible config for this codebase
+   and fix what it flags, mechanically only. Add a .github/workflows/ci.yml that
+   runs ruff and pytest on push and pull request. Note in the plan file that CI
+   cannot run the pipeline itself because sources.yaml, rules.json and the data
+   files are gitignored.
+
+Branch wp2-test-net. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP3 — Company field from config
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP3 only.
+
+Problem: the "company" column is populated by only 2 of 30 extractors
+(impactpool, jobsinlund). It is empty everywhere else. This breaks _content_key
+in csv_store.py, which dedupes on source + company + title, and it leaves the
+output table with a blank column.
+
+Fix, without touching 30 extractor modules:
+- Add an optional "company" key to each entry in sources.yaml and
+  sources.example.yaml. For single-employer sources this is the employer name.
+  For aggregators (impactpool, jobsinlund) leave it unset.
+- In pipeline.py, stamp the configured company onto each extracted record, but
+  only where the extractor has not already set one. The extractor wins.
+- Update the JobRecord docstring in __init__.py to say which layer sets company.
+
+Add a test that the extractor value wins over the config value.
+
+Branch wp3-company-field. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP4 — SQLite store, part 1: schema and dual write
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP4 only.
+
+This is the first half of replacing storage/csv_store.py. Do not delete anything
+this session. CSV remains the source of truth until WP5.
+
+Create job_scraper/storage/db.py with a SQLite store:
+
+  jobs(dedupe_key TEXT PRIMARY KEY, source_name, company, title, location,
+       detail_url, apply_url, first_seen, last_seen, last_run_id,
+       status, experience_level)
+  runs(run_id INTEGER PRIMARY KEY, started_at, finished_at)
+  source_health(source_name, run_id, rows_found, ok, error)
+
+Notes:
+- status covers 'new', 'seen', 'shortlisted', 'rejected', 'delisted'.
+- Use a context manager, WAL mode, and parameterised queries throughout.
+- first_seen/last_seen are ISO-8601 UTC strings.
+
+Also write a one-off migration script (job_scraper/tools/migrate_to_sqlite.py)
+that reads an existing jobs.csv and populates the database, parsing URLs out of
+the =HYPERLINK() formulas.
+
+Have the pipeline write to BOTH stores this session, CSV first and authoritative.
+Add a test comparing the two stores' contents after a fake run.
+
+Add data/*.db and data/*.sqlite3 to .gitignore in this same commit. My repo is
+public and the database will contain every job I have ever seen.
+
+Do not change the filter layers. Do not change xlsx_store.py.
+
+Branch wp4-sqlite-schema. Commit, do not push. Update the plan file with the
+schema you settled on and why.
+```
+
+Before merging WP4, run `git tag pre-sqlite` on `main` and `git push --tags`.
+That is your rollback point if the migration goes badly.
+
+---
+
+## WP5 — SQLite store, part 2: cut over and delete the CSV store
+
+```
+ultrathink
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP5 only.
+
+Make SQLite authoritative and delete the accreted CSV logic.
+
+1. Point pipeline.py at db.py. Remove the dual write.
+2. Rewrite xlsx_store.py to read from the database and generate the
+   =HYPERLINK() formulas at export time. Excel formulas must no longer exist
+   anywhere except in the xlsx writer.
+3. Delete from the codebase, once nothing references them:
+   _migrate_csv_schema_if_needed, _dedupe_file_if_needed,
+   _collapse_content_duplicates, _next_run_id, sort_jobs_csv,
+   _excel_hyperlink_formula, _url_from_hyperlink_formula, _REMOVED_COLUMNS.
+4. Replace clean_existing_rows with a database equivalent that sets status
+   rather than deleting rows. Nothing should ever be hard-deleted; delisted and
+   rejected jobs stay in the table.
+5. Rewrite blocklist.py to set a review status. IMPORTANT: my current
+   scrape_and_blocklist.sh routine blocklists EVERY job after each run, so my
+   265-row blocklist.csv means "already seen", not "rejected". Do not import it
+   as rejections. Import every existing blocklist.csv row as status 'seen', and
+   preserve all 265 rows.
+6. Replace the delisting rule from WP1 with the better version now possible:
+   mark delisted only after N consecutive successful runs without seeing the job.
+   Default N=2, configurable.
+
+Expect to remove roughly 250 lines net. If you find yourself keeping a CSV
+helper "just in case", say so and explain why rather than keeping it silently.
+
+Branch wp5-sqlite-cutover. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP5b — Replace the blocklist-everything routine
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP5b only.
+
+Replace my current review routine. Today, scripts/scrape_and_blocklist.sh
+blocklists every job after each run so the next run only shows new ones. With
+first_seen/last_seen in the database this is no longer needed, and it destroys
+my history.
+
+- Add a command that marks jobs as 'seen':
+  `python -m job_scraper.review --seen-all`, and one that marks specific jobs
+  shortlisted or rejected by their row number in the xlsx.
+- Change the xlsx export to show unreviewed jobs by default, with a flag to show
+  everything. My day-to-day experience must not get worse: I open jobs.xlsx and
+  see only what is new.
+- Add an "archive" sheet in the xlsx with every job ever seen, so nothing is
+  hidden from me.
+- Deprecate scripts/scrape_and_blocklist.sh with a comment pointing at the new
+  command. Do not delete it until I confirm the new flow works.
+
+Add tests. Branch wp5b-review-workflow. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP6 — Persist detail descriptions
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP6 only.
+
+Layer 2 in experience_filter.py fetches each new job's detail page, extracts two
+booleans and an integer, then discards the text. That text is needed for LLM
+scoring in WP7, and re-fetching it later would be slow and impolite.
+
+- Add a description_text column to the jobs table (or a separate job_details
+  table if you prefer, argue for your choice).
+- Store the stripped plain text from _strip_html, capped at a sensible length.
+- Store fetched_at so staleness is visible.
+- Skip the fetch entirely when a usable description is already stored and the
+  job has not changed.
+
+Add a test that a second run over the same job performs no HTTP request.
+
+Branch wp6-persist-descriptions. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP7 — LLM scoring stage
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP7 only.
+
+Add a scoring stage that reads stored descriptions and calls the Anthropic API.
+This replaces a manual step I currently do outside the pipeline.
+
+- New module job_scraper/scoring.py.
+- Read the API key from the ANTHROPIC_API_KEY environment variable. Never write
+  a key to disk or to any config file.
+- Score only jobs that are new or whose description changed. Never re-score.
+- Prompt takes a rubric from a new gitignored config file,
+  job_scraper/config/profile.md (ship profile.example.md), containing my
+  background and what I am looking for. Do not invent its contents: create the
+  example with clear placeholders and ask me to fill it in.
+- Add job_scraper/config/profile.md to .gitignore in this same commit. My repo
+  is public.
+- Return structured JSON: score 0-100, seniority_fit, relevance, reasoning,
+  flags. Validate the response and fail gracefully per job rather than aborting
+  the run.
+- Store score and reasoning. Sort the xlsx by score descending.
+- Add a --no-score flag to skip the stage.
+- Add a cost estimate to the run summary.
+
+Mock the API in tests. Do not make live calls from the test suite.
+
+Branch wp7-llm-scoring. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP8 — Retire the keyword ladder
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8 only.
+
+With LLM scoring in place, the five-layer regex ladder can shrink. Before
+changing anything, run the current pipeline and the new one over the same stored
+jobs and show me a diff of what each keeps, so the decision is evidence-based.
+
+Candidates for removal, in this order:
+- apply_non_english_text_filter: already inert in clean_existing_rows because
+  stored rows have no raw_snippet, and langdetect on short snippets is
+  unreliable and nondeterministic. The scorer handles language better.
+- apply_language_filter (the "X speaker" pattern): subsumed by the scorer.
+- title_exclude_keywords.csv: subsumed by the scorer.
+
+Keep: location rules, the review statuses, and the numeric experience
+extraction. These are cheap, deterministic, and correct.
+
+Also fix, wherever the remaining code lives:
+- build_hybrid_pattern is called per job inside matches_rules. Compile once and
+  pass it down.
+- _build_title_keyword_pattern recompiles on every call.
+- The seniority list has false positives: "Lead" matches "Lead Generation
+  Analyst", "Architect" matches roles that may be junior. Propose fixes, do not
+  just delete entries.
+
+Branch wp8-retire-ladder. Commit, do not push. Update the plan file with the
+before/after diff summary.
+```
+
+---
+
+## WP9 — Playwright reuse and HTTP caching
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP9 only.
+
+Two performance problems in http.py.
+
+1. fetch_rendered launches and tears down a fresh Chromium on every call. For a
+   dynamic source's Layer 2 pass that is one browser launch per job, up to 10
+   concurrently given _DETAIL_WORKERS = 10. Restructure so one browser is
+   launched per run and reused, with a context or page per fetch. Mind that the
+   Playwright sync API is not safe to share across threads: either give each
+   worker thread its own context correctly, or move rendered fetches out of the
+   thread pool. Explain your choice.
+
+2. No HTTP caching. Every run refetches every listing page. Add caching with a
+   short TTL for listing pages plus ETag and If-Modified-Since support. Propose
+   the library before adding it.
+
+Measure before and after. Report wall-clock time for a full run in the plan file.
+
+Branch wp9-fetch-performance. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP10 — Politeness and observability
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP10 only.
+
+These are other people's career sites and the current code is not a good guest.
+
+- DEFAULT_USER_AGENT in http.py still contains example.com. Ask me for a real
+  contact URL and address, do not guess.
+- _DETAIL_WORKERS = 10 is a global cap, so ten simultaneous requests can hit one
+  host. Make the cap per-host instead, default 2, with a small delay between
+  requests to the same host.
+- Add a robots.txt check with a per-host cache, and a config option to override
+  it per source for sites where the check is wrong.
+- Use the source_health table from WP4: at the end of each run, warn about any
+  source whose row count dropped by more than 50% against its previous
+  successful run.
+- Add --dry-run that fetches and filters but writes nothing.
+
+Branch wp10-politeness. Commit, do not push. Update the plan file.
+```
+
+---
+
+# Keeping the public repo clean
+
+The repo is public. Every private file has a tracked `.example` twin and the
+real one is gitignored. Keep applying that pattern.
+
+Verified clean at the start of this plan: `sources.yaml`, `rules.json`,
+`blocklist.csv`, `jobs.csv` and `candidate_sources.xlsx` have never appeared in
+any commit.
+
+Still to watch:
+
+- `job_scraper/config/title_exclude_keywords.csv` is tracked and shows real role
+  exclusions. Optional: give it the `.example` treatment too.
+- `profile.md` from WP7 will contain a CV. Must be gitignored.
+- The SQLite database from WP4 will hold every job ever seen. Must be gitignored.
+- This plan file is public. Skim it for real cities and companies before pushing.
+- Fixtures from WP0 are third-party career pages. Fine to publish, but large.
