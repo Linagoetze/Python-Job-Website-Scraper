@@ -74,17 +74,28 @@ def _carries_job_data(tag: Any) -> bool:
 
 
 def sanitise_html(html: str) -> str:
-    """Remove inline scripts that carry no job data.
+    """Strip everything from a captured page that is not job data.
 
     Career pages embed third-party front-end config, and that config contains
     public API keys which secret scanners flag on sight. Nothing in this project
     parses those scripts, so they are dead weight in a fixture — but scripts
     holding the page's own job data are load-bearing and must survive.
+
+    Hidden CSRF token inputs get the same treatment: they look exactly like
+    credentials to a scanner, no extractor reads form inputs, and a token
+    captured months ago is meaningless anyway.
     """
     soup = BeautifulSoup(html, "lxml")
+
     for tag in soup.find_all("script"):
         if not _carries_job_data(tag):
             tag.decompose()
+
+    for tag in soup.find_all("input", attrs={"type": "hidden"}):
+        identifier = f"{tag.get('name') or ''} {tag.get('id') or ''}".lower()
+        if "token" in identifier and tag.has_attr("value"):
+            tag["value"] = ""
+
     return str(soup)
 
 
