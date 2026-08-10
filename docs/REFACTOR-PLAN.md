@@ -39,7 +39,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | done | `wp1-data-safety` |
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | done | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | done | `wp3-company-field` |
-| 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | not started | `wp4-sqlite-schema` |
+| 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | done | `wp4-sqlite-schema` |
 | 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | not started | `wp5-sqlite-cutover` |
 | 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | not started | `wp5b-review-workflow` |
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | not started | `wp6-persist-descriptions` |
@@ -612,6 +612,101 @@ schema you settled on and why.
 
 Before merging WP4, run `git tag pre-sqlite` on `main` and `git push --tags`.
 That is your rollback point if the migration goes badly.
+
+### Result
+
+168 tests pass (up from 152), `ruff check .` clean. New: `storage/db.py`,
+`tools/migrate_to_sqlite.py`, `tests/test_sqlite_store.py`,
+`tests/test_dual_store.py`. Touched: `pipeline.py` (health collection + mirror
+call), `run.py` (`--output-db`), `config_loader.py` (`default_jobs_db_path` →
+`data/jobs.sqlite3`), `csv_store.py` (one read-only helper), `.gitignore`.
+
+### The schema, and why
+
+Exactly the three tables from the prompt, with these decisions:
+
+- **`status` is a TEXT column with a CHECK constraint**, not a lookup table:
+  five fixed values, one user, and a constraint violation is the loud failure
+  wanted if a typo'd status ever reaches the store. `upsert_jobs` also
+  validates in Python so the error is a readable `ValueError` on the normal
+  path; the CHECK is the backstop for hand-written SQL.
+- **`runs.run_id` is `AUTOINCREMENT`** so a run id can never be reused, since
+  `jobs.last_run_id` and `source_health.run_id` reference them (real FOREIGN
+  KEYs, `PRAGMA foreign_keys=ON`). Note: the SQLite run id is *not* the CSV
+  `run_id` column — the CSV counter is per-store and the shadow store keeps
+  its own history. They converge only in the sense that WP5 discards the CSV one.
+- **`source_health` is keyed `(source_name, run_id)`** and gets one row per
+  *attempted* extraction: success (`ok=1`, `rows_found` = extracted count,
+  before any filter), or failure (`ok=0`, `error` = the exception text).
+  Sources skipped for config reasons (no URL, unknown strategy, no extractor)
+  never reached the site and get no row — WP10's "row count collapsed" warning
+  should not be diluted by rows that mean "config typo".
+- **Timestamps** are `datetime.now(timezone.utc).isoformat(timespec="seconds")`
+  strings, e.g. `2026-08-10T14:03:07+00:00` — sortable, greppable, unambiguous.
+- **Statuses are review state, and a scrape never overwrites them.** On
+  re-sighting, an upsert bumps `last_seen`/`last_run_id` and refreshes the
+  descriptive fields but leaves `status` and `first_seen` alone, with one
+  exception: a `'delisted'` job that reappears goes back to `'seen'` (it is
+  evidently listed again — and `'seen'` not `'new'`, because the owner has
+  already had it in the spreadsheet). An empty `experience_level` never
+  overwrites a stored one ("not determined this run" ≠ "none"); the pipeline's
+  `"cached"` placeholder is filtered out before the mirror for the same reason.
+- **`JobStore` is a context manager; one `with` block is one transaction.**
+  Everything a run writes commits together or rolls back together, so a crash
+  mid-run cannot leave a half-written run — the SQLite equivalent of WP1's
+  atomic-write rule. WAL mode on every connection.
+
+### How the dual write works (and dies)
+
+CSV first and authoritative: only after `append_jobs_csv`,
+`clean_existing_rows` and `sort_jobs_csv` have all finished does
+`pipeline._mirror_to_sqlite` read the **final** CSV back
+(`csv_store.read_store_rows`, which recovers plain URLs from the
+`=HYPERLINK()` formulas) and sync the database to it: present rows are
+upserted, absent rows are marked `status='delisted'` — never deleted. Whatever
+the CSV's five filter passes decided this run, the mirror inherits by
+construction, so it cannot drift from the authoritative store and needs no
+knowledge of the filter layers. A mirror failure logs at ERROR and does not
+fail the run (the authoritative store is already safely written); it must stay
+loud, or WP5 would inherit a silently stale database.
+
+`experience_level` is the one thing not recoverable from the CSV (WP1's
+predecessor dropped that column), so the mirror takes it from this run's
+Layer 2 results, keyed by dedupe key; stored jobs keep their previously
+recorded level.
+
+`read_store_rows` and `_mirror_to_sqlite` are transitional glue and are
+expected to be **deleted in WP5** along with the rest of `csv_store.py`. WP5
+also replaces the blunt mirror delisting (absent from CSV ⇒ delisted, whatever
+the status) with the N-consecutive-misses rule and must reconcile delisting
+against review statuses properly — `mark_delisted_except`'s docstring says so.
+
+### Migration
+
+`python -m job_scraper.tools.migrate_to_sqlite [--csv PATH] [--db PATH]
+[--force]` reads jobs.csv (read-only), parses the hyperlink formulas, and
+imports every row as **`status='seen'`, not `'new'`** — everything already in
+jobs.csv has been in the owner's spreadsheet, and nothing imported should
+later surface as unreviewed. The CSV holds no timestamps, so
+`first_seen`/`last_seen` are both the migration time; history before that
+moment is unknown and is not invented. Refuses to run against a database that
+already has jobs unless `--force` (which upserts: existing rows keep their
+`first_seen` and status).
+
+### Gitignore
+
+`data/*.db` / `data/*.sqlite3` were already committed (`444cfeb`). What was
+missing: WAL sidecars — `jobs.sqlite3-wal`/`-shm` contain the same personal
+data as the database and match neither pattern. Added `data/*.db-*` and
+`data/*.sqlite3-*`.
+
+### Not done / not touched, per scope
+
+Filter layers, `xlsx_store.py`, and everything scheduled for deletion in
+`csv_store.py` are untouched; the only csv_store change is the additive
+read-only `read_store_rows`. `RunSummary` and the printed funnel are
+unchanged — the mirror's counts appear in the debug log only, until SQLite is
+authoritative.
 
 ---
 
