@@ -9,6 +9,13 @@
 #   strategy  `static` for plain HTTP, `dynamic` to render in headless Chromium
 #             first (needed when jobs only appear after JavaScript runs)
 #
+# Optional:
+#   company   the employer's name, stamped onto every job this source
+#             produces. Set it for single-employer sources. Leave it unset
+#             for aggregators (e.g. impactpool) whose extractor already puts
+#             a per-job company in the extracted data — the extractor's value
+#             always wins over this one.
+#
 # The nine entries below are chosen to exercise a different extractor each, so
 # you can see one working example per supported ATS. Add your own employers by
 # registering them in registry.py — most big ATS platforms already have a
@@ -19,35 +26,44 @@ sources:
   - name: canonical
     url: https://job-boards.greenhouse.io/canonical
     strategy: static
+    company: Canonical
   # --- Ashby ---
   - name: strava
     url: https://jobs.ashbyhq.com/strava
     strategy: static
+    company: Strava
   # --- Teamtailor ---
   - name: storytel
     url: https://jobs.storytel.com/jobs
     strategy: static
+    company: Storytel
   # --- Workable ---
   - name: simprints
     url: https://apply.workable.com/simprints/
     strategy: static
+    company: Simprints
   # --- Personio ---
   - name: outdooractive
     url: https://outdooractive.jobs.personio.de/?language=en
     strategy: static
+    company: Outdooractive
   # --- SmartRecruiters ---
   - name: oecd
     url: https://careers.smartrecruiters.com/OECD/oecd---en
     strategy: static
+    company: OECD
   # --- Lever ---
   - name: wave
     url: https://www.waveapps.com/about-us/culture
     strategy: static
+    company: Wave
   # --- Breezy ---
   - name: new_incentives
     url: https://new-incentives.breezy.hr
     strategy: static
+    company: New Incentives
   # --- Workday (needs Playwright) ---
   - name: slack
     url: https://salesforce.wd12.myworkdayjobs.com/Slack
     strategy: dynamic
+    company: Slack

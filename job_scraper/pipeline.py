@@ -113,6 +113,17 @@ def run_pipeline(
             logger.warning("Skipping source %r: %s", name, exc)
             skipped += 1
             continue
+
+        # Config-supplied company for single-employer sources. Aggregators
+        # (impactpool, jobsinlund) set "company" per job themselves and have
+        # no "company" key in sources.yaml, so this only fills the gap the
+        # extractor left — the extractor's own value always wins.
+        configured_company = str(src.get("company") or "").strip()
+        if configured_company:
+            for row in rows:
+                if not row.get("company"):
+                    row["company"] = configured_company
+
         processed += 1
         processed_sources.append({"source_name": name, "listing_url": url})
         jobs_extracted += len(rows)
