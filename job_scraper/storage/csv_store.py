@@ -241,6 +241,40 @@ def _read_existing_keys(path: Path) -> set[str]:
     return keys
 
 
+def read_store_rows(path: Path) -> list[dict[str, str]]:
+    """Read the store as plain data: URLs recovered from the hyperlink formulas.
+
+    Transitional (WP4): this feeds the SQLite shadow store and the one-off
+    migration script, both of which need plain URLs rather than Excel syntax.
+    Rows without a usable dedupe key are skipped, matching append_jobs_csv.
+    Dies with the rest of this module in WP5.
+    """
+    if not path.is_file() or path.stat().st_size == 0:
+        return []
+    out: list[dict[str, str]] = []
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            key = _dedupe_key(row)
+            if not key:
+                continue
+            out.append(
+                {
+                    "dedupe_key": key,
+                    "source_name": str(row.get("source_name") or ""),
+                    "company": str(row.get("company") or ""),
+                    "title": str(row.get("title") or ""),
+                    "location": str(row.get("location") or ""),
+                    "detail_url": _url_from_hyperlink_formula(
+                        str(row.get("detail_hyperlink") or "")
+                    ),
+                    "apply_url": _url_from_hyperlink_formula(
+                        str(row.get("apply_hyperlink") or "")
+                    ),
+                }
+            )
+    return out
+
+
 def clean_existing_rows(
     path: Path,
     rules: dict[str, Any],

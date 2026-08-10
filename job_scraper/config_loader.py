@@ -49,6 +49,11 @@ def default_jobs_xlsx_path() -> Path:
     return default_data_dir() / "jobs.xlsx"
 
 
+def default_jobs_db_path() -> Path:
+    """SQLite shadow store (WP4). Becomes authoritative in WP5."""
+    return default_data_dir() / "jobs.sqlite3"
+
+
 def _require(p: Path) -> Path:
     """Fail with a copy-pasteable fix when a config file hasn't been created yet.
 

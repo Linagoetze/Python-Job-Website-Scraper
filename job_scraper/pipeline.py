@@ -27,8 +27,10 @@ from job_scraper.storage.csv_store import (
     _read_existing_keys,
     append_jobs_csv,
     clean_existing_rows,
+    read_store_rows,
     sort_jobs_csv,
 )
+from job_scraper.storage.db import JobStore, utc_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +58,50 @@ class RunSummary:
     rows_delisted: int
 
 
+def _mirror_to_sqlite(
+    db_path: Path,
+    csv_path: Path,
+    started_at: str,
+    source_health: list[tuple[str, int, bool, str | None]],
+    experience_levels: dict[str, str],
+) -> None:
+    """Mirror the authoritative CSV into the SQLite shadow store (WP4).
+
+    Runs after every CSV write of the run has finished, so "the final CSV" is
+    exactly what the run produced: whatever is in it is upserted, and whatever
+    is not is marked delisted (never deleted). The store accrues what the CSV
+    cannot hold — first_seen/last_seen, run history, per-source health. WP5
+    makes it authoritative and removes this function along with the CSV store.
+    """
+    rows = read_store_rows(csv_path)
+    for row in rows:
+        row["experience_level"] = experience_levels.get(row["dedupe_key"], "")
+    with JobStore(db_path) as store:
+        run_id = store.begin_run(started_at)
+        for name, rows_found, ok, error in source_health:
+            store.record_source_health(run_id, name, rows_found, ok, error)
+        inserted, updated = store.upsert_jobs(rows, run_id)
+        delisted = store.mark_delisted_except({r["dedupe_key"] for r in rows})
+        store.finish_run(run_id)
+    logger.debug(
+        "SQLite shadow store: %d inserted, %d refreshed, %d marked delisted (run %d)",
+        inserted,
+        updated,
+        delisted,
+        run_id,
+    )
+
+
 def run_pipeline(
     *,
     sources_path: Path,
     rules_path: Path,
     out_csv_path: Path,
+    out_db_path: Path | None = None,
     title_keywords_path: Path | None = None,
     allow_empty_delist: bool = False,
 ) -> RunSummary:
+    run_started_at = utc_now_iso()
     sources = load_sources(sources_path)
     rules = load_rules(rules_path)
     title_keywords = load_title_exclude_keywords(title_keywords_path) if title_keywords_path else []
@@ -77,6 +115,10 @@ def run_pipeline(
     skipped = 0
     processed = 0
     source_scraped_keys: dict[str, set[str]] = {}
+    # One (name, rows_found, ok, error) entry per *attempted* extraction, for
+    # the source_health table. Sources skipped for config reasons (no URL,
+    # unknown strategy, no extractor) never reached the site, so they get no row.
+    source_health: list[tuple[str, int, bool, str | None]] = []
 
     for src in sources:
         name = str(src.get("name") or "").strip()
@@ -111,8 +153,10 @@ def run_pipeline(
             # not be treated as "scraped, found nothing" or its stored rows
             # would be delisted by clean_existing_rows.
             logger.warning("Skipping source %r: %s", name, exc)
+            source_health.append((name, 0, False, str(exc)))
             skipped += 1
             continue
+        source_health.append((name, len(rows), True, None))
 
         # Config-supplied company for single-employer sources. Aggregators
         # (impactpool, jobsinlund) set "company" per job themselves and have
@@ -318,6 +362,29 @@ def run_pipeline(
         )
 
     sort_jobs_csv(out_csv_path)
+
+    # Dual write (WP4): mirror the finished CSV into the SQLite shadow store.
+    # CSV is authoritative, so a failure here must not fail the run — but it
+    # must be loud, or the WP5 cutover would inherit a silently stale database.
+    # experience_level is taken from this run's Layer 2 results; "cached" is a
+    # placeholder meaning "skipped the detail fetch", not a real level, so it
+    # is not stored.
+    experience_levels = {
+        k: str(j.get("experience_level") or "")
+        for j in kept_rows
+        if (k := _dedupe_key(j)) and j.get("experience_level") not in (None, "", "cached")
+    }
+    resolved_db_path = out_db_path or out_csv_path.with_suffix(".sqlite3")
+    try:
+        _mirror_to_sqlite(
+            resolved_db_path, out_csv_path, run_started_at, source_health, experience_levels
+        )
+    except Exception:
+        logger.exception(
+            "SQLite shadow store update failed; the CSV store at %s is unaffected "
+            "and remains authoritative",
+            out_csv_path,
+        )
 
     return RunSummary(
         sources_total=len(sources),

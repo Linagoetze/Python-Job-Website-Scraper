@@ -27,4 +27,8 @@ data/curated/candidate_sources.xlsx
 .git.backup/
 data/*.db
 data/*.sqlite3
+# SQLite WAL sidecars (jobs.sqlite3-wal / -shm) hold the same personal data as
+# the database itself and are not matched by the patterns above.
+data/*.db-*
+data/*.sqlite3-*
 job_scraper/config/profile.md
