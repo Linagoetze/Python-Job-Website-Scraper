@@ -38,7 +38,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 0c | Sanitise fixtures | 1 hr | Opus 5 | `think hard` | done | `wp0c-sanitise-fixtures` |
 | 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | done | `wp1-data-safety` |
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | done | `wp2-test-net` |
-| 3 | Company field from config | 1 hr | Sonnet 5 | none | not started | `wp3-company-field` |
+| 3 | Company field from config | 1 hr | Sonnet 5 | none | done | `wp3-company-field` |
 | 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | not started | `wp4-sqlite-schema` |
 | 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | not started | `wp5-sqlite-cutover` |
 | 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | not started | `wp5b-review-workflow` |
@@ -538,6 +538,36 @@ Add a test that the extractor value wins over the config value.
 
 Branch wp3-company-field. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+`sources.yaml` and `sources.example.yaml` both gained an optional `company:
+<name>` key per entry, set for every single-employer source and left unset
+for the two aggregators (`impactpool`, `jobsinlund`), whose extractors already
+put a per-job company in the extracted data. The header comment in both files
+documents the key and the extractor-wins rule.
+
+`pipeline.py`'s source loop now reads `src.get("company")` once per source
+and, for each row the extractor returned, sets `row["company"]` only when the
+extractor left it falsy. No extractor module was touched. This runs before
+`jobs_extracted` is counted, so it has no effect on the funnel arithmetic WP2
+pinned.
+
+`JobRecord.company`'s docstring in `__init__.py` now says which layer sets it:
+the extractor for aggregators, `pipeline.run_pipeline` from `sources.yaml`
+otherwise, extractor always winning.
+
+Test: `tests/test_pipeline_company_field.py`, two cases against a fake
+extractor returning one job with `company: ""` and one with
+`company: "Extractor Co"` — the blank one picks up the configured company,
+the set one keeps its own value. Full suite: 152 passed (up from 150),
+`ruff check .` clean.
+
+Not touched, per scope: none of the 30 extractor modules, and
+`storage/csv_store.py`'s `_content_key`/dedupe logic itself — this package
+only stops it from being handed a blank company for 28 of 30 sources; the two
+known-churny dedupe issues WP2 pinned (content-dedup and Layer-2 re-fetch) are
+WP5/WP6 work and were left alone.
 
 ---
 

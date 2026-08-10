@@ -17,6 +17,11 @@ class JobRecord(TypedDict, total=False):
     # --- Set by extractors (always present) ---
     source_name: str
     title: str
+    # company: set by the extractor for aggregator sources (impactpool,
+    # jobsinlund), each of which lists postings from many employers. For
+    # single-employer sources, pipeline.run_pipeline stamps it from the
+    # source's "company" key in sources.yaml instead, and only when the
+    # extractor left it unset — the extractor's value always wins.
     company: str
     location: str
     department: str
