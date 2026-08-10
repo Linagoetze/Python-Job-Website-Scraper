@@ -9,6 +9,7 @@ from pathlib import Path
 
 from job_scraper.config_loader import (
     default_jobs_csv_path,
+    default_jobs_db_path,
     default_jobs_xlsx_path,
     default_rules_path,
     default_sources_path,
@@ -107,6 +108,16 @@ def main() -> None:
         help=f"Styled xlsx output (default: {default_xlsx})",
     )
     parser.add_argument(
+        "--output-db",
+        type=Path,
+        default=default_jobs_db_path(),
+        dest="output_db",
+        help=(
+            "SQLite shadow store, written after the CSV each run; the CSV stays "
+            f"authoritative until WP5 (default: {default_jobs_db_path()})"
+        ),
+    )
+    parser.add_argument(
         "--title-keywords",
         type=Path,
         default=default_title_keywords_path(),
@@ -141,6 +152,7 @@ def main() -> None:
             sources_path=args.sources,
             rules_path=args.rules,
             out_csv_path=args.output,
+            out_db_path=args.output_db,
             title_keywords_path=args.title_keywords,
             allow_empty_delist=args.allow_empty_delist,
         )
