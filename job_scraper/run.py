@@ -8,14 +8,13 @@ import sys
 from pathlib import Path
 
 from job_scraper.config_loader import (
-    default_jobs_csv_path,
     default_jobs_db_path,
     default_jobs_xlsx_path,
     default_rules_path,
     default_sources_path,
     default_title_keywords_path,
 )
-from job_scraper.pipeline import RunSummary, run_pipeline
+from job_scraper.pipeline import DEFAULT_DELIST_AFTER, RunSummary, run_pipeline
 from job_scraper.storage.xlsx_store import write_xlsx
 
 _RULE = "─" * 48
@@ -71,14 +70,13 @@ def format_summary(summary: RunSummary, table_total: int) -> str:
             (summary.jobs_kept_new, "new jobs kept")),
         _RULE,
         row("New rows written", f"{summary.rows_written:,}"),
-        row("Delisted removed", f"{summary.rows_delisted:,}"),
+        row("Marked delisted", f"{summary.rows_delisted:,}"),
         row("Jobs now in table", f"{table_total:,}"),
     ]
     return "\n".join(lines)
 
 
 def main() -> None:
-    default_csv = default_jobs_csv_path()
     default_xlsx = default_jobs_xlsx_path()
 
     parser = argparse.ArgumentParser(description="Scrape configured career pages and filter jobs.")
@@ -95,12 +93,6 @@ def main() -> None:
         help="Path to rules.json",
     )
     parser.add_argument(
-        "--output",
-        type=Path,
-        default=default_csv,
-        help=f"Internal CSV store used for deduplication (default: {default_csv})",
-    )
-    parser.add_argument(
         "--output-xlsx",
         type=Path,
         default=default_xlsx,
@@ -112,10 +104,7 @@ def main() -> None:
         type=Path,
         default=default_jobs_db_path(),
         dest="output_db",
-        help=(
-            "SQLite shadow store, written after the CSV each run; the CSV stays "
-            f"authoritative until WP5 (default: {default_jobs_db_path()})"
-        ),
+        help=f"SQLite job store (default: {default_jobs_db_path()})",
     )
     parser.add_argument(
         "--title-keywords",
@@ -123,6 +112,16 @@ def main() -> None:
         default=default_title_keywords_path(),
         dest="title_keywords",
         help=f"Path to title_exclude_keywords.csv (default: {default_title_keywords_path()})",
+    )
+    parser.add_argument(
+        "--delist-after",
+        type=int,
+        default=DEFAULT_DELIST_AFTER,
+        dest="delist_after",
+        help=(
+            "Consecutive successful runs a job must go unseen before it is marked "
+            f"delisted (default: {DEFAULT_DELIST_AFTER})"
+        ),
     )
     parser.add_argument(
         "--allow-empty-delist",
@@ -151,17 +150,17 @@ def main() -> None:
         summary = run_pipeline(
             sources_path=args.sources,
             rules_path=args.rules,
-            out_csv_path=args.output,
             out_db_path=args.output_db,
             title_keywords_path=args.title_keywords,
             allow_empty_delist=args.allow_empty_delist,
+            delist_after=args.delist_after,
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show
         # it on its own rather than buried in a traceback.
         raise SystemExit(str(exc)) from None
 
-    table_total = write_xlsx(args.output, args.output_xlsx)
+    table_total = write_xlsx(args.output_db, args.output_xlsx)
 
     print(format_summary(summary, table_total), file=sys.stderr)
     print(f"Output: {args.output_xlsx.resolve()}")

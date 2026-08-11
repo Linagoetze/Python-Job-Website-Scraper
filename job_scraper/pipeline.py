@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from job_scraper import JobRecord
-from job_scraper.blocklist import load_blocklist_keys
 from job_scraper.config_loader import load_rules, load_sources
 from job_scraper.experience_filter import apply_combined_title_filter, apply_detail_filter
 from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
+    _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
     apply_language_filter,
     apply_non_english_text_filter,
@@ -22,17 +22,14 @@ from job_scraper.filtering import (
     matches_rules,
 )
 from job_scraper.http import fetch_rendered, fetch_text
-from job_scraper.storage.csv_store import (
-    _dedupe_key,
-    _read_existing_keys,
-    append_jobs_csv,
-    clean_existing_rows,
-    read_store_rows,
-    sort_jobs_csv,
-)
-from job_scraper.storage.db import JobStore, utc_now_iso
+from job_scraper.storage.db import JobStore, dedupe_key_for_job, job_to_row, utc_now_iso
 
 logger = logging.getLogger(__name__)
+
+# Consecutive successful scrapes of a source without sighting a job before it
+# is marked delisted. One miss can be a paginated listing hiccup or a posting
+# briefly pulled for editing; two runs in a row is a real disappearance.
+DEFAULT_DELIST_AFTER = 2
 
 
 @dataclass
@@ -58,48 +55,64 @@ class RunSummary:
     rows_delisted: int
 
 
-def _mirror_to_sqlite(
-    db_path: Path,
-    csv_path: Path,
-    started_at: str,
-    source_health: list[tuple[str, int, bool, str | None]],
-    experience_levels: dict[str, str],
-) -> None:
-    """Mirror the authoritative CSV into the SQLite shadow store (WP4).
+def refilter_stored_jobs(
+    store: JobStore,
+    rules: dict[str, Any],
+    title_keywords: list[tuple[str, str]],
+    hybrid_pattern: Any = None,
+) -> dict[str, int]:
+    """Re-apply the filter layers to stored unreviewed jobs, marking failures.
 
-    Runs after every CSV write of the run has finished, so "the final CSV" is
-    exactly what the run produced: whatever is in it is upserted, and whatever
-    is not is marked delisted (never deleted). The store accrues what the CSV
-    cannot hold — first_seen/last_seen, run history, per-source health. WP5
-    makes it authoritative and removes this function along with the CSV store.
+    The database replacement for the old CSV clean_existing_rows: when the
+    rules or keyword lists change, previously stored rows that no longer pass
+    are marked 'rejected' rather than deleted, so nothing is ever lost.
+
+    Only status 'new' rows are re-filtered. 'seen', 'shortlisted' and
+    'rejected' are review history — a rule change must not silently rewrite
+    what the owner already decided — and 'delisted' rows are not shown anyway.
+    Returns per-filter rejection counts.
     """
-    rows = read_store_rows(csv_path)
-    for row in rows:
-        row["experience_level"] = experience_levels.get(row["dedupe_key"], "")
-    with JobStore(db_path) as store:
-        run_id = store.begin_run(started_at)
-        for name, rows_found, ok, error in source_health:
-            store.record_source_health(run_id, name, rows_found, ok, error)
-        inserted, updated = store.upsert_jobs(rows, run_id)
-        delisted = store.mark_delisted_except({r["dedupe_key"] for r in rows})
-        store.finish_run(run_id)
-    logger.debug(
-        "SQLite shadow store: %d inserted, %d refreshed, %d marked delisted (run %d)",
-        inserted,
-        updated,
-        delisted,
-        run_id,
-    )
+    jobs = store.jobs_with_status(("new",))
+    counts = {"rules": 0, "title": 0, "title_keywords": 0, "non_english_text": 0, "language": 0}
+    rejected_keys: list[str] = []
+
+    kept: list[dict[str, Any]] = []
+    for job in jobs:
+        # A stored conditional-city job re-enters matches_rules without its
+        # matched_reasons; the pending reason it gets passes, so the persisted
+        # hybrid_confirmed flag is not needed here — Layer 2 owns that check.
+        if matches_rules(job, rules, hybrid_pattern)[0]:
+            kept.append(job)
+        else:
+            rejected_keys.append(job["dedupe_key"])
+    counts["rules"] = len(jobs) - len(kept)
+
+    kept, kw_excluded, title_excluded = apply_combined_title_filter(kept, title_keywords, rules)
+    counts["title_keywords"] = len(kw_excluded)
+    counts["title"] = len(title_excluded)
+    rejected_keys += [j["dedupe_key"] for j in kw_excluded + title_excluded]
+
+    kept, non_english = apply_non_english_text_filter(kept)
+    counts["non_english_text"] = len(non_english)
+    rejected_keys += [j["dedupe_key"] for j in non_english]
+
+    kept, language_excluded = apply_language_filter(kept)
+    counts["language"] = len(language_excluded)
+    rejected_keys += [j["dedupe_key"] for j in language_excluded]
+
+    if rejected_keys:
+        store.set_status(rejected_keys, "rejected")
+    return counts
 
 
 def run_pipeline(
     *,
     sources_path: Path,
     rules_path: Path,
-    out_csv_path: Path,
-    out_db_path: Path | None = None,
+    out_db_path: Path,
     title_keywords_path: Path | None = None,
     allow_empty_delist: bool = False,
+    delist_after: int = DEFAULT_DELIST_AFTER,
 ) -> RunSummary:
     run_started_at = utc_now_iso()
     sources = load_sources(sources_path)
@@ -115,6 +128,7 @@ def run_pipeline(
     skipped = 0
     processed = 0
     source_scraped_keys: dict[str, set[str]] = {}
+    force_delist_sources: set[str] = set()
     # One (name, rows_found, ok, error) entry per *attempted* extraction, for
     # the source_health table. Sources skipped for config reasons (no URL,
     # unknown strategy, no extractor) never reached the site, so they get no row.
@@ -149,9 +163,9 @@ def run_pipeline(
         try:
             rows = extractor(url, fetch_fn)
         except Exception as exc:
-            # Deliberately absent from source_scraped_keys: a failed source must
-            # not be treated as "scraped, found nothing" or its stored rows
-            # would be delisted by clean_existing_rows.
+            # Deliberately absent from source_scraped_keys: a failed source is
+            # not a successful scrape, so its stored jobs accrue no misses and
+            # can never drift towards delisting.
             logger.warning("Skipping source %r: %s", name, exc)
             source_health.append((name, 0, False, str(exc)))
             skipped += 1
@@ -173,18 +187,18 @@ def run_pipeline(
         jobs_extracted += len(rows)
         if not rows:
             # A zero-row result is indistinguishable from a broken selector, so
-            # it must not silently delist everything already stored for this
-            # source (see clean_existing_rows). Log loudly and only delist if
-            # the owner has explicitly said this source genuinely emptied.
+            # it must not count as a successful scrape and start delisting the
+            # source's stored jobs. Log loudly and only delist if the owner has
+            # explicitly said this source genuinely emptied.
             logger.error(
                 "Source %r returned zero rows this run; not delisting its stored jobs "
                 "(pass --allow-empty-delist if it has genuinely emptied)",
                 name,
             )
             if allow_empty_delist:
-                source_scraped_keys[name] = set()
+                force_delist_sources.add(name)
         else:
-            source_scraped_keys[name] = {k for r in rows if (k := _dedupe_key(r))}
+            source_scraped_keys[name] = {k for r in rows if (k := dedupe_key_for_job(r))}
 
         for job in rows:
             ok, reason_list = matches_rules(job, rules, hybrid_pattern)
@@ -206,9 +220,9 @@ def run_pipeline(
             conditional_admits,
         )
 
-    sources_csv_path = out_csv_path.parent / "jobs_sources.csv"
+    sources_csv_path = out_db_path.parent / "jobs_sources.csv"
     # First write of the run — the output directory may not exist yet (fresh
-    # clone, or --output pointing somewhere new).
+    # clone, or --output-db pointing somewhere new).
     sources_csv_path.parent.mkdir(parents=True, exist_ok=True)
     with sources_csv_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=["source_name", "listing_url"])
@@ -241,18 +255,6 @@ def run_pipeline(
     if jobs_language_excluded:
         logger.debug("Layer 1b (language filter): excluded %d jobs", jobs_language_excluded)
 
-    # Layer 1d — blocklist exclusion (jobs the user permanently rejected).
-    # Runs before the Layer 2 detail fetch so blocklisted jobs cost no HTTP requests.
-    blocklist_keys = load_blocklist_keys()
-    if blocklist_keys:
-        before = len(kept_rows)
-        kept_rows = [j for j in kept_rows if _dedupe_key(j) not in blocklist_keys]
-        jobs_blocklist_excluded = before - len(kept_rows)
-    else:
-        jobs_blocklist_excluded = 0
-    if jobs_blocklist_excluded:
-        logger.debug("Layer 1d (blocklist filter): excluded %d jobs", jobs_blocklist_excluded)
-
     # Build source_name → fetch_fn map so dynamic sources use fetch_rendered
     source_fetch_map: dict[str, Any] = {
         str(src.get("name") or "").strip(): (
@@ -264,127 +266,122 @@ def run_pipeline(
         if str(src.get("name") or "").strip()
     }
 
-    # Layer 2 — detail-page experience extraction
-    # Skip jobs already stored in jobs.csv: they passed Layer 2 in a prior run.
-    # A job awaiting a hybrid decision must never take the cache shortcut: only
-    # the detail fetch can settle it, and matched_reasons is not a jobs.csv column,
-    # so a stored conditional-city job comes back PENDING every run and has to
-    # re-earn its confirmation. Bounded cost — it is only the conditional cities,
-    # and only those that do not say "hybrid" in the title.
-    existing_keys = _read_existing_keys(out_csv_path)
+    # Everything from here on is one store transaction: the run's health rows,
+    # upserts, delisting and re-filtering commit together or roll back together,
+    # so a crash mid-run cannot leave a half-written run behind.
+    with JobStore(out_db_path) as store:
+        run_id = store.begin_run(run_started_at)
+        for name, rows_found, ok, error in source_health:
+            store.record_source_health(run_id, name, rows_found, ok, error)
 
-    def _is_stored(job: JobRecord) -> bool:
-        return _dedupe_key(job) in existing_keys
+        stored = store.job_index()
 
-    def _is_hybrid_pending(job: JobRecord) -> bool:
-        return _HYBRID_PENDING_REASON in (job.get("matched_reasons") or [])
+        # Layer 1d — review-status exclusion, replacing the CSV blocklist: a
+        # stored job the owner (or a filter change) rejected stays out of the
+        # funnel and costs no detail fetch, but its row is never deleted.
+        blocked_jobs = [
+            j
+            for j in kept_rows
+            if (k := dedupe_key_for_job(j)) and stored.get(k, {}).get("status") == "rejected"
+        ]
+        jobs_blocklist_excluded = len(blocked_jobs)
+        if jobs_blocklist_excluded:
+            blocked_keys = {dedupe_key_for_job(j) for j in blocked_jobs}
+            kept_rows = [j for j in kept_rows if dedupe_key_for_job(j) not in blocked_keys]
+            logger.debug(
+                "Layer 1d (review status): excluded %d rejected jobs", jobs_blocklist_excluded
+            )
 
-    def _needs_detail(job: JobRecord) -> bool:
-        return not _is_stored(job) or _is_hybrid_pending(job)
+        # Layer 2 — detail-page experience extraction.
+        # Skip jobs already stored: they passed Layer 2 in a prior run. A
+        # conditional-city job whose hybrid arrangement was confirmed from a
+        # detail page has that recorded in hybrid_confirmed, so it is skipped
+        # like any other stored job; only a stored conditional job that has
+        # never been confirmed (e.g. stored before the column existed) is
+        # re-fetched, and the confirmation is persisted when it succeeds.
+        def _is_stored(job: JobRecord) -> bool:
+            return dedupe_key_for_job(job) in stored
 
-    # new_jobs is everything that needs a detail-page fetch: genuinely new jobs,
-    # plus already-stored conditional-city jobs re-earning their hybrid
-    # confirmation (see the module docstring above). The two are reported
-    # separately below so "new, detail-checked" reconciles against "new rows
-    # written" — a re-check is not a new row.
-    new_jobs = [j for j in kept_rows if _needs_detail(j)]
-    cached_jobs = [j for j in kept_rows if not _needs_detail(j)]
-    truly_new_jobs = [j for j in new_jobs if not _is_stored(j)]
-    stored_rechecked_jobs = [j for j in new_jobs if _is_stored(j)]
-    if cached_jobs:
-        logger.debug("Layer 2: skipped %d already-stored jobs", len(cached_jobs))
+        def _is_hybrid_pending(job: JobRecord) -> bool:
+            if _HYBRID_PENDING_REASON not in (job.get("matched_reasons") or []):
+                return False
+            return not stored.get(dedupe_key_for_job(job), {}).get("hybrid_confirmed")
 
-    logger.debug("Layer 2 (detail filter): fetching detail pages for %d jobs…", len(new_jobs))
-    kept_new, detail_excluded = apply_detail_filter(
-        new_jobs,
-        fetch_text,
-        source_fetch_map=source_fetch_map,
-        hybrid_pattern=hybrid_pattern,
-    )
+        def _needs_detail(job: JobRecord) -> bool:
+            return not _is_stored(job) or _is_hybrid_pending(job)
 
-    jobs_phd_excluded = sum(
-        1 for j in detail_excluded if j.get("experience_level") == "phd_required"
-    )
-    jobs_hybrid_excluded = sum(
-        1
-        for j in detail_excluded
-        if j.get("experience_level") == "non_hybrid_conditional_location"
-    )
-    jobs_years_excluded = len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
-    jobs_detail_excluded = len(detail_excluded)
+        # new_jobs is everything that needs a detail-page fetch: genuinely new
+        # jobs, plus stored conditional-city jobs whose hybrid confirmation is
+        # not yet persisted. The two are reported separately so "new,
+        # detail-checked" reconciles against "new rows written".
+        new_jobs = [j for j in kept_rows if _needs_detail(j)]
+        cached_jobs = [j for j in kept_rows if not _needs_detail(j)]
+        truly_new_jobs = [j for j in new_jobs if not _is_stored(j)]
+        stored_rechecked_jobs = [j for j in new_jobs if _is_stored(j)]
+        if cached_jobs:
+            logger.debug("Layer 2: skipped %d already-stored jobs", len(cached_jobs))
 
-    if jobs_detail_excluded:
-        logger.debug(
-            "Layer 2 (detail filter): excluded %d jobs "
-            "(%d requiring 3+ years, %d requiring PhD, %d non-hybrid in a conditional location)",
-            jobs_detail_excluded,
-            jobs_years_excluded,
-            jobs_phd_excluded,
-            jobs_hybrid_excluded,
+        logger.debug("Layer 2 (detail filter): fetching detail pages for %d jobs…", len(new_jobs))
+        kept_new, detail_excluded = apply_detail_filter(
+            new_jobs,
+            fetch_text,
+            source_fetch_map=source_fetch_map,
+            hybrid_pattern=hybrid_pattern,
         )
 
-    kept_rows = kept_new + [dict(j, experience_level="cached") for j in cached_jobs]
+        jobs_phd_excluded = sum(
+            1 for j in detail_excluded if j.get("experience_level") == "phd_required"
+        )
+        jobs_hybrid_excluded = sum(
+            1
+            for j in detail_excluded
+            if j.get("experience_level") == "non_hybrid_conditional_location"
+        )
+        jobs_years_excluded = len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
+        jobs_detail_excluded = len(detail_excluded)
 
-    rows_written = append_jobs_csv(out_csv_path, kept_rows)
+        if jobs_detail_excluded:
+            logger.debug(
+                "Layer 2 (detail filter): excluded %d jobs "
+                "(%d requiring 3+ years, %d requiring PhD, %d non-hybrid in a conditional "
+                "location)",
+                jobs_detail_excluded,
+                jobs_years_excluded,
+                jobs_phd_excluded,
+                jobs_hybrid_excluded,
+            )
 
-    # Clean pre-existing rows that no longer pass current filters (single pass)
-    cleaned = clean_existing_rows(
-        out_csv_path, rules, title_keywords, source_scraped_keys, blocklist_keys=blocklist_keys
-    )
-    if cleaned["blocklist"]:
-        logger.debug("Removed %d pre-existing blocklisted rows", cleaned["blocklist"])
-    if cleaned["rules"]:
-        logger.debug(
-            "Removed %d pre-existing rows that failed location/keyword rules", cleaned["rules"]
-        )
-    if cleaned["title"]:
-        logger.debug("Removed %d pre-existing senior jobs from %s", cleaned["title"], out_csv_path)
-    if cleaned["title_keywords"]:
-        logger.debug(
-            "Removed %d pre-existing jobs matching title keywords", cleaned["title_keywords"]
-        )
-    if cleaned.get("non_english_text"):
-        logger.debug(
-            "Removed %d pre-existing jobs with non-English text", cleaned["non_english_text"]
-        )
-    if cleaned["language"]:
-        logger.debug(
-            "Removed %d pre-existing jobs with language-speaker titles", cleaned["language"]
-        )
-    if cleaned["mammut_fixed"]:
-        logger.debug(
-            "Fixed location field for %d pre-existing Mammut rows", cleaned["mammut_fixed"]
-        )
-    if cleaned["delisted"]:
-        logger.debug(
-            "Removed %d pre-existing rows no longer listed on their source page",
-            cleaned["delisted"],
-        )
+        # Store everything sighted and passing: new jobs insert as 'new';
+        # stored jobs (including the rejected ones still listed) refresh their
+        # descriptive fields and last_seen while keeping status and first_seen.
+        def _row(job: JobRecord) -> dict[str, Any] | None:
+            confirmed = _HYBRID_CONFIRMED_REASON in (job.get("matched_reasons") or [])
+            return job_to_row(dict(job, hybrid_confirmed=1 if confirmed else 0))
 
-    sort_jobs_csv(out_csv_path)
+        upserts = [r for j in [*kept_new, *cached_jobs, *blocked_jobs] if (r := _row(j))]
+        rows_written, refreshed = store.upsert_jobs(upserts, run_id)
+        logger.debug("Store: %d rows inserted, %d refreshed", rows_written, refreshed)
 
-    # Dual write (WP4): mirror the finished CSV into the SQLite shadow store.
-    # CSV is authoritative, so a failure here must not fail the run — but it
-    # must be loud, or the WP5 cutover would inherit a silently stale database.
-    # experience_level is taken from this run's Layer 2 results; "cached" is a
-    # placeholder meaning "skipped the detail fetch", not a real level, so it
-    # is not stored.
-    experience_levels = {
-        k: str(j.get("experience_level") or "")
-        for j in kept_rows
-        if (k := _dedupe_key(j)) and j.get("experience_level") not in (None, "", "cached")
-    }
-    resolved_db_path = out_db_path or out_csv_path.with_suffix(".sqlite3")
-    try:
-        _mirror_to_sqlite(
-            resolved_db_path, out_csv_path, run_started_at, source_health, experience_levels
+        rows_delisted = store.note_misses_and_delist(
+            source_scraped_keys, delist_after, force_delist_sources
         )
-    except Exception:
-        logger.exception(
-            "SQLite shadow store update failed; the CSV store at %s is unaffected "
-            "and remains authoritative",
-            out_csv_path,
-        )
+        if rows_delisted:
+            logger.debug(
+                "Marked %d jobs delisted (no sighting in %d consecutive successful runs)",
+                rows_delisted,
+                delist_after,
+            )
+
+        # Re-filter stored unreviewed rows against the current rules (the old
+        # clean_existing_rows, minus the deletions).
+        refiltered = refilter_stored_jobs(store, rules, title_keywords, hybrid_pattern)
+        for filter_name, count in refiltered.items():
+            if count:
+                logger.debug(
+                    "Marked %d stored jobs rejected by the %s filter", count, filter_name
+                )
+
+        store.finish_run(run_id)
 
     return RunSummary(
         sources_total=len(sources),
@@ -405,5 +402,5 @@ def run_pipeline(
         jobs_hybrid_excluded=jobs_hybrid_excluded,
         jobs_kept_new=len(kept_new),
         rows_written=rows_written,
-        rows_delisted=cleaned["delisted"],
+        rows_delisted=rows_delisted,
     )

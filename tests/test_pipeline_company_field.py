@@ -7,7 +7,6 @@ replaced on the pipeline module.
 
 from __future__ import annotations
 
-import csv
 import json
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,7 @@ import yaml
 
 from job_scraper import pipeline as pipeline_mod
 from job_scraper.pipeline import run_pipeline
+from job_scraper.storage.db import JobStore
 
 _LISTING = "https://acme.example/jobs"
 
@@ -76,22 +76,21 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         pipeline_mod, "get_extractor", lambda name: lambda url, fetch_fn: list(_EXTRACTED)
     )
-    monkeypatch.setattr(pipeline_mod, "load_blocklist_keys", lambda: set())
     monkeypatch.setattr(pipeline_mod, "fetch_text", _fake_fetch)
     monkeypatch.setattr(pipeline_mod, "fetch_rendered", _fake_fetch)
     return tmp_path
 
 
-def _rows(tmp_path: Path) -> list[dict[str, str]]:
-    with (tmp_path / "jobs.csv").open(encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
+def _rows(tmp_path: Path) -> list[dict[str, Any]]:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        return store.all_jobs()
 
 
 def test_configured_company_fills_in_where_extractor_left_it_blank(env: Path) -> None:
     run_pipeline(
         sources_path=env / "sources.yaml",
         rules_path=env / "rules.json",
-        out_csv_path=env / "jobs.csv",
+        out_db_path=env / "jobs.sqlite3",
     )
 
     by_title = {r["title"]: r["company"] for r in _rows(env)}
@@ -102,7 +101,7 @@ def test_extractor_company_wins_over_configured_company(env: Path) -> None:
     run_pipeline(
         sources_path=env / "sources.yaml",
         rules_path=env / "rules.json",
-        out_csv_path=env / "jobs.csv",
+        out_db_path=env / "jobs.sqlite3",
     )
 
     by_title = {r["title"]: r["company"] for r in _rows(env)}

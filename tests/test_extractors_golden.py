@@ -31,7 +31,8 @@ from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 # Five sources produce eight keys; impactpool produces nine, adding `company`,
 # because it is an aggregator listing other organisations' vacancies rather
 # than a single employer's career page. Do not "normalise" that away — the
-# difference is real and _content_key in csv_store.py depends on it.
+# difference is real, and the company-stamping in pipeline.py relies on the
+# extractor setting the field only when it genuinely knows the employer.
 _GOLDEN: dict[str, dict[str, Any]] = {
     "busuu": {
         "count": 6,

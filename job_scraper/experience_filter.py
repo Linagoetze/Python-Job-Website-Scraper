@@ -7,8 +7,8 @@ Layer 1 — title heuristic: excludes jobs whose title contains seniority
 Layer 2 — detail-page parsing: fetches each job's detail_url, strips HTML,
            and looks for numeric experience requirements. Jobs requiring
            >= 3 years are excluded; jobs with no requirement or <= 2 years
-           are kept. Always runs, but only for jobs not already stored in
-           jobs.csv — it is the one layer that costs an HTTP request per job.
+           are kept. Always runs, but only for jobs not already in the store
+           — it is the one layer that costs an HTTP request per job.
 """
 
 from __future__ import annotations
