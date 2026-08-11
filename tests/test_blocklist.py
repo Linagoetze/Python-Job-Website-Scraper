@@ -1,4 +1,10 @@
-"""Tests for the permanent job blocklist."""
+"""Tests for the review-status replacement of the CSV blocklist.
+
+The critical semantics: the legacy blocklist.csv was produced by a routine
+that blocklisted *every* surfaced job after each run, so its rows mean
+"already seen", not "rejected" — the import must never turn them into
+rejections, and must preserve every row.
+"""
 
 from __future__ import annotations
 
@@ -6,84 +12,97 @@ import csv
 from pathlib import Path
 
 from job_scraper.blocklist import (
-    append_to_blocklist,
-    load_blocklist_keys,
+    import_legacy_blocklist,
+    mark_all_new_seen,
+    read_legacy_blocklist,
 )
-from job_scraper.storage.csv_store import FIELDNAMES, clean_existing_rows
+from job_scraper.storage.db import JobStore
+
+_LEGACY_FIELDS = ["dedupe_key", "source_name", "company", "title", "detail_url"]
 
 
-def _job_row(source: str, title: str, *, url: str, run_id: str = "1") -> dict[str, str]:
-    return {
-        "source_name": source,
-        "title": title,
-        "company": "",
-        "location": "",
-        "detail_hyperlink": f'=HYPERLINK("{url}")' if url else "",
-        "apply_hyperlink": "",
-        "run_id": run_id,
-    }
-
-
-def _write_jobs(path: Path, rows: list[dict[str, str]]) -> None:
+def _write_legacy_blocklist(path: Path, rows: list[dict[str, str]]) -> None:
     with path.open("w", encoding="utf-8", newline="") as f:
         f.write("﻿")
-        w = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=_LEGACY_FIELDS, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
 
 
-def _read_jobs(path: Path) -> list[dict[str, str]]:
-    with path.open(encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
+def _legacy_row(key: str, title: str = "Project Manager") -> dict[str, str]:
+    return {
+        "dedupe_key": key,
+        "source_name": "greenhouse",
+        "company": "Acme",
+        "title": title,
+        "detail_url": key,
+    }
 
 
-def test_append_and_load_roundtrip(tmp_path: Path) -> None:
+def _statuses(db: Path) -> dict[str, str]:
+    with JobStore(db) as store:
+        return {r["dedupe_key"]: r["status"] for r in store.all_jobs()}
+
+
+def test_import_brings_every_row_in_as_seen_never_rejected(tmp_path: Path) -> None:
     bl = tmp_path / "blocklist.csv"
-    rows = [
-        _job_row("greenhouse", "Project Manager", url="https://x/jobs/1"),
-        _job_row("axis", "Coordinator", url="https://x/jobs/2"),
-    ]
-    added = append_to_blocklist(bl, rows)
-    assert added == 2
-    keys = load_blocklist_keys(bl)
-    assert keys == {"https://x/jobs/1", "https://x/jobs/2"}
+    db = tmp_path / "jobs.sqlite3"
+    rows = [_legacy_row(f"https://x/jobs/{i}") for i in range(265)]
+    _write_legacy_blocklist(bl, rows)
+
+    inserted, flipped = import_legacy_blocklist(db, bl)
+
+    assert (inserted, flipped) == (265, 0)
+    statuses = _statuses(db)
+    assert len(statuses) == 265, "all 265 rows preserved"
+    assert set(statuses.values()) == {"seen"}, "'already seen', not 'rejected'"
 
 
-def test_append_is_idempotent(tmp_path: Path) -> None:
+def test_import_never_touches_the_csv(tmp_path: Path) -> None:
     bl = tmp_path / "blocklist.csv"
-    rows = [_job_row("greenhouse", "Project Manager", url="https://x/jobs/1")]
-    assert append_to_blocklist(bl, rows) == 1
-    # Re-adding the same posting adds nothing.
-    assert append_to_blocklist(bl, rows) == 0
-    assert len(load_blocklist_keys(bl)) == 1
+    _write_legacy_blocklist(bl, [_legacy_row("https://x/jobs/1")])
+    before = bl.read_bytes()
+
+    import_legacy_blocklist(tmp_path / "jobs.sqlite3", bl)
+
+    assert bl.read_bytes() == before
 
 
-def test_load_missing_file_returns_empty(tmp_path: Path) -> None:
-    assert load_blocklist_keys(tmp_path / "nope.csv") == set()
-
-
-def test_oatly_slug_variants_share_one_key(tmp_path: Path) -> None:
+def test_import_is_idempotent(tmp_path: Path) -> None:
     bl = tmp_path / "blocklist.csv"
-    # Same numeric job id, different slug → one canonical key.
-    append_to_blocklist(
-        bl, [_job_row("oatly", "Brand Lead", url="https://careers.oatly.com/en-GB/jobs/12345-brand-lead")]
-    )
-    keys = load_blocklist_keys(bl)
-    assert keys == {"oatly:job:12345"}
+    db = tmp_path / "jobs.sqlite3"
+    _write_legacy_blocklist(bl, [_legacy_row("https://x/jobs/1")])
+
+    assert import_legacy_blocklist(db, bl) == (1, 0)
+    assert import_legacy_blocklist(db, bl) == (0, 0)
+    assert len(_statuses(db)) == 1
 
 
-def test_clean_existing_rows_drops_blocklisted(tmp_path: Path) -> None:
-    jobs = tmp_path / "jobs.csv"
-    _write_jobs(jobs, [
-        _job_row("greenhouse", "Project Manager", url="https://x/jobs/1"),
-        _job_row("axis", "Coordinator", url="https://x/jobs/2"),
-    ])
-    rules = {"locations": [], "include_keywords": [], "exclude_keywords": [],
-             "match_in": "title_and_description", "seniority_filter_enabled": False}
-    counts = clean_existing_rows(
-        jobs, rules, [], blocklist_keys={"https://x/jobs/1"}
-    )
-    assert counts["blocklist"] == 1
-    remaining = _read_jobs(jobs)
-    assert len(remaining) == 1
-    assert "jobs/2" in remaining[0]["detail_hyperlink"]
+def test_import_with_missing_or_headerless_file_is_a_noop(tmp_path: Path) -> None:
+    assert read_legacy_blocklist(tmp_path / "nope.csv") == []
+    bad = tmp_path / "bad.csv"
+    bad.write_text("title\nProject Manager\n", encoding="utf-8")
+    assert read_legacy_blocklist(bad) == []
+    assert import_legacy_blocklist(tmp_path / "jobs.sqlite3", bad) == (0, 0)
+
+
+def test_mark_all_new_seen_flips_only_unreviewed_jobs(tmp_path: Path) -> None:
+    db = tmp_path / "jobs.sqlite3"
+    with JobStore(db) as store:
+        run_id = store.begin_run()
+        store.upsert_jobs(
+            [
+                {"dedupe_key": "https://x/jobs/1", "source_name": "acme"},
+                {"dedupe_key": "https://x/jobs/2", "source_name": "acme"},
+            ],
+            run_id,
+        )
+        store.set_status(["https://x/jobs/2"], "shortlisted")
+        store.finish_run(run_id)
+
+    assert mark_all_new_seen(db) == 1
+
+    assert _statuses(db) == {
+        "https://x/jobs/1": "seen",
+        "https://x/jobs/2": "shortlisted",
+    }

@@ -32,17 +32,13 @@ def default_title_keywords_path() -> Path:
 
 
 def default_data_dir() -> Path:
-    """Generated output (jobs.csv/xlsx, jobs_sources.csv) — regenerated every run."""
+    """Generated output (the job store, jobs.xlsx, jobs_sources.csv)."""
     return default_project_root() / "data"
 
 
 def default_curated_dir() -> Path:
-    """Hand-maintained data that no run regenerates: the blocklist, excluded sources."""
+    """Hand-maintained data that no run regenerates: the legacy blocklist, excluded sources."""
     return default_data_dir() / "curated"
-
-
-def default_jobs_csv_path() -> Path:
-    return default_data_dir() / "jobs.csv"
 
 
 def default_jobs_xlsx_path() -> Path:
@@ -50,7 +46,7 @@ def default_jobs_xlsx_path() -> Path:
 
 
 def default_jobs_db_path() -> Path:
-    """SQLite shadow store (WP4). Becomes authoritative in WP5."""
+    """The authoritative SQLite job store (since WP5)."""
     return default_data_dir() / "jobs.sqlite3"
 
 

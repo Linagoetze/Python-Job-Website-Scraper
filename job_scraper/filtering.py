@@ -174,12 +174,12 @@ _LOCATION_SPLIT = re.compile(r"[|/\n]+")
 #               against the description, and drops it if it cannot.
 #   CONFIRMED — hybrid was seen, either in the Layer 1 text or by Layer 2.
 #
-# matched_reasons is *not* a jobs.csv column (see _REMOVED_COLUMNS in
-# storage/csv_store.py), so neither marker survives a run. That is why the
-# pipeline re-runs Layer 2 for pending jobs even when they are already stored:
-# the confirmation has to be re-earned from the description every run. It also
-# means clean_existing_rows() sees a stored conditional-city row as PENDING and
-# keeps it — correct, since Layer 2 is what put it there in the first place.
+# A confirmation earned from a detail page is persisted as the store's
+# hybrid_confirmed column (WP5), so a stored conditional-city job skips the
+# re-fetch on later runs like any other stored job. The reason strings remain
+# the in-run contract between the two stages; refilter_stored_jobs sees a
+# stored conditional-city row as PENDING and keeps it — correct, since Layer 2
+# is what put it there in the first place.
 _HYBRID_PENDING_REASON = "locations: conditional (hybrid unconfirmed)"
 _HYBRID_CONFIRMED_REASON = "locations: conditional (hybrid confirmed)"
 

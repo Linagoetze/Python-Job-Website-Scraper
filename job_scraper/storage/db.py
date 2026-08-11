@@ -1,13 +1,14 @@
 """SQLite store for jobs, runs, and per-source health.
 
-WP4: this is a shadow store. The pipeline writes to it after every run, but
-`data/jobs.csv` remains the source of truth until WP5 cuts over. Rows here are
-never hard-deleted: a job that disappears from the authoritative store is
-marked `status = 'delisted'` and keeps its history.
+The authoritative job store since WP5. Rows are never hard-deleted: a job that
+disappears from its source is marked `status = 'delisted'` after `misses`
+consecutive successful scrapes without a sighting, and a job that stops
+passing the filters is marked `'rejected'`; both keep their history.
 
-Unlike the CSV, this store knows *when* it saw things: `first_seen`/`last_seen`
-on jobs (ISO-8601 UTC strings), a `runs` table, and a `source_health` row per
-scrape attempt, which WP10 uses to warn about sources whose counts collapse.
+Unlike the old CSV store, this one knows *when* it saw things:
+`first_seen`/`last_seen` on jobs (ISO-8601 UTC strings), a `runs` table, and a
+`source_health` row per scrape attempt, which WP10 uses to warn about sources
+whose counts collapse.
 """
 
 from __future__ import annotations
@@ -17,7 +18,51 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from job_scraper.urlutil import canonical_detail_url, dedupe_key_from_url, normalize_http_url
+
 JOB_STATUSES = ("new", "seen", "shortlisted", "rejected", "delisted")
+
+# Statuses a human set (or will set, from WP5b's review commands). Automated
+# passes — delisting, re-filtering — must never overwrite these.
+REVIEW_STATUSES = ("shortlisted", "rejected")
+
+
+def dedupe_key_for_job(job: dict[str, Any]) -> str:
+    """Stable deduplication key from an extractor job dict ('' if it has no URL)."""
+    u = normalize_http_url(
+        (job.get("detail_url") or "").strip() or (job.get("apply_url") or "").strip()
+    )
+    return dedupe_key_from_url(u)
+
+
+def job_to_row(job: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert an extractor job dict to a store row, or None if it has no key.
+
+    The stored detail_url is the canonical form (`canonical_detail_url` may add
+    a locale prefix, e.g. Oatly), while the dedupe key is computed from the raw
+    URL — `dedupe_key_from_url` folds both variants to the same key, which is
+    what lets a job stored in one run be recognised in the next.
+    """
+    key = dedupe_key_for_job(job)
+    if not key:
+        return None
+    raw_du = (job.get("detail_url") or "").strip() or (job.get("apply_url") or "").strip()
+    raw_au = (job.get("apply_url") or "").strip()
+    src = str(job.get("source_name") or "").strip()
+    listing = str(job.get("listing_url") or "").strip()
+    du = canonical_detail_url(src, listing, raw_du) if raw_du else ""
+    au = normalize_http_url(raw_au) if raw_au and raw_au != du else ""
+    return {
+        "dedupe_key": key,
+        "source_name": str(job.get("source_name") or ""),
+        "company": str(job.get("company") or ""),
+        "title": str(job.get("title") or ""),
+        "location": str(job.get("location") or ""),
+        "detail_url": du,
+        "apply_url": au,
+        "experience_level": str(job.get("experience_level") or ""),
+        "hybrid_confirmed": int(job.get("hybrid_confirmed") or 0),
+    }
 
 # jobs.status is a TEXT column with a CHECK rather than a lookup table: five
 # fixed values, one user, and a constraint violation is the loud failure we
@@ -42,7 +87,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     last_run_id      INTEGER NOT NULL REFERENCES runs(run_id),
     status           TEXT NOT NULL DEFAULT 'new'
         CHECK (status IN ('new', 'seen', 'shortlisted', 'rejected', 'delisted')),
-    experience_level TEXT NOT NULL DEFAULT ''
+    experience_level TEXT NOT NULL DEFAULT '',
+    misses           INTEGER NOT NULL DEFAULT 0,
+    hybrid_confirmed INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS source_health (
@@ -78,6 +125,13 @@ class JobStore:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(_SCHEMA)
+        # A database created by WP4's shadow store predates the misses and
+        # hybrid_confirmed columns; add them in place rather than losing the
+        # first_seen history it has accrued.
+        have = {row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
+        for column in ("misses", "hybrid_confirmed"):
+            if column not in have:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
         self._conn = conn
         return self
 
@@ -146,7 +200,10 @@ class JobStore:
         survive a scrape) and has last_seen/last_run_id bumped — except that a
         'delisted' job which reappears goes back to 'seen', since it is
         evidently listed again. An empty experience_level never overwrites a
-        stored one: it means "not determined this run", not "none".
+        stored one: it means "not determined this run", not "none". A sighting
+        resets the consecutive-miss counter, and hybrid_confirmed only ever
+        ratchets up — a run that could not re-verify the hybrid arrangement
+        (e.g. it skipped the detail fetch) must not unconfirm it.
         """
         if initial_status not in JOB_STATUSES:
             raise ValueError(f"unknown status {initial_status!r}")
@@ -162,8 +219,9 @@ class JobStore:
                 """
                 INSERT INTO jobs (dedupe_key, source_name, company, title, location,
                                   detail_url, apply_url, first_seen, last_seen,
-                                  last_run_id, status, experience_level)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  last_run_id, status, experience_level,
+                                  misses, hybrid_confirmed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
                 ON CONFLICT(dedupe_key) DO UPDATE SET
                     source_name = excluded.source_name,
                     company = excluded.company,
@@ -177,7 +235,9 @@ class JobStore:
                                             THEN excluded.experience_level
                                             ELSE jobs.experience_level END,
                     status = CASE WHEN jobs.status = 'delisted'
-                                  THEN 'seen' ELSE jobs.status END
+                                  THEN 'seen' ELSE jobs.status END,
+                    misses = 0,
+                    hybrid_confirmed = MAX(jobs.hybrid_confirmed, excluded.hybrid_confirmed)
                 """,
                 (
                     key,
@@ -192,6 +252,7 @@ class JobStore:
                     run_id,
                     initial_status,
                     str(job.get("experience_level") or ""),
+                    int(job.get("hybrid_confirmed") or 0),
                 ),
             )
             if key in existing:
@@ -201,37 +262,142 @@ class JobStore:
                 inserted += 1
         return inserted, updated
 
-    def mark_delisted_except(self, present_keys: set[str]) -> int:
-        """Mark every job whose key is not in *present_keys* as 'delisted'.
+    def note_misses_and_delist(
+        self,
+        seen_keys_by_source: dict[str, set[str]],
+        threshold: int,
+        force_delist_sources: set[str] | None = None,
+    ) -> int:
+        """Apply the consecutive-miss delisting rule. Returns jobs newly delisted.
 
-        Never deletes. last_seen is left alone — it records the last time the
-        job was actually observed. WP4's mirror calls this with "everything in
-        the authoritative CSV", so any status can be overwritten here; WP5
-        replaces this with the N-consecutive-misses rule and must reconcile
-        delisting with review statuses properly.
+        *seen_keys_by_source* holds, per source successfully scraped this run,
+        every dedupe key the extractor offered (before any filter — a job that
+        is listed but filtered is not "missing"). A sighted job's miss counter
+        resets; an unsighted one increments, and at *threshold* consecutive
+        misses the job is marked 'delisted'. Sources absent from the dict were
+        not scraped successfully, so their jobs are left entirely alone — a
+        broken selector must never erode stored history one miss at a time.
+
+        Review decisions survive: only 'new' and 'seen' jobs are ever flipped
+        to 'delisted'. A shortlisted or rejected job keeps its status (the miss
+        counter still accrues, so the information is not lost).
+
+        *force_delist_sources* is the --allow-empty-delist escape hatch: the
+        owner has said these sources genuinely emptied, so their unreviewed
+        jobs are delisted now rather than after *threshold* runs.
         """
+        if threshold < 1:
+            raise ValueError(f"delist threshold must be >= 1, got {threshold}")
         conn = self._c()
-        stored = [
-            row[0]
-            for row in conn.execute("SELECT dedupe_key FROM jobs WHERE status != 'delisted'")
-        ]
-        missing = [k for k in stored if k not in present_keys]
-        conn.executemany(
-            "UPDATE jobs SET status = 'delisted' WHERE dedupe_key = ?",
-            ((k,) for k in missing),
-        )
-        return len(missing)
+        delisted = 0
+        for source, keys in seen_keys_by_source.items():
+            stored = list(
+                conn.execute(
+                    "SELECT dedupe_key, status FROM jobs WHERE source_name = ?", (source,)
+                )
+            )
+            sighted = [(r["dedupe_key"],) for r in stored if r["dedupe_key"] in keys]
+            missing = [
+                (r["dedupe_key"],)
+                for r in stored
+                if r["dedupe_key"] not in keys and r["status"] != "delisted"
+            ]
+            conn.executemany("UPDATE jobs SET misses = 0 WHERE dedupe_key = ?", sighted)
+            conn.executemany("UPDATE jobs SET misses = misses + 1 WHERE dedupe_key = ?", missing)
+            cur = conn.execute(
+                "UPDATE jobs SET status = 'delisted'"
+                " WHERE source_name = ? AND status IN ('new', 'seen') AND misses >= ?",
+                (source, threshold),
+            )
+            delisted += cur.rowcount
+        for source in force_delist_sources or ():
+            cur = conn.execute(
+                "UPDATE jobs SET status = 'delisted'"
+                " WHERE source_name = ? AND status IN ('new', 'seen')",
+                (source,),
+            )
+            delisted += cur.rowcount
+        return delisted
 
-    def count_jobs(self) -> int:
-        (n,) = next(iter(self._c().execute("SELECT COUNT(*) FROM jobs")))
-        return int(n)
+    def set_status(self, keys: list[str], status: str) -> int:
+        """Set *status* on every job in *keys*. Returns the number updated."""
+        if status not in JOB_STATUSES:
+            raise ValueError(f"unknown status {status!r}")
+        cur = self._c().executemany(
+            "UPDATE jobs SET status = ? WHERE dedupe_key = ?", ((status, k) for k in keys)
+        )
+        return cur.rowcount
+
+    def mark_new_as_seen(self) -> int:
+        """Mark every unreviewed ('new') job as 'seen'. Returns the number flipped."""
+        return self._c().execute("UPDATE jobs SET status = 'seen' WHERE status = 'new'").rowcount
+
+    def import_seen_rows(self, rows: list[dict[str, Any]], run_id: int) -> tuple[int, int]:
+        """Import legacy blocklist rows as 'seen'. Returns (inserted, flipped).
+
+        A key not yet stored is inserted with status 'seen'. A stored key that
+        is 'new' or 'delisted' is flipped to 'seen' — the legacy blocklist is
+        the record that the owner has already had it in the spreadsheet — but
+        its timestamps are left alone, and a review status (shortlisted,
+        rejected) is never demoted. Idempotent.
+        """
+        now = utc_now_iso()
+        conn = self._c()
+        inserted = flipped = 0
+        for row in rows:
+            key = str(row.get("dedupe_key") or "").strip()
+            if not key:
+                continue
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO jobs (dedupe_key, source_name, company, title,
+                                            location, detail_url, apply_url,
+                                            first_seen, last_seen, last_run_id, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seen')
+                """,
+                (
+                    key,
+                    str(row.get("source_name") or ""),
+                    str(row.get("company") or ""),
+                    str(row.get("title") or ""),
+                    str(row.get("location") or ""),
+                    str(row.get("detail_url") or ""),
+                    str(row.get("apply_url") or ""),
+                    now,
+                    now,
+                    run_id,
+                ),
+            )
+            if cur.rowcount:
+                inserted += 1
+            else:
+                cur = conn.execute(
+                    "UPDATE jobs SET status = 'seen'"
+                    " WHERE dedupe_key = ? AND status IN ('new', 'delisted')",
+                    (key,),
+                )
+                flipped += cur.rowcount
+        return inserted, flipped
+
+    def job_index(self) -> dict[str, dict[str, Any]]:
+        """dedupe_key -> {status, hybrid_confirmed} for every stored job."""
+        return {
+            r["dedupe_key"]: {"status": r["status"], "hybrid_confirmed": r["hybrid_confirmed"]}
+            for r in self._c().execute("SELECT dedupe_key, status, hybrid_confirmed FROM jobs")
+        }
+
+    def jobs_with_status(self, statuses: tuple[str, ...]) -> list[dict[str, Any]]:
+        unknown = set(statuses) - set(JOB_STATUSES)
+        if unknown:
+            raise ValueError(f"unknown statuses {sorted(unknown)!r}")
+        placeholders = ", ".join("?" for _ in statuses)
+        rows = self._c().execute(
+            f"SELECT * FROM jobs WHERE status IN ({placeholders})"
+            " ORDER BY source_name, dedupe_key",
+            statuses,
+        )
+        return [dict(r) for r in rows]
 
     def all_jobs(self) -> list[dict[str, Any]]:
         rows = self._c().execute("SELECT * FROM jobs ORDER BY source_name, dedupe_key")
-        return [dict(r) for r in rows]
-
-    def active_jobs(self) -> list[dict[str, Any]]:
-        rows = self._c().execute(
-            "SELECT * FROM jobs WHERE status != 'delisted' ORDER BY source_name, dedupe_key"
-        )
         return [dict(r) for r in rows]

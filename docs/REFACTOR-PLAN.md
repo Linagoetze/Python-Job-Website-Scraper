@@ -40,7 +40,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | done | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | done | `wp3-company-field` |
 | 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | done | `wp4-sqlite-schema` |
-| 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | not started | `wp5-sqlite-cutover` |
+| 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | done | `wp5-sqlite-cutover` |
 | 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | not started | `wp5b-review-workflow` |
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | not started | `wp6-persist-descriptions` |
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | not started | `wp7-llm-scoring` |
@@ -61,6 +61,22 @@ Record any decision a future session would otherwise have to re-derive.
   `_resolve_hybrid`) are a deliberate feature the owner wrote before this plan
   existed, not accidental scope creep. Keep it; do not propose deleting it as
   part of the filter-ladder cleanup in WP8.
+- **Statuses after WP5.** `'rejected'` covers both "a filter now excludes this
+  stored row" and (from WP5b) "the owner said no" — one status, deliberately,
+  to stay inside the WP4 vocabulary. Consequence: nothing automatic ever flips
+  `'rejected'` back, so loosening a rule does not resurrect rows it previously
+  rejected (they are still in the table for manual revival). The automated
+  re-filter pass (`pipeline.refilter_stored_jobs`) touches **only `'new'`
+  rows** — `'seen'` is review history and must not be silently rewritten to
+  `'rejected'`, or the seen-vs-rejected distinction the blocklist import
+  preserves would erode run by run.
+- **Delisting after WP5** is `jobs.misses`: reset on sighting, incremented per
+  successful scrape of the source without a sighting, flipped to `'delisted'`
+  at N consecutive misses (default 2, `--delist-after`). Only `'new'`/`'seen'`
+  flip; shortlisted/rejected keep their status while misses accrue.
+  `--allow-empty-delist` now means "this source genuinely emptied — delist its
+  unreviewed jobs *now*", bypassing the threshold; without it a zero-row
+  scrape still counts for nothing at all.
 
 ---
 
@@ -752,6 +768,98 @@ helper "just in case", say so and explain why rather than keeping it silently.
 Branch wp5-sqlite-cutover. Commit, do not push. Update the plan file.
 ```
 
+### Result
+
+178 tests pass (was 168 before the cutover; 21 CSV-pinning tests deleted with
+the code they pinned, 31 added). `ruff check .` clean. **Net −784 lines.**
+
+Deleted outright: `storage/csv_store.py` (all 455 lines — every function on
+the prompt's list plus the rest of the module, which existed only to serve
+them) and its tests (`test_csv_store_atomicity`, `test_content_dedupe`,
+`test_csv_roundtrip`, `test_dual_store`). The round-trip properties the CSV
+tests guarded (Oatly locale variants, apply-url-only jobs, http→https, keyless
+rows dropped) were ported to `tests/test_store_roundtrip.py` first — they are
+properties of the keying, not of the CSV.
+
+**Also deleted, beyond the prompt's list: `tools/migrate_to_sqlite.py`.** It
+was the last parser of `=HYPERLINK()` formulas, so keeping it would have kept
+Excel syntax outside the xlsx writer. Verified safe before deleting (row
+counts only, no content read): the database already held exactly the 11 jobs
+in jobs.csv — the WP4 dual write had done the migration's job — and the 265
+blocklist rows were *not* in the database, so the import that actually
+matters is the blocklist one (below). jobs.csv itself is untouched on disk as
+a frozen pre-cutover archive, and the tool remains in git history.
+
+**One-off action for the owner, once, before the next scrape:**
+
+```
+.venv/bin/python -m job_scraper.tools.import_blocklist
+```
+
+This reads `data/curated/blocklist.csv` (read-only — the file is not modified)
+and imports all 265 rows as **status `'seen'`, never `'rejected'`**, matching
+what the blocklist-everything routine actually meant. Idempotent; existing
+rows are never demoted from a review status. Skipping it costs nothing
+destructive, but until it runs the pipeline will re-fetch detail pages for
+old postings it should know about.
+
+How the pieces landed:
+
+- **`pipeline.py`** talks only to `storage/db.py`. Everything after the fetch
+  phase runs in one store transaction (`with JobStore(...)`), so a crash
+  mid-run rolls back to the previous run's state — the SQLite descendant of
+  WP1's atomic writes. The old Layer 1d blocklist file-check is now "stored
+  with status `'rejected'`" (same funnel counter). `clean_existing_rows`
+  became `refilter_stored_jobs`: same filter sequence, but failures are marked
+  `'rejected'`, never deleted, and only `'new'` rows are touched (see the
+  decisions log).
+- **`storage/db.py`** gained `misses` and `hybrid_confirmed` columns (added by
+  `ALTER TABLE` on a WP4-era database, preserving its history),
+  `note_misses_and_delist` (the N-consecutive-misses rule), status helpers,
+  and `job_to_row`/`dedupe_key_for_job` — the URL canonicalisation that used
+  to live in `_normalize_row_fields`/`_dedupe_key`.
+- **`storage/xlsx_store.py`** reads the store and shows **`status = 'new'`
+  only**, which is what "jobs.csv minus everything blocklisted" always was —
+  the owner's open-the-spreadsheet experience is unchanged. `=HYPERLINK()`
+  formulas are generated here at export time and exist nowhere else. Green
+  highlight = first seen in the two most recent storing runs (rows stored by
+  one run share a first_seen timestamp, which stands in for the old run_id).
+- **`blocklist.py`** is now status operations: `mark_all_new_seen` (what
+  `tools/blocklist_all.py` and `scripts/scrape_and_blocklist.sh` call — the
+  routine keeps working, it just flips statuses instead of moving rows
+  between files) and `import_legacy_blocklist` (the one-off above).
+- **Item 7 (hybrid confirmation)** is the `hybrid_confirmed` column. A
+  conditional-city job earns its exception from the detail page once; the
+  confirmation is persisted and the job is skipped like any other stored job
+  thereafter. The flag only ratchets up — a run that skips the fetch cannot
+  unconfirm it. Rows stored before the column existed are re-checked exactly
+  once, then converge. Pinned by two tests in `tests/test_pipeline_store.py`
+  that count HTTP fetches.
+
+Behaviour changes worth knowing about, all deliberate:
+
+- **Content dedupe is gone** (`_collapse_content_duplicates` was on the
+  deletion list). The WP2-pinned churn — one impactpool row rewritten every
+  run, forever — is fixed by removal: both URL-variants of a re-advertised
+  posting are now stored, so the funnel settles, at the cost of the
+  occasional visible duplicate title in the table. WP7's scorer (or a WP5b
+  review action) is the right place to handle those; a content-key collapse
+  in the store was how the churn started.
+- The Mammut pipe-separated-location repair was dropped, not ported: it fixed
+  rows written before an extractor fix, and no such row exists in the
+  database (they were repaired before the WP4 mirror ever ran). If pipes
+  reappear, that is an extractor regression and should fail loudly, not be
+  silently patched in storage.
+- `run.py` lost `--output` (there is no CSV store to point at); `--output-db`
+  is the store, and `--delist-after` configures the miss threshold. The
+  summary line "Delisted removed" now reads "Marked delisted" — nothing is
+  removed any more.
+- `jobs_sources.csv` is still written next to the database. It is a per-run
+  report, not a store, and was out of scope.
+
+Not done, per scope: no review commands, no xlsx archive sheet, no
+`--show-everything` flag — that is WP5b, which now has the statuses it needs.
+
 ---
 
 ## WP5b — Replace the blocklist-everything routine
@@ -853,9 +961,10 @@ changing anything, run the current pipeline and the new one over the same stored
 jobs and show me a diff of what each keeps, so the decision is evidence-based.
 
 Candidates for removal, in this order:
-- apply_non_english_text_filter: already inert in clean_existing_rows because
-  stored rows have no raw_snippet, and langdetect on short snippets is
-  unreliable and nondeterministic. The scorer handles language better.
+- apply_non_english_text_filter: already inert in refilter_stored_jobs (the
+  old clean_existing_rows) because stored rows have no raw_snippet, and
+  langdetect on short snippets is unreliable and nondeterministic. The scorer
+  handles language better.
 - apply_language_filter (the "X speaker" pattern): subsumed by the scorer.
 - title_exclude_keywords.csv: subsumed by the scorer.
 

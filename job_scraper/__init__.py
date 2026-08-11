@@ -33,7 +33,3 @@ class JobRecord(TypedDict, total=False):
     # --- Added by pipeline / filters ---
     matched_reasons: list[str]
     experience_level: str
-
-    # --- Added by CSV storage ---
-    detail_hyperlink: str
-    run_id: str

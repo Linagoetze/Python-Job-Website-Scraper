@@ -1,42 +1,29 @@
-"""One-off script: move every job currently in jobs.csv into the permanent
-blocklist, clear jobs.csv, and regenerate jobs.xlsx.
+"""Mark every unreviewed job as seen, then regenerate jobs.xlsx.
 
-After this runs, none of the rejected postings will be scraped again: the
-pipeline filters them out every run via job_scraper/blocklist.py.
+The post-run half of the scrape-and-blocklist routine: after the owner has
+looked at the spreadsheet, this flips every 'new' job to 'seen' so the next
+run's table shows only jobs stored after this point. Nothing is deleted —
+the rows keep their history in the database.
+
+Safe to run repeatedly, including when there is nothing new.
 
 Usage: python -m job_scraper.tools.blocklist_all
 """
 
-import csv
-
-from job_scraper.blocklist import append_to_blocklist, default_blocklist_path
-from job_scraper.config_loader import default_jobs_csv_path, default_jobs_xlsx_path
-from job_scraper.storage.csv_store import _rewrite_file
+from job_scraper.blocklist import mark_all_new_seen
+from job_scraper.config_loader import default_jobs_db_path, default_jobs_xlsx_path
 from job_scraper.storage.xlsx_store import write_xlsx
 
 
 def main() -> None:
-    csv_path = default_jobs_csv_path()
+    db_path = default_jobs_db_path()
     xlsx_path = default_jobs_xlsx_path()
-    blocklist_path = default_blocklist_path()
 
-    if not csv_path.is_file() or csv_path.stat().st_size == 0:
-        raise SystemExit(f"No jobs to blocklist: {csv_path} is missing or empty")
+    marked = mark_all_new_seen(db_path)
+    table_total = write_xlsx(db_path, xlsx_path)
 
-    with csv_path.open(encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
-
-    added = append_to_blocklist(blocklist_path, rows)
-
-    # Scope is "everything currently stored", so clear jobs.csv to header-only.
-    _rewrite_file(csv_path, [])
-
-    table_total = write_xlsx(csv_path, xlsx_path)
-
-    print(f"Read {len(rows)} jobs from jobs.csv")
-    print(f"Added {added} new keys to {blocklist_path} ({len(rows) - added} already present)")
-    print(f"Cleared jobs.csv (now {table_total} rows)")
-    print("jobs.xlsx regenerated")
+    print(f"Marked {marked} jobs as seen in {db_path} (rows kept, nothing deleted)")
+    print(f"jobs.xlsx regenerated ({table_total} unreviewed jobs shown)")
 
 
 if __name__ == "__main__":
