@@ -330,14 +330,25 @@ stored after this point. This is the command that replaced
 `scripts/scrape_and_blocklist.sh`.
 
 ```bash
-python -m job_scraper.review --shortlist 4 7 --reject 5
+python -m job_scraper.review --shortlist 4 7 --reject 5 9-12
 ```
 
-Record a decision on individual rows. Each row acted on is echoed back with its
-title, so a mistyped number is visible immediately; if any number is not on the
-current sheet, nothing at all is applied.
+Record a decision on individual rows. Ranges like `9-12` are inclusive and mix
+freely with single numbers. Each row acted on is echoed back with its title, so
+a mistyped number is visible immediately; if any number is not on the current
+sheet, nothing at all is applied.
 
-Both regenerate `jobs.xlsx` afterwards, which **renumbers the rows** — reopen the
+```bash
+python -m job_scraper.review --shortlist 4 --reject-all
+```
+
+The two-decision workflow: shortlist what you want, reject everything else on
+the sheet in one go. `--reject-all` only ever touches unreviewed postings, so
+decisions recorded earlier are safe. Note that rejection is permanent by design
+— nothing automatic brings a rejected posting back — so if a posting might
+interest you later, `--seen-all` is the gentler sweep.
+
+All of these regenerate `jobs.xlsx` afterwards, which **renumbers the rows** — reopen the
 file before using row numbers again, or pass `--no-export` to keep the numbers
 you are reading valid across several commands. `--show-all` regenerates it with
 every posting on the Jobs sheet.

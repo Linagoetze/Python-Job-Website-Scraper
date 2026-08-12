@@ -338,9 +338,20 @@ class JobStore:
         )
         return cur.rowcount
 
+    def mark_all_new(self, status: str) -> int:
+        """Flip every unreviewed ('new') job to *status*. Returns the number flipped.
+
+        Only 'new' rows are touched: a sweep must never overwrite a decision
+        the owner has already recorded on a row.
+        """
+        if status not in JOB_STATUSES:
+            raise ValueError(f"unknown status {status!r}")
+        cur = self._c().execute("UPDATE jobs SET status = ? WHERE status = 'new'", (status,))
+        return cur.rowcount
+
     def mark_new_as_seen(self) -> int:
         """Mark every unreviewed ('new') job as 'seen'. Returns the number flipped."""
-        return self._c().execute("UPDATE jobs SET status = 'seen' WHERE status = 'new'").rowcount
+        return self.mark_all_new("seen")
 
     def import_seen_rows(self, rows: list[dict[str, Any]], run_id: int) -> tuple[int, int]:
         """Import legacy blocklist rows as 'seen'. Returns (inserted, flipped).
