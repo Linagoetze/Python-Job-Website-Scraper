@@ -41,7 +41,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | done | `wp3-company-field` |
 | 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | done | `wp4-sqlite-schema` |
 | 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | done | `wp5-sqlite-cutover` |
-| 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | not started | `wp5b-review-workflow` |
+| 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | done | `wp5b-review-workflow` |
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | not started | `wp6-persist-descriptions` |
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | not started | `wp7-llm-scoring` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
@@ -887,6 +887,107 @@ my history.
 
 Add tests. Branch wp5b-review-workflow. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+194 tests pass (up from 178), `ruff check .` clean. New: `job_scraper/review.py`,
+`tests/test_review.py`. Touched: `storage/db.py`, `storage/xlsx_store.py`,
+`run.py`, `tools/blocklist_all.py`, `scripts/scrape_and_blocklist.sh`,
+`tests/test_xlsx_store.py`, `README.md`.
+
+**The commands.**
+
+```
+python -m job_scraper.review --seen-all          # "I have read all of these"
+python -m job_scraper.review --shortlist 4 7     # by row number in jobs.xlsx
+python -m job_scraper.review --reject 5
+python -m job_scraper.review --show-all          # re-export with everything on the review sheet
+```
+
+`--shortlist` and `--reject` may be combined in one invocation, which is the
+supported way to record several decisions against one sheet. Row-addressed
+decisions apply before `--seen-all`, so a job shortlisted in the same command
+is not swept up by it. Every row acted on is echoed with its title and company,
+because the row number is the one thing in this design that can be mistyped
+silently.
+
+### How a row number addresses a job, and why it is stored
+
+The obvious implementations are both wrong. Re-deriving the export's sort order
+at review time addresses a *different* job if a scrape ran in between (the
+sheet is ordered by source then first_seen, so one new posting shifts every row
+below it). Reading the row back out of the xlsx means parsing `=HYPERLINK()`
+outside the xlsx writer, which is exactly the coupling WP5 removed.
+
+So the export records what it wrote: a new `export_rows(row_number,
+dedupe_key)` table, replaced wholesale on every export, holding only the most
+recent one. A row number therefore resolves against the spreadsheet the owner
+is actually looking at, or fails. It is plain data — integers and keys, no
+spreadsheet syntax — so the "one canonical representation" rule holds.
+
+Resolution is **all-or-nothing**: a command naming five rows, one of them a
+typo, applies none of them and says which number was wrong. Reviewing before
+any export ever ran fails with the command to run first, rather than doing
+nothing quietly.
+
+The stored row number is the **worksheet** row (data starts at 2), and it is
+also written into a `#` column. Both readings of "row number in the xlsx" —
+the `#` cell and Excel's own gutter — therefore agree. The column is not
+redundant: sorting the table in Excel rearranges rows under the gutter numbers
+but carries `#` along with its posting.
+
+**The one footgun**, and it is inherent rather than incidental: a successful
+review re-exports, which renumbers the rows, while the owner's open copy of
+jobs.xlsx still shows the old numbers. Mitigated three ways — several
+decisions can go in one command, every row acted on is echoed with its title,
+and the output ends with "Reopen it before using row numbers again". `--no-export`
+skips the regeneration and keeps the numbers on screen valid.
+
+### The xlsx: two sheets
+
+- **Jobs** — the review sheet. Unreviewed (`'new'`) jobs only, which is what
+  the owner has always opened the file to see, so the day-to-day experience is
+  unchanged apart from the `#` column. `--show-all` (on both `run` and
+  `review`) puts every job here instead and adds a `status` column, which
+  earns its place only in that mode — in the default view every row would say
+  `'new'`. Row numbers address whatever is on this sheet, so `--show-all` is
+  also how a decision gets recorded against an already-reviewed job.
+- **Archive** — every job ever stored, whatever its status, with `first_seen`
+  and `last_seen`, newest first. This is the "nothing is hidden from me"
+  guarantee: a job that has left the review sheet is on this one.
+
+Writing the file and recording the row mapping happen inside one store
+transaction, with the mapping written after a successful save — a failed
+export leaves the previous spreadsheet *and* its still-valid row numbers in
+place, rather than advancing the numbering past a file the owner never
+received.
+
+**Beyond the package, deliberately:** `write_xlsx` now saves via a temp file in
+the same directory and `os.replace()`, like every other write in the codebase
+since WP1. It was the last non-atomic write in the tree, and this package both
+touches that line and adds a second command that writes the file.
+
+### Deprecated, not deleted
+
+`scripts/scrape_and_blocklist.sh` keeps working. Its header now explains what
+replaced it and why (it decided every job was dealt with *before* the owner had
+looked, so an unopened run was indistinguishable from a reviewed one), and it
+prints the same note when run. `tools/blocklist_all.py` — the second half of
+that routine, and the same operation as `--seen-all` — got the same treatment.
+Both stay until the owner confirms the new flow. `blocklist.mark_all_new_seen`
+is still the library call behind the deprecated tool; `review` reaches
+`store.mark_new_as_seen()` directly because it must share the transaction with
+the row-addressed decisions.
+
+### Verified against the real store
+
+Read-only, on a copy in a scratch directory, touching nothing under `data/`:
+the owner's store holds 265 `'seen'`, 13 `'rejected'` and 2 `'shortlisted'`
+jobs and no `'new'` ones, so the review sheet exports empty and the archive
+sheet carries all 280 — which is the intended behaviour, and confirms the
+WP5 blocklist import landed. A live `python -m job_scraper.run` was **not**
+performed: it fetches ~30 real career sites, and it is step 6 of the session
+checklist above, for the owner to run.
 
 ---
 
