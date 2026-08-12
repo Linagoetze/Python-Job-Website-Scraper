@@ -42,6 +42,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 4 | SQLite, part 1: schema and dual write | 2.5 hr | Fable 5 | `think hard` | done | `wp4-sqlite-schema` |
 | 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | done | `wp5-sqlite-cutover` |
 | 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | done | `wp5b-review-workflow` |
+| 5c | Review ranges and `--reject-all` | 0.5 hr | Fable 5 | none | done | `wp5c-review-ranges` |
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | not started | `wp6-persist-descriptions` |
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | not started | `wp7-llm-scoring` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
@@ -988,6 +989,38 @@ sheet carries all 280 — which is the intended behaviour, and confirms the
 WP5 blocklist import landed. A live `python -m job_scraper.run` was **not**
 performed: it fetches ~30 real career sites, and it is step 6 of the session
 checklist above, for the owner to run.
+
+---
+
+## WP5c — Review ranges and `--reject-all`
+
+Small follow-on to WP5b, requested after first contact with the commands: the
+owner reviews in a two-decision model ("shortlist these, reject the rest") and
+wanted ranges rather than typing every row number.
+
+### Result
+
+206 tests pass (up from 194), `ruff check .` clean. Touched: `review.py`,
+`storage/db.py` (one generalised helper), `tests/test_review.py`, `README.md`.
+
+- **Ranges.** `--shortlist`/`--reject` accept `9-12` alongside single numbers,
+  inclusive at both ends. Parsing (`review.parse_rows`) happens before any
+  status is touched, so a malformed or backwards range keeps the all-or-nothing
+  promise: nothing is applied.
+- **`--reject-all`** marks every unreviewed job `'rejected'`, applied after the
+  row-addressed decisions, so `--shortlist 4 --reject-all` keeps row 4 and
+  rejects the rest. It rides on `db.mark_all_new(status)`, which
+  `mark_new_as_seen` now delegates to; only `'new'` rows are ever swept, so
+  earlier decisions survive. `--seen-all --reject-all` together is refused —
+  they would race for the same rows.
+- **The `'seen'` status stays.** The owner asked whether it could go entirely;
+  decision: no. It is what the 265 legacy blocklist rows mean ("shown, not
+  declined"), and removing it would erase the seen-vs-rejected distinction the
+  WP5 import deliberately preserved. `--reject-all` gives the two-label
+  workflow without the schema change; `'seen'` simply stops accumulating if
+  the owner never uses `--seen-all` again. Consequence, documented in the
+  README: `'rejected'` is permanent by design, so mass-rejecting means
+  revisiting an old posting requires `--show-all` and a manual re-mark.
 
 ---
 

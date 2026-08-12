@@ -5,9 +5,10 @@ table short by declaring every job dealt with, which worked but threw the
 history away; now the store remembers when it first saw each job, so a
 decision can be recorded on the job itself:
 
-    python -m job_scraper.review --seen-all         # "looked at all of these"
-    python -m job_scraper.review --shortlist 4 7    # by row number in jobs.xlsx
-    python -m job_scraper.review --reject 5
+    python -m job_scraper.review --seen-all           # "looked at all of these"
+    python -m job_scraper.review --shortlist 4 7      # by row number in jobs.xlsx
+    python -m job_scraper.review --reject 5 9-12      # ranges are inclusive
+    python -m job_scraper.review --shortlist 4 --reject-all   # reject the rest
 
 Row numbers are the ones in the sheet's `#` column, which are also the row
 numbers Excel shows down the left-hand side. They address the *last export*,
@@ -39,10 +40,36 @@ class ReviewResult:
 
     marked: list[tuple[int, str, str]] = field(default_factory=list)
     seen_all: int = 0
+    rejected_all: int = 0
 
     @property
     def changed(self) -> bool:
-        return bool(self.marked) or bool(self.seen_all)
+        return bool(self.marked) or bool(self.seen_all) or bool(self.rejected_all)
+
+
+def parse_rows(tokens: list[str]) -> list[int]:
+    """Expand row arguments like ``["4", "9-12"]`` into row numbers.
+
+    A range is inclusive at both ends, matching how people read a run of
+    spreadsheet rows. Anything unparseable raises before a single status is
+    touched, keeping the all-or-nothing promise of `resolve_rows`.
+    """
+    rows: list[int] = []
+    for token in tokens:
+        first, dash, last = token.partition("-")
+        try:
+            if dash:
+                start, end = int(first), int(last)
+            else:
+                start = end = int(token)
+        except ValueError:
+            raise ReviewError(
+                f"{token!r} is not a row number or a range like 9-12. Nothing was changed."
+            ) from None
+        if start > end:
+            raise ReviewError(f"The range {token!r} runs backwards. Nothing was changed.")
+        rows.extend(range(start, end + 1))
+    return rows
 
 
 def _describe(row: dict[str, object]) -> str:
@@ -84,11 +111,12 @@ def apply_review(
     shortlist: list[int] | None = None,
     reject: list[int] | None = None,
     seen_all: bool = False,
+    reject_all: bool = False,
 ) -> ReviewResult:
     """Apply review decisions in one transaction. Returns what changed.
 
-    Row-addressed decisions are applied before *seen_all*, so a job
-    shortlisted in the same command is not swept up by it.
+    Row-addressed decisions are applied before *seen_all* and *reject_all*,
+    so a job shortlisted in the same command is not swept up by either.
     """
     shortlist = sorted(set(shortlist or ()))
     reject = sorted(set(reject or ()))
@@ -96,6 +124,11 @@ def apply_review(
     if both:
         rows = ", ".join(str(n) for n in both)
         raise ReviewError(f"Row {rows} is in both --shortlist and --reject. Nothing was changed.")
+    if seen_all and reject_all:
+        raise ReviewError(
+            "--seen-all and --reject-all both sweep every unreviewed job; "
+            "pick one. Nothing was changed."
+        )
 
     result = ReviewResult()
     with JobStore(db_path) as store:
@@ -111,6 +144,8 @@ def apply_review(
 
         if seen_all:
             result.seen_all = store.mark_new_as_seen()
+        if reject_all:
+            result.rejected_all = store.mark_all_new("rejected")
     return result
 
 
@@ -130,19 +165,26 @@ def main() -> None:
     )
     parser.add_argument(
         "--shortlist",
-        type=int,
         nargs="+",
         metavar="ROW",
         default=[],
-        help="Mark the jobs on these spreadsheet rows as shortlisted",
+        help="Mark these spreadsheet rows as shortlisted; single numbers or ranges like 9-12",
     )
     parser.add_argument(
         "--reject",
-        type=int,
         nargs="+",
         metavar="ROW",
         default=[],
-        help="Mark the jobs on these spreadsheet rows as rejected",
+        help="Mark these spreadsheet rows as rejected; single numbers or ranges like 9-12",
+    )
+    parser.add_argument(
+        "--reject-all",
+        action="store_true",
+        dest="reject_all",
+        help=(
+            "Mark every unreviewed job as rejected — combine with --shortlist "
+            "to keep the ones you want and reject the rest"
+        ),
     )
     parser.add_argument(
         "--show-all",
@@ -177,9 +219,10 @@ def main() -> None:
     try:
         result = apply_review(
             args.db,
-            shortlist=args.shortlist,
-            reject=args.reject,
+            shortlist=parse_rows(args.shortlist),
+            reject=parse_rows(args.reject),
             seen_all=args.seen_all,
+            reject_all=args.reject_all,
         )
     except ReviewError as exc:
         raise SystemExit(str(exc)) from None
@@ -188,8 +231,16 @@ def main() -> None:
         print(f"row {number:>4}  {status:<11} {description}")
     if args.seen_all:
         print(f"Marked {result.seen_all} unreviewed jobs as seen (rows kept, nothing deleted)")
+    if args.reject_all:
+        print(
+            f"Marked {result.rejected_all} unreviewed jobs as rejected "
+            "(rows kept, nothing deleted)"
+        )
     if not result.changed:
-        print("No decisions recorded — pass --seen-all, --shortlist ROW or --reject ROW.")
+        print(
+            "No decisions recorded — pass --seen-all, --reject-all, "
+            "--shortlist ROW or --reject ROW."
+        )
 
     if args.no_export:
         if result.changed:

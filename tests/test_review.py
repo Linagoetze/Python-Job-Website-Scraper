@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from job_scraper.review import ReviewError, apply_review, resolve_rows
+from job_scraper.review import ReviewError, apply_review, parse_rows, resolve_rows
 from job_scraper.storage.db import JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
 
@@ -184,3 +184,73 @@ def test_row_numbers_survive_a_scrape_that_reorders_the_table(tmp_path: Path) ->
         "https://x/jobs/1": "rejected",
         "https://x/jobs/2": "new",
     }
+
+
+def test_parse_rows_expands_ranges_and_mixes_them_with_single_rows() -> None:
+    assert parse_rows(["4"]) == [4]
+    assert parse_rows(["9-12"]) == [9, 10, 11, 12]
+    assert parse_rows(["4", "9-12", "2"]) == [4, 9, 10, 11, 12, 2]
+    assert parse_rows(["3-3"]) == [3], "a one-row range is just that row"
+    assert parse_rows([]) == []
+
+
+@pytest.mark.parametrize("token", ["abc", "2-", "-8", "2-8-9", "2.5", ""])
+def test_parse_rows_refuses_anything_unparseable(token: str) -> None:
+    with pytest.raises(ReviewError, match="not a row number"):
+        parse_rows([token])
+
+
+def test_parse_rows_refuses_a_backwards_range() -> None:
+    with pytest.raises(ReviewError, match="runs backwards"):
+        parse_rows(["8-2"])
+
+
+def test_a_range_addresses_every_row_in_it(tmp_path: Path) -> None:
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(db, [_job(f"https://x/jobs/{i}", f"Job {i}") for i in range(5)])
+    mapping = _export(db, xlsx)
+
+    apply_review(db, reject=parse_rows(["3-5"]))
+
+    statuses = _statuses(db)
+    assert [statuses[mapping[n]] for n in (3, 4, 5)] == ["rejected"] * 3
+    assert [statuses[mapping[n]] for n in (2, 6)] == ["new", "new"], "outside the range: untouched"
+
+
+def test_reject_all_spares_rows_shortlisted_in_the_same_command(tmp_path: Path) -> None:
+    """The two-decision workflow: keep these, reject the rest."""
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(db, [_job(f"https://x/jobs/{i}", f"Job {i}") for i in range(3)])
+    mapping = _export(db, xlsx)
+
+    result = apply_review(db, shortlist=[_row_of(mapping, "https://x/jobs/1")], reject_all=True)
+
+    assert result.rejected_all == 2, "the shortlisted job is not swept up"
+    assert _statuses(db)["https://x/jobs/1"] == "shortlisted"
+    assert sorted(_statuses(db).values()) == ["rejected", "rejected", "shortlisted"]
+
+
+def test_reject_all_never_touches_already_reviewed_jobs(tmp_path: Path) -> None:
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(db, [_job("https://x/jobs/1", "Kept"), _job("https://x/jobs/2", "Unread")])
+    mapping = _export(db, xlsx)
+    apply_review(db, shortlist=[_row_of(mapping, "https://x/jobs/1")])
+
+    result = apply_review(db, reject_all=True)
+
+    assert result.rejected_all == 1
+    assert _statuses(db) == {
+        "https://x/jobs/1": "shortlisted",
+        "https://x/jobs/2": "rejected",
+    }, "a decision recorded earlier survives the sweep"
+
+
+def test_seen_all_and_reject_all_together_are_refused(tmp_path: Path) -> None:
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(db, [_job("https://x/jobs/1", "Only")])
+    _export(db, xlsx)
+
+    with pytest.raises(ReviewError, match="pick one"):
+        apply_review(db, seen_all=True, reject_all=True)
+
+    assert _statuses(db) == {"https://x/jobs/1": "new"}
