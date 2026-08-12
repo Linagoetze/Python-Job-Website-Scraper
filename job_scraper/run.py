@@ -134,6 +134,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--show-all",
+        action="store_true",
+        dest="show_all",
+        help=(
+            "Put every job on the xlsx review sheet, not just unreviewed ones. "
+            "The archive sheet always holds every job either way."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -160,10 +169,12 @@ def main() -> None:
         # it on its own rather than buried in a traceback.
         raise SystemExit(str(exc)) from None
 
-    table_total = write_xlsx(args.output_db, args.output_xlsx)
+    table_total = write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
 
     print(format_summary(summary, table_total), file=sys.stderr)
     print(f"Output: {args.output_xlsx.resolve()}")
+    if table_total:
+        print("Reviewed them? python -m job_scraper.review --seen-all")
 
 
 if __name__ == "__main__":
