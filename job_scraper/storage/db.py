@@ -100,6 +100,16 @@ CREATE TABLE IF NOT EXISTS source_health (
     error       TEXT,
     PRIMARY KEY (source_name, run_id)
 );
+
+-- Which job each row of the last export's review sheet holds (WP5b). This is
+-- how `python -m job_scraper.review --reject 7` knows what row 7 was, and it
+-- is recorded rather than re-derived: re-deriving the sort at review time
+-- would silently address a different job if a scrape had run in between.
+-- Plain data, no spreadsheet syntax — the =HYPERLINK() rule still holds.
+CREATE TABLE IF NOT EXISTS export_rows (
+    row_number INTEGER PRIMARY KEY,
+    dedupe_key TEXT NOT NULL REFERENCES jobs(dedupe_key)
+);
 """
 
 
@@ -378,6 +388,38 @@ class JobStore:
                 )
                 flipped += cur.rowcount
         return inserted, flipped
+
+    def jobs_by_keys(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        """dedupe_key -> full row, for the keys that are actually stored."""
+        found: dict[str, dict[str, Any]] = {}
+        conn = self._c()
+        for key in keys:
+            row = conn.execute("SELECT * FROM jobs WHERE dedupe_key = ?", (key,)).fetchone()
+            if row is not None:
+                found[key] = dict(row)
+        return found
+
+    # -- export addressing ----------------------------------------------------
+
+    def replace_export_rows(self, rows: list[tuple[int, str]]) -> None:
+        """Record row_number -> dedupe_key for the export just written.
+
+        Wholesale replacement: only the most recent export is addressable, so
+        a row number can never resolve against a spreadsheet the owner no
+        longer has in front of them.
+        """
+        conn = self._c()
+        conn.execute("DELETE FROM export_rows")
+        conn.executemany(
+            "INSERT INTO export_rows (row_number, dedupe_key) VALUES (?, ?)", rows
+        )
+
+    def export_row_map(self) -> dict[int, str]:
+        """row_number -> dedupe_key for the last export (empty if never exported)."""
+        return {
+            int(r["row_number"]): str(r["dedupe_key"])
+            for r in self._c().execute("SELECT row_number, dedupe_key FROM export_rows")
+        }
 
     def job_index(self) -> dict[str, dict[str, Any]]:
         """dedupe_key -> {status, hybrid_confirmed} for every stored job."""
