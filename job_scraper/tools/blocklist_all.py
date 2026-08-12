@@ -1,11 +1,11 @@
-"""Mark every unreviewed job as seen, then regenerate jobs.xlsx.
+"""DEPRECATED (WP5b): use `python -m job_scraper.review --seen-all` instead.
 
-The post-run half of the scrape-and-blocklist routine: after the owner has
-looked at the spreadsheet, this flips every 'new' job to 'seen' so the next
-run's table shows only jobs stored after this point. Nothing is deleted —
-the rows keep their history in the database.
+Mark every unreviewed job as seen, then regenerate jobs.xlsx — the post-run
+half of the scrape-and-blocklist routine. It still works and still deletes
+nothing, but `review` is the command that also lets you record a decision on
+a single row rather than only on all of them at once.
 
-Safe to run repeatedly, including when there is nothing new.
+Kept until the owner confirms the new flow. Safe to run repeatedly.
 
 Usage: python -m job_scraper.tools.blocklist_all
 """
@@ -24,6 +24,7 @@ def main() -> None:
 
     print(f"Marked {marked} jobs as seen in {db_path} (rows kept, nothing deleted)")
     print(f"jobs.xlsx regenerated ({table_total} unreviewed jobs shown)")
+    print("NOTE: deprecated — this is `python -m job_scraper.review --seen-all`.")
 
 
 if __name__ == "__main__":
