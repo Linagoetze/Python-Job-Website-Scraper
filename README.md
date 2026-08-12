@@ -286,10 +286,22 @@ by `source_name`, newest first within each source.
 
 ### `data/jobs.xlsx`
 
-The one you actually read. Five columns — `source_name`, `title`, `location`,
-`detail_hyperlink`, `apply_hyperlink` — with a frozen header row, real clickable
-links, and rows from the **two most recent runs filled light green** so new
-postings stand out.
+The one you actually read. Two sheets:
+
+- **Jobs** — the postings you have not reviewed yet, and nothing else. Six
+  columns: `#`, `source_name`, `title`, `location`, `detail_url`, `apply_url`,
+  with a frozen header row, real clickable links, and rows from the **two most
+  recent runs filled light green** so new postings stand out. The `#` column is
+  the row number the review commands take (see below); it is the same number
+  Excel shows down the left-hand side, and unlike Excel's it stays with its
+  posting if you sort the table.
+- **Archive** — every posting ever stored, whatever its status, with
+  `first_seen` and `last_seen`. Nothing is hidden from you: a posting that has
+  left the Jobs sheet is here.
+
+`python -m job_scraper.run --show-all` puts every posting on the Jobs sheet too,
+with a `status` column, when you want to review something you have already dealt
+with.
 
 Regenerated from scratch on every run.
 
@@ -301,6 +313,34 @@ source_name,listing_url
 
 Which sources were scraped successfully this run. Useful for spotting a source
 that has quietly started failing — compare it against `sources.yaml`.
+
+## Reviewing what it found
+
+Open `data/jobs.xlsx`, read the Jobs sheet, then record what you decided. Every
+command below takes the row numbers from the sheet's `#` column, and none of
+them deletes anything — a reviewed posting keeps its row and its history in the
+store, it just stops being offered to you.
+
+```bash
+python -m job_scraper.review --seen-all
+```
+
+"I have read all of these." The next run's Jobs sheet then shows only postings
+stored after this point. This is the command that replaced
+`scripts/scrape_and_blocklist.sh`.
+
+```bash
+python -m job_scraper.review --shortlist 4 7 --reject 5
+```
+
+Record a decision on individual rows. Each row acted on is echoed back with its
+title, so a mistyped number is visible immediately; if any number is not on the
+current sheet, nothing at all is applied.
+
+Both regenerate `jobs.xlsx` afterwards, which **renumbers the rows** — reopen the
+file before using row numbers again, or pass `--no-export` to keep the numbers
+you are reading valid across several commands. `--show-all` regenerates it with
+every posting on the Jobs sheet.
 
 ## Maintenance commands
 
@@ -316,18 +356,18 @@ that no longer qualify.
 python -m job_scraper.tools.blocklist_all
 ```
 
-Moves **every** job currently in `jobs.csv` into the blocklist and empties the
-table. This is the "I've reviewed all of these and I'm not interested in any of
-them" button.
+**Deprecated** — this is `python -m job_scraper.review --seen-all` under an
+older name. Still works, kept until the new review flow is confirmed.
 
 ```bash
 bash scripts/scrape_and_blocklist.sh
 ```
 
-Scrapes, then immediately blocklists everything the scrape found. **This leaves
-you with an empty table** — it is for establishing a baseline on first setup, so
-that subsequent runs only ever show genuinely new postings. Don't run it
-expecting to see results.
+**Deprecated.** Scrapes, then immediately marks everything the scrape found as
+seen — before you have looked at it, so a run you never opened is
+indistinguishable from one you reviewed. Use `python -m job_scraper.run`
+followed by `python -m job_scraper.review --seen-all` once you have actually
+read the sheet.
 
 ## Adding a source
 
