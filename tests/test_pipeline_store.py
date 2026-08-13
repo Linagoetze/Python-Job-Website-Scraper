@@ -337,3 +337,46 @@ def test_stored_unconfirmed_conditional_job_is_rechecked_once(
 
     assert second.jobs_stored_rechecked == 0
     assert env["fetches"][url] == 1
+
+
+def test_failed_hybrid_check_is_not_permanently_rejected(env: dict[str, Any]) -> None:
+    """A network hiccup while checking a conditional-city job's hybrid
+    arrangement must fail closed for that run only, not forever.
+
+    Regression test: an earlier version of this change stored every job
+    Layer 2 excludes as status='rejected' — including a conditional-location
+    job excluded only because its detail page could not be read this run.
+    Since 'rejected' is permanent (nothing automatic un-rejects a job, and
+    rejected jobs never appear in jobs.xlsx), a single transient fetch
+    failure would silently and permanently drop the job — violating
+    CLAUDE.md's "never lose data" rule. The fix: such a job is excluded for
+    the run (fail-closed is unchanged, deliberate behaviour) but never
+    written to the store, so it gets a fresh detail fetch next run, exactly
+    as before this package existed.
+    """
+    tmp_path = env["tmp_path"]
+    fetches = env["fetches"]
+    (tmp_path / "rules.json").write_text(json.dumps(_HYBRID_RULES), encoding="utf-8")
+    conditional = _job("Data Analyst", location="Faraway", slug="conditional")
+    env["extracted"][:] = [conditional]
+    url = conditional["detail_url"]
+
+    def failing_fetch(u: str, *a: Any, **k: Any) -> str:
+        fetches[u] += 1
+        raise TimeoutError("simulated network hiccup")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", failing_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", failing_fetch)
+
+        first = _run(tmp_path)
+        assert first.jobs_kept_new == 0, "fails closed for this run: not admitted"
+        assert first.jobs_hybrid_excluded == 1
+        assert fetches[url] == 1
+        assert url not in _db_jobs(tmp_path), "not persisted as a permanent rejection"
+
+        second = _run(tmp_path)
+
+    assert fetches[url] == 2, "retried next run rather than silently dropped forever"
+    assert second.jobs_kept_new == 0
+    assert url not in _db_jobs(tmp_path)

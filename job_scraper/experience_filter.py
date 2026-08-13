@@ -279,7 +279,14 @@ def apply_detail_filter(
     Each returned job dict is annotated with description_text and
     description_fetched_at from this fetch (both '' when nothing was fetched),
     so the caller can persist them — that is what lets a later run skip the
-    fetch entirely, on both the kept and the excluded side.
+    fetch entirely, on both the kept and the excluded side. The one exception
+    is a conditional-location job whose hybrid arrangement could not actually
+    be verified this run (no URL, a fetch/parse error, or no pattern
+    configured): it is still excluded for this run — failing closed is
+    unchanged and deliberate — but is marked `hybrid_unverified=True` so the
+    caller knows *not* to treat that exclusion as a durable, storable
+    judgement. A transient network error must not read the same as "checked
+    and confirmed not hybrid".
     Returns (kept_jobs, excluded_jobs).
     """
     kept: list[dict[str, Any]] = []
@@ -287,6 +294,7 @@ def apply_detail_filter(
     fetch_failed = 0
     no_requirement = 0
     hybrid_excluded = 0
+    hybrid_unverified = 0
     fetched_at = utc_now_iso()
 
     def _task(job: JobRecord) -> tuple[JobRecord, int | None, bool, bool, bool | None, str]:
@@ -301,14 +309,32 @@ def apply_detail_filter(
         resolved = _resolve_hybrid(job, hybrid_found)
         if resolved is None:
             hybrid_excluded += 1
-            excluded.append(
-                dict(
-                    job,
-                    experience_level="non_hybrid_conditional_location",
-                    description_text=description_text,
-                    description_fetched_at=fetched_at if description_text else "",
+            # hybrid_found is None when the page could not be read at all (no
+            # URL, a fetch/parse exception, or no pattern configured) rather
+            # than read-and-found-not-hybrid. That is not a judgement about
+            # the job, only a fact about this run's network conditions, so it
+            # must not be persisted as a permanent rejection — see the
+            # docstring above and pipeline.py's use of this flag.
+            if hybrid_found is None:
+                hybrid_unverified += 1
+                excluded.append(
+                    dict(
+                        job,
+                        experience_level="non_hybrid_conditional_location",
+                        description_text="",
+                        description_fetched_at="",
+                        hybrid_unverified=True,
+                    )
                 )
-            )
+            else:
+                excluded.append(
+                    dict(
+                        job,
+                        experience_level="non_hybrid_conditional_location",
+                        description_text=description_text,
+                        description_fetched_at=fetched_at if description_text else "",
+                    )
+                )
             continue
         job = resolved
 
@@ -335,10 +361,13 @@ def apply_detail_filter(
         logger.debug(
             "Layer 2: %d/%d jobs failed to fetch (kept fail-open); "
             "%d had no numeric requirement; "
-            "%d dropped as non-hybrid in a conditional location",
+            "%d dropped as non-hybrid in a conditional location "
+            "(%d of those because the hybrid arrangement could not be verified "
+            "this run, not because it was checked and found lacking)",
             fetch_failed,
             len(jobs),
             no_requirement,
             hybrid_excluded,
+            hybrid_unverified,
         )
     return kept, excluded

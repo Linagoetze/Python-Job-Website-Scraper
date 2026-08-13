@@ -1119,6 +1119,38 @@ not shown to the owner, they are WP7's scorer's input) and `_needs_detail` in
 already existed for a different reason and turned out to be exactly the right
 mechanism to reuse.
 
+### Follow-up fix: a failed hybrid check must not permanently reject a job
+
+Caught by another session's review, and correct. Storing every Layer-2
+exclusion as `'rejected'` was right for the ordinary cases (too senior, PhD
+required — the fetch always succeeds when those fire) but wrong for one:
+a conditional-location job's hybrid check fails *closed* when the detail
+page cannot be read at all (network error, no URL, no pattern configured),
+which `apply_detail_filter` already treated as an exclusion for that run
+— existing, deliberate behaviour, unchanged since before WP5. The bug was
+persisting that exclusion. Because `'rejected'` is permanent by design
+(nothing automatic un-rejects a job, and rejected jobs never appear in
+`jobs.xlsx`), a single transient timeout at exactly the wrong moment would
+silently and permanently drop the job — the one thing CLAUDE.md's priority
+list rules out first.
+
+Fix: `apply_detail_filter` now distinguishes "read the page and it wasn't
+hybrid" (`hybrid_found is False`, a real judgement, safe to persist) from
+"couldn't determine" (`hybrid_found is None` — no URL, fetch/parse
+exception, or no pattern), marking the latter `hybrid_unverified=True` on
+the job dict. `pipeline.py`'s Layer-2-rejection upsert excludes anything
+carrying that flag, so an unverified job is excluded for the run (fail-closed
+is unchanged) but never written to the store — reproducing the exact
+pre-WP6 behaviour for this one case: dropped this run, retried next run, at
+the cost of one detail fetch each time it recurs. No new skip mechanism, no
+change to the "too senior"/"PhD required" persistence this package exists
+for.
+
+New test: `tests/test_pipeline_store.py::test_failed_hybrid_check_is_not_
+permanently_rejected` — a conditional-city job whose fetch always raises is
+excluded on both of two consecutive runs, fetched (and failing) both times,
+and never appears in the database at all.
+
 ---
 
 ## WP7 — LLM scoring stage
