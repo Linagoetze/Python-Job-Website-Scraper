@@ -362,6 +362,23 @@ def run_pipeline(
         rows_written, refreshed = store.upsert_jobs(upserts, run_id)
         logger.debug("Store: %d rows inserted, %d refreshed", rows_written, refreshed)
 
+        # Jobs Layer 2 excluded also get stored, as 'rejected', description
+        # included — otherwise nothing records that they were already judged
+        # and the detail page is re-fetched on every subsequent run. Once
+        # stored, the existing Layer 1d review-status check picks them up on
+        # the next run and Layer 2 never sees them again, the same as any
+        # other rejected job.
+        detail_rejected_rows = [r for j in detail_excluded if (r := _row(j))]
+        if detail_rejected_rows:
+            inserted_rejected, refreshed_rejected = store.upsert_jobs(
+                detail_rejected_rows, run_id, initial_status="rejected"
+            )
+            logger.debug(
+                "Store: %d Layer 2 rejections recorded as 'rejected', %d refreshed",
+                inserted_rejected,
+                refreshed_rejected,
+            )
+
         rows_delisted = store.note_misses_and_delist(
             source_scraped_keys, delist_after, force_delist_sources
         )

@@ -95,6 +95,64 @@ def test_first_run_stores_jobs_with_run_metadata(env: dict[str, Any]) -> None:
         assert job["first_seen"] == job["last_seen"]
         # Layer 2 judged both jobs this run, so the level is recorded.
         assert job["experience_level"] == "unspecified"
+        # WP6: the stripped description text Layer 2 fetched is kept too, not
+        # discarded, along with when it was captured.
+        assert job["description_text"] == "A great opportunity, no experience required."
+        assert job["description_fetched_at"]
+
+
+def test_second_run_performs_no_http_request_for_an_already_stored_job(
+    env: dict[str, Any],
+) -> None:
+    """WP6: once a job's description is stored, a later run over the same job
+    must not re-fetch its detail page."""
+    tmp_path = env["tmp_path"]
+    fetches = env["fetches"]
+
+    _run(tmp_path)
+    fetch_count_after_first_run = sum(fetches.values())
+    assert fetch_count_after_first_run == 2  # one detail fetch per job
+
+    _run(tmp_path)
+    assert sum(fetches.values()) == fetch_count_after_first_run, (
+        "second run over the same jobs fetched a detail page again"
+    )
+
+
+def test_layer2_rejected_job_is_stored_and_not_refetched(env: dict[str, Any]) -> None:
+    """A job Layer 2 excludes (too senior) used to be discarded rather than
+    stored, so nothing recorded that it had already been judged and its
+    detail page was re-fetched on every run. WP6 stores it as 'rejected' with
+    its description, so the second run skips the fetch entirely — via the
+    same review-status check that already skips a manually rejected job."""
+    tmp_path = env["tmp_path"]
+    fetches = env["fetches"]
+    senior_job = _job("Head Analyst", location="Berlin", slug="senior")
+    env["extracted"][:] = [senior_job]
+    url = senior_job["detail_url"]
+
+    def senior_fetch(u: str, *a: Any, **k: Any) -> str:
+        fetches[u] += 1
+        return "We require 8+ years of experience in the field."
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", senior_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", senior_fetch)
+
+        first = _run(tmp_path)
+        assert first.jobs_detail_excluded == 1
+        assert first.jobs_kept_new == 0
+        assert fetches[url] == 1
+
+        stored = _db_jobs(tmp_path)[url]
+        assert stored["status"] == "rejected"
+        assert "8+ years" in stored["description_text"]
+
+        second = _run(tmp_path)
+
+    assert second.jobs_detail_excluded == 0
+    assert second.jobs_blocklist_excluded == 1, "caught by the review-status check instead"
+    assert fetches[url] == 1, "no re-fetch: the rejection and its description were persisted"
 
 
 def test_run_and_health_bookkeeping(env: dict[str, Any]) -> None:

@@ -43,7 +43,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 5 | SQLite, part 2: cut over, delete CSV store | 4 hr | Fable 5 | `ultrathink` | done | `wp5-sqlite-cutover` |
 | 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | done | `wp5b-review-workflow` |
 | 5c | Review ranges and `--reject-all` | 0.5 hr | Fable 5 | none | done | `wp5c-review-ranges` |
-| 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | not started | `wp6-persist-descriptions` |
+| 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | done | `wp6-persist-descriptions` |
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | not started | `wp7-llm-scoring` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -1046,6 +1046,78 @@ Add a test that a second run over the same job performs no HTTP request.
 
 Branch wp6-persist-descriptions. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+208 tests pass (up from 206), `ruff check .` clean. Touched:
+`storage/db.py`, `experience_filter.py`, `pipeline.py`,
+`tests/test_pipeline_store.py`, `tests/test_pipeline_funnel.py`.
+
+**Columns on `jobs`, not a separate table.** `description_text` and
+`description_fetched_at` were added directly to the `jobs` table (via the same
+`ALTER TABLE`-on-open pattern WP5 used for `misses`/`hybrid_confirmed`), not a
+`job_details` table. The relationship is 1:1 and always was — one detail page
+per job — so a second table would only add a join every read site would have
+to perform, for no normalisation benefit. `description_text` is capped at
+`_MAX_DESCRIPTION_CHARS = 20_000` in `experience_filter.py` before it ever
+reaches the store.
+
+**Upsert semantics match `experience_level`'s existing rule.** An empty
+`description_text` never overwrites a stored one — `upsert_jobs`'s `CASE`
+logic is the same shape already used for `experience_level`, extended to keep
+`description_fetched_at` moving in lockstep with `description_text` rather
+than as an independent field. This matters because most rows upserted each
+run (`cached_jobs`, `blocked_jobs`) carry no fresh description at all — Layer
+2 was skipped for them — and must not blank out what an earlier run captured.
+
+**How the fetch is actually skipped, and why no new "is it stale" check was
+needed.** `apply_detail_filter` (Layer 2) now returns `description_text` and
+`description_fetched_at` on every job it touches, kept or excluded, and
+`pipeline.py` persists both. The pre-existing skip path (`_needs_detail`,
+unchanged) already skips Layer 2 for anything already in the store; what was
+missing was that a job Layer 2 *rejected* (too senior, PhD required) was
+never stored at all, so it was indistinguishable from a job never seen before
+and got re-fetched every run forever — this was pinned as known behaviour in
+WP2 and re-pinned as a known gap in WP5's `test_second_run_stores_nothing_new`.
+
+The fix does not add a new skip mechanism: Layer-2-rejected jobs are now
+upserted with `status='rejected'` (a new `store.upsert_jobs(..., initial_status
+="rejected")` call in `pipeline.py`, right after the main upsert). On the next
+run they are caught by the review-status filter (Layer 1d) — the same
+mechanism that already skips a job the owner manually rejected — before they
+ever reach Layer 2 again. One canonical "skip this job" path, not two.
+
+**What "the job has not changed" means in practice.** Nothing elsewhere in
+the store re-verifies a persisted Layer 2 result against the live page either
+(`experience_level`, `hybrid_confirmed` are equally durable once stored, with
+no re-check trigger beyond "the row didn't exist before"). Consistent with
+that, "unchanged" here means "the same dedupe key already has a non-empty
+`description_text`" — there is no cheap way to know the page changed without
+fetching it, so this is not a gap specific to WP6. A job whose only Layer 2
+attempt failed (network error) is kept fail-open with `description_text=''`
+and, being stored, is never retried either — the same shape of limitation
+`experience_level='unspecified'` already has for a fetch that fails outright.
+
+**Tests.** `test_first_run_stores_jobs_with_run_metadata` now also asserts
+the description and its timestamp landed.
+`test_second_run_performs_no_http_request_for_an_already_stored_job` is the
+package's required test: a second run over the same (kept) jobs makes zero
+further fetches. `test_layer2_rejected_job_is_stored_and_not_refetched` is
+the more interesting case — a job Layer 2 excludes for being too senior is
+stored as `'rejected'` with its description on the first run, then costs no
+fetch on the second, caught instead by the review-status filter.
+`test_pipeline_funnel.py::test_second_run_stores_nothing_new` — previously
+pinning the bug as current behaviour — now pins the fix: `jobs_new_checked`
+falls to zero on the second run instead of staying at the two rejected jobs
+forever, and the accounting moves to `jobs_blocklist_excluded`, which is
+exactly the sort of arithmetic shift step 6 of the session checklist (running
+the pipeline for real) would otherwise have to catch by eye.
+
+Not touched, per scope: `xlsx_store.py` (no export changes — descriptions are
+not shown to the owner, they are WP7's scorer's input) and `_needs_detail` in
+`pipeline.py`, which needed no change at all because the review-status skip
+already existed for a different reason and turned out to be exactly the right
+mechanism to reuse.
 
 ---
 
