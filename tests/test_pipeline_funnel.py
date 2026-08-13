@@ -210,11 +210,13 @@ def test_second_run_stores_nothing_new(env: Path) -> None:
     recognised as already-stored in the next, so it costs no detail fetch and
     writes no duplicate row.
 
-    Note what this also pins: `jobs_new_checked` does not fall to zero. A job
-    Layer 2 rejected is never written to the store, so nothing records that it
-    was already judged, and it is re-fetched on every subsequent run. That is
-    current behaviour, not a bug introduced here — WP6's stored descriptions
-    are what would let the pipeline skip it.
+    Note what this also pins, since WP6: a job Layer 2 rejects is now stored
+    too (status 'rejected', description included), so the existing Layer 1d
+    review-status check catches it on the next run before it ever reaches
+    Layer 2 again — `jobs_new_checked` falls to zero rather than re-fetching
+    the same two jobs forever. Before WP6 this was pinned as the opposite:
+    "current behaviour, not a bug ... WP6's stored descriptions are what
+    would let the pipeline skip it." This is that fix landing.
     """
     first = _run(env)
     rows_after_first = len(_rows(env))
@@ -225,8 +227,13 @@ def test_second_run_stores_nothing_new(env: Path) -> None:
     assert second.rows_delisted == 0
     assert len(_rows(env)) == rows_after_first
 
-    # Re-checked every run: the two jobs Layer 2 rejected, and only those.
-    assert second.jobs_new_checked == first.jobs_detail_excluded
+    # No longer re-checked: the two jobs Layer 2 rejected are now caught by
+    # the review-status filter, same as the originally-blocked job.
+    assert second.jobs_new_checked == 0
+    assert second.jobs_detail_excluded == 0
+    assert second.jobs_blocklist_excluded == (
+        first.jobs_blocklist_excluded + first.jobs_detail_excluded
+    )
     assert second.jobs_kept_new == 0
 
     # Still consistent on the second pass.

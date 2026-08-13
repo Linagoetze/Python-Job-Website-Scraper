@@ -27,6 +27,7 @@ from job_scraper.filtering import (
     _HYBRID_PENDING_REASON,
     _build_title_keyword_pattern,
 )
+from job_scraper.storage.db import utc_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _MAX_JUNIOR_YEARS = 2
+
+# Stored for WP7's LLM scoring stage. A job posting's full text rarely runs
+# past a few thousand characters; this is generous headroom without inviting
+# an oversized row for the rare page that embeds unrelated boilerplate.
+_MAX_DESCRIPTION_CHARS = 20_000
 
 # Parallel detail-page fetches. Every one is a request to somebody else's career
 # site, so lower this if you are scraping a lot of sources or a host starts
@@ -198,25 +204,35 @@ def _fetch_and_analyze(
     job: JobRecord,
     fn: Callable[[str], str],
     hybrid_pattern: re.Pattern[str] | None = None,
-) -> tuple[JobRecord, int | None, bool, bool, bool | None]:
+) -> tuple[JobRecord, int | None, bool, bool, bool | None, str]:
     """Fetch a job's detail page and extract experience/PhD signals.
 
-    Returns (job, min_years, phd_required, fetch_failed, hybrid_found).
+    Returns (job, min_years, phd_required, fetch_failed, hybrid_found, description_text).
     min_years is None when no numeric requirement was found or there was no URL.
     hybrid_found is None when the description could not be read at all (no URL,
     fetch failed, or no pattern configured) — the caller decides what that means.
+    description_text is the stripped page text, capped at _MAX_DESCRIPTION_CHARS,
+    or '' when nothing was fetched — WP7's scorer reads this back from the store
+    rather than re-fetching.
     """
     url = str(job.get("detail_url") or job.get("apply_url") or "").strip()
     if not url:
-        return job, None, False, False, None
+        return job, None, False, False, None, ""
     try:
         html = fn(url)
         text = _strip_html(html)
         hybrid = bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None
-        return job, _extract_min_years(text), _has_phd_required(text), False, hybrid
+        return (
+            job,
+            _extract_min_years(text),
+            _has_phd_required(text),
+            False,
+            hybrid,
+            text[:_MAX_DESCRIPTION_CHARS],
+        )
     except Exception as exc:
         logger.debug("Layer 2: fetch failed for %r — keeping job. Error: %s", url, exc)
-        return job, None, False, True, None
+        return job, None, False, True, None, ""
 
 
 def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | None:
@@ -260,6 +276,17 @@ def apply_detail_filter(
     conditional location: the same fetched description is searched for it, so
     those jobs cost no extra HTTP request. They fail closed — see _resolve_hybrid.
     Fetches run in parallel with up to _DETAIL_WORKERS threads.
+    Each returned job dict is annotated with description_text and
+    description_fetched_at from this fetch (both '' when nothing was fetched),
+    so the caller can persist them — that is what lets a later run skip the
+    fetch entirely, on both the kept and the excluded side. The one exception
+    is a conditional-location job whose hybrid arrangement could not actually
+    be verified this run (no URL, a fetch/parse error, or no pattern
+    configured): it is still excluded for this run — failing closed is
+    unchanged and deliberate — but is marked `hybrid_unverified=True` so the
+    caller knows *not* to treat that exclusion as a durable, storable
+    judgement. A transient network error must not read the same as "checked
+    and confirmed not hybrid".
     Returns (kept_jobs, excluded_jobs).
     """
     kept: list[dict[str, Any]] = []
@@ -267,8 +294,10 @@ def apply_detail_filter(
     fetch_failed = 0
     no_requirement = 0
     hybrid_excluded = 0
+    hybrid_unverified = 0
+    fetched_at = utc_now_iso()
 
-    def _task(job: JobRecord) -> tuple[JobRecord, int | None, bool, bool, bool | None]:
+    def _task(job: JobRecord) -> tuple[JobRecord, int | None, bool, bool, bool | None, str]:
         source = str(job.get("source_name") or "")
         fn = (source_fetch_map or {}).get(source, fetch_text)
         return _fetch_and_analyze(job, fn, hybrid_pattern)
@@ -276,35 +305,69 @@ def apply_detail_filter(
     with ThreadPoolExecutor(max_workers=_DETAIL_WORKERS) as pool:
         results = list(pool.map(_task, jobs))
 
-    for job, min_years, phd_req, failed, hybrid_found in results:
+    for job, min_years, phd_req, failed, hybrid_found, description_text in results:
         resolved = _resolve_hybrid(job, hybrid_found)
         if resolved is None:
             hybrid_excluded += 1
-            excluded.append(dict(job, experience_level="non_hybrid_conditional_location"))
+            # hybrid_found is None when the page could not be read at all (no
+            # URL, a fetch/parse exception, or no pattern configured) rather
+            # than read-and-found-not-hybrid. That is not a judgement about
+            # the job, only a fact about this run's network conditions, so it
+            # must not be persisted as a permanent rejection — see the
+            # docstring above and pipeline.py's use of this flag.
+            if hybrid_found is None:
+                hybrid_unverified += 1
+                excluded.append(
+                    dict(
+                        job,
+                        experience_level="non_hybrid_conditional_location",
+                        description_text="",
+                        description_fetched_at="",
+                        hybrid_unverified=True,
+                    )
+                )
+            else:
+                excluded.append(
+                    dict(
+                        job,
+                        experience_level="non_hybrid_conditional_location",
+                        description_text=description_text,
+                        description_fetched_at=fetched_at if description_text else "",
+                    )
+                )
             continue
         job = resolved
 
+        extra = {
+            "description_text": description_text,
+            "description_fetched_at": fetched_at if description_text else "",
+        }
         if failed:
             fetch_failed += 1
-            kept.append(dict(job, experience_level="unspecified"))
+            kept.append(dict(job, experience_level="unspecified", **extra))
         elif phd_req:
-            excluded.append(dict(job, experience_level="phd_required"))
+            excluded.append(dict(job, experience_level="phd_required", **extra))
         elif min_years is None:
             no_requirement += 1
-            kept.append(dict(job, experience_level="unspecified"))
+            kept.append(dict(job, experience_level="unspecified", **extra))
         elif min_years <= _MAX_JUNIOR_YEARS:
-            kept.append(dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)"))
+            kept.append(
+                dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)", **extra)
+            )
         else:
-            excluded.append(dict(job, experience_level=f"senior ({min_years}+yr)"))
+            excluded.append(dict(job, experience_level=f"senior ({min_years}+yr)", **extra))
 
     if jobs:
         logger.debug(
             "Layer 2: %d/%d jobs failed to fetch (kept fail-open); "
             "%d had no numeric requirement; "
-            "%d dropped as non-hybrid in a conditional location",
+            "%d dropped as non-hybrid in a conditional location "
+            "(%d of those because the hybrid arrangement could not be verified "
+            "this run, not because it was checked and found lacking)",
             fetch_failed,
             len(jobs),
             no_requirement,
             hybrid_excluded,
+            hybrid_unverified,
         )
     return kept, excluded

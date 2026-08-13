@@ -62,6 +62,8 @@ def job_to_row(job: dict[str, Any]) -> dict[str, Any] | None:
         "apply_url": au,
         "experience_level": str(job.get("experience_level") or ""),
         "hybrid_confirmed": int(job.get("hybrid_confirmed") or 0),
+        "description_text": str(job.get("description_text") or ""),
+        "description_fetched_at": str(job.get("description_fetched_at") or ""),
     }
 
 # jobs.status is a TEXT column with a CHECK rather than a lookup table: five
@@ -89,7 +91,9 @@ CREATE TABLE IF NOT EXISTS jobs (
         CHECK (status IN ('new', 'seen', 'shortlisted', 'rejected', 'delisted')),
     experience_level TEXT NOT NULL DEFAULT '',
     misses           INTEGER NOT NULL DEFAULT 0,
-    hybrid_confirmed INTEGER NOT NULL DEFAULT 0
+    hybrid_confirmed INTEGER NOT NULL DEFAULT 0,
+    description_text TEXT NOT NULL DEFAULT '',
+    description_fetched_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS source_health (
@@ -135,13 +139,15 @@ class JobStore:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(_SCHEMA)
-        # A database created by WP4's shadow store predates the misses and
-        # hybrid_confirmed columns; add them in place rather than losing the
-        # first_seen history it has accrued.
+        # A database created by an earlier WP predates newer columns; add them
+        # in place rather than losing the first_seen history it has accrued.
         have = {row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
         for column in ("misses", "hybrid_confirmed"):
             if column not in have:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
+        for column in ("description_text", "description_fetched_at"):
+            if column not in have:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         self._conn = conn
         return self
 
@@ -210,10 +216,15 @@ class JobStore:
         survive a scrape) and has last_seen/last_run_id bumped — except that a
         'delisted' job which reappears goes back to 'seen', since it is
         evidently listed again. An empty experience_level never overwrites a
-        stored one: it means "not determined this run", not "none". A sighting
-        resets the consecutive-miss counter, and hybrid_confirmed only ever
-        ratchets up — a run that could not re-verify the hybrid arrangement
-        (e.g. it skipped the detail fetch) must not unconfirm it.
+        stored one: it means "not determined this run", not "none". Likewise an
+        empty description_text never overwrites a stored one — a row upserted
+        without a fresh detail fetch (e.g. a cached job whose last_seen is just
+        being refreshed) must not blank out a description captured earlier;
+        description_fetched_at moves in lockstep, only when description_text
+        does. A sighting resets the consecutive-miss counter, and
+        hybrid_confirmed only ever ratchets up — a run that could not
+        re-verify the hybrid arrangement (e.g. it skipped the detail fetch)
+        must not unconfirm it.
         """
         if initial_status not in JOB_STATUSES:
             raise ValueError(f"unknown status {initial_status!r}")
@@ -230,8 +241,9 @@ class JobStore:
                 INSERT INTO jobs (dedupe_key, source_name, company, title, location,
                                   detail_url, apply_url, first_seen, last_seen,
                                   last_run_id, status, experience_level,
-                                  misses, hybrid_confirmed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                                  misses, hybrid_confirmed,
+                                  description_text, description_fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
                 ON CONFLICT(dedupe_key) DO UPDATE SET
                     source_name = excluded.source_name,
                     company = excluded.company,
@@ -247,7 +259,13 @@ class JobStore:
                     status = CASE WHEN jobs.status = 'delisted'
                                   THEN 'seen' ELSE jobs.status END,
                     misses = 0,
-                    hybrid_confirmed = MAX(jobs.hybrid_confirmed, excluded.hybrid_confirmed)
+                    hybrid_confirmed = MAX(jobs.hybrid_confirmed, excluded.hybrid_confirmed),
+                    description_text = CASE WHEN excluded.description_text != ''
+                                            THEN excluded.description_text
+                                            ELSE jobs.description_text END,
+                    description_fetched_at = CASE WHEN excluded.description_text != ''
+                                            THEN excluded.description_fetched_at
+                                            ELSE jobs.description_fetched_at END
                 """,
                 (
                     key,
@@ -263,6 +281,8 @@ class JobStore:
                     initial_status,
                     str(job.get("experience_level") or ""),
                     int(job.get("hybrid_confirmed") or 0),
+                    str(job.get("description_text") or ""),
+                    str(job.get("description_fetched_at") or ""),
                 ),
             )
             if key in existing:

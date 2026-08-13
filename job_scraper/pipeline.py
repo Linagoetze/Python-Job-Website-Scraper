@@ -362,6 +362,36 @@ def run_pipeline(
         rows_written, refreshed = store.upsert_jobs(upserts, run_id)
         logger.debug("Store: %d rows inserted, %d refreshed", rows_written, refreshed)
 
+        # Jobs Layer 2 excluded also get stored, as 'rejected', description
+        # included — otherwise nothing records that they were already judged
+        # and the detail page is re-fetched on every subsequent run. Once
+        # stored, the existing Layer 1d review-status check picks them up on
+        # the next run and Layer 2 never sees them again, the same as any
+        # other rejected job.
+        #
+        # Exception: a conditional-location job whose hybrid arrangement
+        # could not actually be verified this run (network hiccup, no URL,
+        # no pattern configured — see apply_detail_filter's
+        # `hybrid_unverified` flag) is excluded for this run only. 'rejected'
+        # is permanent by design (nothing automatic ever un-rejects a job,
+        # and rejected jobs never appear in jobs.xlsx), so writing one here
+        # would let a single transient fetch failure silently and
+        # permanently drop a job — exactly what CLAUDE.md's "never lose
+        # data" rule forbids. Leaving it unstored reproduces the pre-WP6
+        # behaviour for this case: dropped for this run, retried next run.
+        detail_rejected_rows = [
+            r for j in detail_excluded if not j.get("hybrid_unverified") and (r := _row(j))
+        ]
+        if detail_rejected_rows:
+            inserted_rejected, refreshed_rejected = store.upsert_jobs(
+                detail_rejected_rows, run_id, initial_status="rejected"
+            )
+            logger.debug(
+                "Store: %d Layer 2 rejections recorded as 'rejected', %d refreshed",
+                inserted_rejected,
+                refreshed_rejected,
+            )
+
         rows_delisted = store.note_misses_and_delist(
             source_scraped_keys, delist_after, force_delist_sources
         )
