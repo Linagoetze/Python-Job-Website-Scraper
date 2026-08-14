@@ -25,7 +25,17 @@ from openpyxl.worksheet.worksheet import Worksheet
 from job_scraper.storage.db import JobStore
 
 _ROW_FIELD = "#"
-_DISPLAY_FIELDS = ["source_name", "title", "location", "detail_url", "apply_url"]
+_SCORE_FIELD = "score"
+_DISPLAY_FIELDS = [
+    "source_name",
+    "title",
+    "location",
+    "score",
+    "score_reasoning",
+    "score_flags",
+    "detail_url",
+    "apply_url",
+]
 # The status column earns its place only when the sheet can hold more than one
 # status: in the default view every row says 'new'.
 _STATUS_FIELD = "status"
@@ -53,6 +63,9 @@ _COL_WIDTHS: dict[str, float] = {
     "source_name": 18,
     "title": 42,
     "location": 26,
+    "score": 7,
+    "score_reasoning": 60,
+    "score_flags": 30,
     "first_seen": 22,
     "last_seen": 22,
     "detail_url": 55,
@@ -74,8 +87,14 @@ def _write_header(ws: Worksheet, fields: list[str]) -> None:
 
 
 def _write_cell(ws: Worksheet, ws_row: int, col: int, field: str, value: Any) -> None:
-    raw = str(value or "")
     cell = ws.cell(row=ws_row, column=col)
+    if field == _SCORE_FIELD:
+        # Numeric so Excel sorts it as a number; NULL (unscored) stays blank,
+        # which keeps 0 — a real score — distinguishable from "not scored".
+        if value is not None:
+            cell.value = int(value)
+        return
+    raw = str(value or "")
     if field in _URL_FIELDS and raw:
         cell.value = _hyperlink_formula(raw)
         cell.font = _LINK_FONT
@@ -84,9 +103,15 @@ def _write_cell(ws: Worksheet, ws_row: int, col: int, field: str, value: Any) ->
 
 
 def _sorted_for_review(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Alphabetical by source, newest first within each source (stable sorts)."""
+    """Best score first; unscored rows last, grouped by source, newest first.
+
+    The stable sorts make source/recency the tiebreak among equal scores, so
+    the pre-WP7 ordering survives within each score band — and entirely, when
+    scoring was skipped and every score is NULL.
+    """
     rows.sort(key=lambda r: str(r.get("first_seen") or ""), reverse=True)
     rows.sort(key=lambda r: str(r.get("source_name") or "").lower())
+    rows.sort(key=lambda r: r["score"] if r.get("score") is not None else -1, reverse=True)
     return rows
 
 
