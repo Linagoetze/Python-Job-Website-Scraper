@@ -31,6 +31,11 @@ def default_title_keywords_path() -> Path:
     return package_dir() / "config" / "title_exclude_keywords.csv"
 
 
+def default_profile_path() -> Path:
+    """The owner's scoring rubric (gitignored; profile.example.md is the template)."""
+    return package_dir() / "config" / "profile.md"
+
+
 def default_data_dir() -> Path:
     """Generated output (the job store, jobs.xlsx, jobs_sources.csv)."""
     return default_project_root() / "data"
@@ -83,3 +88,9 @@ def load_rules(path: Path | None = None) -> dict[str, Any]:
     p = _require(path or default_rules_path())
     with p.open(encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_profile(path: Path | None = None) -> str:
+    """The scoring rubric as plain text, or FileNotFoundError with the fix."""
+    p = _require(path or default_profile_path())
+    return p.read_text(encoding="utf-8")
