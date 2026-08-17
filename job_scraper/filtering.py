@@ -14,6 +14,35 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Drop attribution (WP8a)
+# ---------------------------------------------------------------------------
+#
+# Every filter that excludes a job names the specific thing that fired — the
+# keyword, the seniority term, the detected language code — not just its layer.
+# A layer name alone answers "how many did I lose?"; only the rule answers "why,
+# and would loosening this one bring back something I wanted?".
+#
+# The rule travels on the excluded job dict under this key, so the filters stay
+# data-in/data-out and nothing needs a callback. It is stripped by `job_to_row`
+# (which copies named columns only), so it never reaches the store's jobs table.
+DROP_RULE_KEY = "drop_rule"
+
+# Layer 0 rule strings. The location cases are split finely on purpose: the
+# location rules reject the overwhelming majority of everything scraped, and
+# "off-criteria" is not a diagnosis.
+RULE_INCLUDE_NO_MATCH = "include_keywords: no match"
+RULE_LOC_EMPTY = "locations: no location given"
+RULE_LOC_UNLISTED_CITY = "locations: city not on the list"
+RULE_LOC_REMOTE_OVERRIDDEN = "locations: remote keyword overridden by a named city"
+RULE_LOC_CONDITIONAL_UNGATED = "locations: conditional city, hybrid gate not configured"
+
+
+def _with_rule(job: JobRecord, rule: str) -> JobRecord:
+    """A copy of *job* carrying the rule that excluded it."""
+    return dict(job, **{DROP_RULE_KEY: rule})
+
+
+# ---------------------------------------------------------------------------
 # Title keyword filter (CSV-driven)
 # ---------------------------------------------------------------------------
 
@@ -57,6 +86,43 @@ def _build_title_keyword_pattern(
     return re.compile(combined, re.IGNORECASE)
 
 
+def build_title_keyword_matchers(
+    entries: list[tuple[str, str]],
+) -> list[tuple[str, str, re.Pattern[str]]]:
+    """One compiled pattern per entry, for naming which keyword excluded a job.
+
+    Built once at setup alongside the combined pattern and passed down, never
+    rebuilt per job. The combined pattern stays the decision — this list is only
+    consulted for the minority of jobs it rejects, so the common path is
+    unchanged.
+    """
+    matchers: list[tuple[str, str, re.Pattern[str]]] = []
+    for kw, match_type in entries:
+        pattern = _build_title_keyword_pattern([(kw, match_type)])
+        if pattern is not None:
+            matchers.append((kw, match_type, pattern))
+    return matchers
+
+
+def title_keyword_rule(
+    title: str,
+    matchers: list[tuple[str, str, re.Pattern[str]]],
+    *,
+    prefix: str = "title_keyword",
+) -> str:
+    """Name the first configured keyword that matches *title*, with its match type.
+
+    "First configured" rather than "leftmost in the title": when two keywords
+    both match, the file order is the order the owner reads their own list in.
+    The seniority filter shares this, under its own *prefix*, because both are
+    a list of terms against a title and both must name the term that fired.
+    """
+    for kw, match_type, pattern in matchers:
+        if pattern.search(title):
+            return f"{prefix}: {kw!r} ({match_type})"
+    return f"{prefix}: unattributed"
+
+
 def apply_title_keyword_filter(
     jobs: list[JobRecord],
     entries: list[tuple[str, str]],
@@ -65,17 +131,19 @@ def apply_title_keyword_filter(
 
     Uses word-boundary matching: 'sales' (word) excludes 'Sales Manager' but not
     'Salesforce'; 'design' (prefix) excludes 'Graphic Designer' and 'Design Lead'.
+    Excluded jobs carry the keyword that fired under DROP_RULE_KEY.
     Returns (kept_jobs, excluded_jobs).
     """
     pattern = _build_title_keyword_pattern(entries)
     if pattern is None:
         return jobs, []
+    matchers = build_title_keyword_matchers(entries)
     kept: list[JobRecord] = []
     excluded: list[JobRecord] = []
     for job in jobs:
         title = str(job.get("title") or "")
         if pattern.search(title):
-            excluded.append(job)
+            excluded.append(_with_rule(job, title_keyword_rule(title, matchers)))
         else:
             kept.append(job)
     return kept, excluded
@@ -86,9 +154,10 @@ def apply_title_keyword_filter(
 # ---------------------------------------------------------------------------
 
 # Allowlist: only English, German, and the "germ" abbreviation are permitted.
-# Every other WORD[-/ ]speaker or WORD[-/ ]speaking pattern is blocked.
+# Every other WORD[-/ ]speaker or WORD[-/ ]speaking pattern is blocked. The
+# language word is captured so an exclusion can name it.
 _LANGUAGE_PATTERN: re.Pattern[str] = re.compile(
-    r"\b(?!(?:english|german|germ)\b)\w+[\s-]+(?:speaker|speaking)\b",
+    r"\b(?!(?:english|german|germ)\b)(\w+)[\s-]+(?:speaker|speaking)\b",
     re.IGNORECASE,
 )
 
@@ -101,14 +170,16 @@ def apply_language_filter(
     Excludes any title containing 'WORD speaker/speaking' unless WORD is
     'English', 'German', or 'Germ'.  Uses an allowlist so unlisted languages
     (e.g. 'Tagalog speaking') are also blocked automatically.
+    Excluded jobs carry the language word that fired under DROP_RULE_KEY.
     Returns (kept_jobs, excluded_jobs).
     """
     kept: list[JobRecord] = []
     excluded: list[JobRecord] = []
     for job in jobs:
         title = str(job.get("title") or "")
-        if _LANGUAGE_PATTERN.search(title):
-            excluded.append(job)
+        match = _LANGUAGE_PATTERN.search(title)
+        if match:
+            excluded.append(_with_rule(job, f"language_speaker: {match.group(1).lower()!r}"))
         else:
             kept.append(job)
     return kept, excluded
@@ -120,6 +191,9 @@ def apply_non_english_text_filter(
     """Exclude jobs whose title or description is detected as any non-English language.
 
     Uses langdetect; keeps the job if detection fails or text is too short (<= 10 chars).
+    Excluded jobs carry the detected language code under DROP_RULE_KEY — the
+    code is the whole diagnosis here, since langdetect on a short snippet is
+    the least trustworthy layer in the ladder.
     """
     try:
         from langdetect import LangDetectException, detect  # type: ignore[import]
@@ -142,7 +216,7 @@ def apply_non_english_text_filter(
         except LangDetectException:
             lang = "en"
         if lang != "en":
-            excluded.append(job)
+            excluded.append(_with_rule(job, f"non_english: langdetect {lang!r}"))
         else:
             kept.append(job)
     return kept, excluded
@@ -232,6 +306,35 @@ def _location_names_specific_city(loc_field_cf: str, remote_keywords: list[str])
     return False
 
 
+def _location_drop_rule(
+    loc_field_cf: str,
+    remote_kw_present: bool,
+    conditional_locations: list[str],
+) -> str:
+    """Name why the location rules rejected a job.
+
+    Reached only from the failing branch of `matches_rules`, so the listed
+    locations are already known not to match. The order below is the order the
+    cases are worth telling apart:
+
+    - no location field at all (an extractor that never populates it looks
+      identical to a genuinely location-less posting, and only this rule makes
+      that visible);
+    - a remote keyword was present but the field also named a city, so the
+      remote tag was overridden (Impactpool's "Remote | Nairobi" shape);
+    - a conditional city matched but the hybrid gate is unconfigured, leaving
+      the whole conditional list inert;
+    - otherwise the field simply names somewhere not on the list.
+    """
+    if not loc_field_cf.strip():
+        return RULE_LOC_EMPTY
+    if remote_kw_present:
+        return RULE_LOC_REMOTE_OVERRIDDEN
+    if any(_lower(loc) in loc_field_cf for loc in conditional_locations):
+        return RULE_LOC_CONDITIONAL_UNGATED
+    return RULE_LOC_UNLISTED_CITY
+
+
 def _haystack(job: JobRecord, match_in: str) -> str:
     title = str(job.get("title") or "")
     snippet = str(job.get("raw_snippet") or "")
@@ -264,6 +367,10 @@ def matches_rules(
     `hybrid_pattern` gates `conditional_locations` and must be built once via
     `build_hybrid_pattern(rules)` by the caller and passed down — never rebuilt
     here, since this runs once per job.
+
+    On rejection the single returned reason is the drop rule: it names the
+    keyword or the specific location case that fired, and the caller records it
+    verbatim in the run's exclusion log.
     """
     reasons: list[str] = []
     match_in = str(rules.get("match_in") or "title_and_description")
@@ -282,12 +389,12 @@ def matches_rules(
 
     for ex in exclude_keywords:
         if _lower(ex) in hay_cf:
-            return False, [f"excluded: matched {ex!r}"]
+            return False, [f"exclude_keywords: matched {ex!r}"]
 
     if include_keywords:
         matched_kw = [kw for kw in include_keywords if _lower(kw) in hay_cf]
         if not matched_kw:
-            return False, ["include_keywords: no match"]
+            return False, [RULE_INCLUDE_NO_MATCH]
         reasons.append(f"include_keywords: {', '.join(matched_kw)}")
 
     if locations or conditional_locations:
@@ -316,7 +423,9 @@ def matches_rules(
             else:
                 reasons.append(_HYBRID_PENDING_REASON)
         else:
-            return False, ["locations: no match (and no remote_keywords match)"]
+            return False, [
+                _location_drop_rule(loc_field, remote_kw_present, conditional_locations)
+            ]
 
     if not reasons and (include_keywords or locations or conditional_locations):
         reasons.append("matched rules")
