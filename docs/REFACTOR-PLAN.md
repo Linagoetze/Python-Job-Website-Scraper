@@ -44,7 +44,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 5b | Replace the blocklist-everything routine | 2 hr | Opus 5 | `think hard` | done | `wp5b-review-workflow` |
 | 5c | Review ranges and `--reject-all` | 0.5 hr | Fable 5 | none | done | `wp5c-review-ranges` |
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | done | `wp6-persist-descriptions` |
-| 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | not started | `wp7-llm-scoring` |
+| 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | done | `wp7-llm-scoring` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -78,6 +78,23 @@ Record any decision a future session would otherwise have to re-derive.
   `--allow-empty-delist` now means "this source genuinely emptied — delist its
   unreviewed jobs *now*", bypassing the threshold; without it a zero-row
   scrape still counts for nothing at all.
+- **WP7 follow-up (2026-08-17): scoring stays off, and API billing is not a
+  substitute question.** The owner is not opening a Developer Platform account
+  for now. A Claude Pro/subscription login is a separate product from the
+  Anthropic API: subscription auth does not authenticate `anthropic.Anthropic()`
+  and does not substitute for an `ANTHROPIC_API_KEY`, which is billed
+  separately per token. Consequence: `rules.json`'s `scoring_enabled` (default
+  `false`) is now authoritative and `--score` (replacing `--no-score`) forces
+  the stage on for one run, overriding the config — but the stage stays off by
+  default until the owner actually opens API billing, and `score_new_jobs` is
+  now only ever called when scoring is wanted, so an intentionally-off stage
+  never logs an ERROR. `anthropic` moved from a module-level import to a lazy
+  one inside `score_new_jobs` (`job_scraper/scoring.py`), so a normal run
+  never pays its import cost; kept installed (not commented out) in
+  `requirements.txt` since `tests/test_scoring.py` mocks it and CI installs
+  from that file. Do not delete `scoring.py`, the `score*` columns, or
+  `scored_description_sha256` — they are the correct dormant state until
+  billing is set up, and re-adding them later would mean a migration.
 
 ---
 
@@ -1184,6 +1201,90 @@ Mock the API in tests. Do not make live calls from the test suite.
 
 Branch wp7-llm-scoring. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+**Superseded by the 2026-08-17 follow-up below:** `--no-score` was replaced
+with `--score`, and `scoring_enabled: false` in `rules.json`/
+`rules.example.json` is now the authority for whether the stage runs at all —
+see the decisions log entry above. The rest of this section is left as
+originally written, as the historical record of what WP7 shipped.
+
+224 tests pass (up from 208), `ruff check .` clean. New: `job_scraper/scoring.py`,
+`job_scraper/config/profile.example.md`, `tests/test_scoring.py`. Touched:
+`storage/db.py` (score columns + `record_score`), `storage/xlsx_store.py`
+(score columns, sort), `run.py` (`--no-score`, stage call, summary lines),
+`config_loader.py` (`default_profile_path`/`load_profile`), `requirements.txt`,
+`tests/test_xlsx_store.py`.
+
+**One-off action for the owner before the next run:**
+
+```
+cp job_scraper/config/profile.example.md job_scraper/config/profile.md
+```
+
+then fill in the bracketed placeholders (background, targets, location, hard
+constraints) and export `ANTHROPIC_API_KEY` in the shell that runs the
+scraper. Until both exist the stage logs an ERROR, reports itself skipped in
+the run summary, and the run otherwise completes normally — unscored jobs
+simply sort to the bottom of the spreadsheet.
+
+Decisions:
+
+- **New dependency `anthropic>=0.100.0`**, approved by the owner this session
+  (asked per CLAUDE.md before adding). The alternative — raw HTTP through
+  `requests` — would have meant hand-rolling retry/backoff the SDK already
+  does.
+- **Model: `claude-opus-5`** (`scoring.SCORING_MODEL`, a constant — change it
+  there), called with `output_config.effort: "low"` (scoring against a rubric
+  is routine work; low effort is markedly cheaper on this model and still
+  strong) and a structured-outputs JSON schema, so the response is guaranteed
+  to parse. The rubric rides in the system prompt with a `cache_control`
+  breakpoint: every call after the first in a run reads it from cache at a
+  tenth of the input price.
+- **The stage lives in `run.py`, not `pipeline.py`.** Scoring is not a filter
+  layer (CLAUDE.md forbids a sixth without asking) and it must not be able to
+  fail a scrape: `run_pipeline` commits first, then scoring runs, then the
+  xlsx export — so the spreadsheet is sorted by fresh scores, and a scoring
+  crash can never lose scraped data. `--no-score` just skips the call.
+- **Never re-score, keyed on content:** `scored_description_sha256` records
+  the SHA-256 of the description each score judged. A candidate is a status
+  `'new'` job whose stored description hash differs — so an unchanged job
+  costs nothing on later runs, and a changed description (the only observable
+  "the job changed" signal the store has) earns exactly one new call.
+  Reviewed statuses are never scored: money spent on a job the owner already
+  decided about is wasted.
+- **`score` is a nullable INTEGER**, not a defaulted one: 0 is a real
+  (terrible) score and must stay distinguishable from "not scored". The
+  columns are added by the same `ALTER TABLE`-on-open pattern as
+  `misses`/WP6, verified against a WP6-era database; `upsert_jobs` never
+  touches them, so scores survive every subsequent scrape.
+- **Failure is per job, in tiers:** a refusal, truncation, invalid JSON or
+  out-of-range payload marks that one job failed (hash not recorded, so it
+  retries next run) and moves on. Auth, permission and rate-limit errors
+  abort the remaining loop — every further request would hit the same wall —
+  while keeping the scores already recorded. A missing key or profile skips
+  the whole stage with an ERROR log and a "Scoring skipped:" line in the
+  summary, never an aborted run.
+- **`flags` is stored as `'; '`-joined plain text** (one canonical
+  representation — the store holds plain data, not JSON to be parsed by
+  readers).
+- **xlsx:** the review sheet gains `score` (written as a number, blank when
+  NULL), `score_reasoning` and `score_flags` columns, and sorts score
+  descending; the old source/recency order is the tiebreak within a score
+  band and the whole order when nothing is scored. Row-number addressing for
+  the review commands is unaffected — `export_rows` records whatever order
+  was written.
+- **Cost estimate** accumulates the per-response `usage` counts and prices
+  them at claude-opus-5 list rates (constants in `scoring.py` — update them
+  if the model changes), shown in the run summary as
+  "Estimated scoring cost".
+- **`.gitignore` already covered `job_scraper/config/profile.md`** — it was
+  added preemptively in `444cfeb` (WP4 session), so this package had nothing
+  to add; verified with `git check-ignore`.
+- Tests inject a `FakeClient`; the real client is only constructed after the
+  ANTHROPIC_API_KEY check, and the key-missing test deletes the variable
+  first, so the suite can never make a live call.
 
 ---
 

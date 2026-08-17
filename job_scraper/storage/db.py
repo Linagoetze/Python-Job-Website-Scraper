@@ -93,7 +93,18 @@ CREATE TABLE IF NOT EXISTS jobs (
     misses           INTEGER NOT NULL DEFAULT 0,
     hybrid_confirmed INTEGER NOT NULL DEFAULT 0,
     description_text TEXT NOT NULL DEFAULT '',
-    description_fetched_at TEXT NOT NULL DEFAULT ''
+    description_fetched_at TEXT NOT NULL DEFAULT '',
+    -- LLM scoring (WP7). score is NULL until a job has been scored — 0 is a
+    -- real (terrible) score and must stay distinguishable from "not scored".
+    -- scored_description_sha256 records what text the score judged, so a job
+    -- is re-scored only when its description actually changes.
+    score            INTEGER,
+    score_seniority_fit TEXT NOT NULL DEFAULT '',
+    score_relevance  TEXT NOT NULL DEFAULT '',
+    score_reasoning  TEXT NOT NULL DEFAULT '',
+    score_flags      TEXT NOT NULL DEFAULT '',
+    scored_at        TEXT NOT NULL DEFAULT '',
+    scored_description_sha256 TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS source_health (
@@ -146,6 +157,18 @@ class JobStore:
             if column not in have:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
         for column in ("description_text", "description_fetched_at"):
+            if column not in have:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        if "score" not in have:
+            conn.execute("ALTER TABLE jobs ADD COLUMN score INTEGER")
+        for column in (
+            "score_seniority_fit",
+            "score_relevance",
+            "score_reasoning",
+            "score_flags",
+            "scored_at",
+            "scored_description_sha256",
+        ):
             if column not in have:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         self._conn = conn
@@ -419,6 +442,43 @@ class JobStore:
                 )
                 flipped += cur.rowcount
         return inserted, flipped
+
+    def record_score(
+        self,
+        dedupe_key: str,
+        *,
+        score: int,
+        seniority_fit: str,
+        relevance: str,
+        reasoning: str,
+        flags: str,
+        description_sha256: str,
+        scored_at: str | None = None,
+    ) -> None:
+        """Persist one LLM scoring result against the description it judged.
+
+        The upsert path never touches these columns, so a score survives every
+        subsequent scrape until the description itself changes and the scorer
+        writes a new one.
+        """
+        self._c().execute(
+            """
+            UPDATE jobs SET score = ?, score_seniority_fit = ?, score_relevance = ?,
+                            score_reasoning = ?, score_flags = ?, scored_at = ?,
+                            scored_description_sha256 = ?
+            WHERE dedupe_key = ?
+            """,
+            (
+                score,
+                seniority_fit,
+                relevance,
+                reasoning,
+                flags,
+                scored_at or utc_now_iso(),
+                description_sha256,
+                dedupe_key,
+            ),
+        )
 
     def jobs_by_keys(self, keys: list[str]) -> dict[str, dict[str, Any]]:
         """dedupe_key -> full row, for the keys that are actually stored."""

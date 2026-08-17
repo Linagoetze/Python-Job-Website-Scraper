@@ -13,7 +13,9 @@ from job_scraper.storage.db import JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
 
 # Review sheet column positions (1-based), after the addressable '#' column.
-_ROW_NUMBER, _SOURCE, _TITLE, _LOCATION, _DETAIL, _APPLY = 1, 2, 3, 4, 5, 6
+_ROW_NUMBER, _SOURCE, _TITLE, _LOCATION = 1, 2, 3, 4
+_SCORE, _REASONING, _FLAGS, _DETAIL, _APPLY = 5, 6, 7, 8, 9
+_STATUS = 10  # present only with --show-all
 
 
 def _seed(
@@ -84,7 +86,7 @@ def test_show_all_puts_every_job_on_the_review_sheet(tmp_path: Path) -> None:
     assert sorted(r[_TITLE - 1] for r in rows) == ["Gone", "New one", "Reviewed"]
     # The status column exists only in this mode, where it carries information.
     assert sorted(r[-1] for r in rows) == ["delisted", "new", "rejected"]
-    assert load_workbook(xlsx)["Jobs"].cell(row=1, column=7).value == "status"
+    assert load_workbook(xlsx)["Jobs"].cell(row=1, column=_STATUS).value == "status"
 
 
 def test_the_archive_sheet_holds_every_job_whatever_its_status(tmp_path: Path) -> None:
@@ -193,6 +195,60 @@ def test_rows_from_the_two_most_recent_runs_are_highlighted(tmp_path: Path) -> N
         if str(ws.cell(row=r, column=_SOURCE).fill.start_color.rgb or "").endswith("C6EFCE")
     }
     assert filled == {"Mid", "New"}
+
+
+def _record_score(db: Path, key: str, score: int, reasoning: str = "Because.") -> None:
+    with JobStore(db) as store:
+        store.record_score(
+            key,
+            score=score,
+            seniority_fit="good",
+            relevance="high",
+            reasoning=reasoning,
+            flags="",
+            description_sha256="abc",
+        )
+
+
+def test_review_sheet_sorts_by_score_descending_with_unscored_last(tmp_path: Path) -> None:
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(
+        db,
+        [
+            _job("https://x/jobs/low", "Low"),
+            _job("https://x/jobs/high", "High"),
+            _job("https://x/jobs/unscored", "Unscored"),
+        ],
+        now="2026-08-01T00:00:00+00:00",
+    )
+    _record_score(db, "https://x/jobs/low", 40)
+    _record_score(db, "https://x/jobs/high", 95)
+
+    write_xlsx(db, xlsx)
+
+    assert _titles(xlsx, "Jobs", _TITLE) == ["High", "Low", "Unscored"]
+
+
+def test_score_and_reasoning_are_written_to_the_review_sheet(tmp_path: Path) -> None:
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(db, [_job("https://x/jobs/1", "Analyst")], now="2026-08-01T00:00:00+00:00")
+    _record_score(db, "https://x/jobs/1", 85, reasoning="Strong match on field.")
+
+    write_xlsx(db, xlsx)
+
+    (row,) = _sheet_rows(xlsx)
+    assert row[_SCORE - 1] == 85, "a number, not a string, so Excel sorts it numerically"
+    assert row[_REASONING - 1] == "Strong match on field."
+
+
+def test_an_unscored_job_has_a_blank_score_cell(tmp_path: Path) -> None:
+    db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
+    _seed(db, [_job("https://x/jobs/1", "Analyst")], now="2026-08-01T00:00:00+00:00")
+
+    write_xlsx(db, xlsx)
+
+    (row,) = _sheet_rows(xlsx)
+    assert row[_SCORE - 1] is None
 
 
 def test_empty_store_writes_an_empty_table(tmp_path: Path) -> None:

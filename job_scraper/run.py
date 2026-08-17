@@ -13,14 +13,18 @@ from job_scraper.config_loader import (
     default_rules_path,
     default_sources_path,
     default_title_keywords_path,
+    load_rules,
 )
 from job_scraper.pipeline import DEFAULT_DELIST_AFTER, RunSummary, run_pipeline
+from job_scraper.scoring import ScoringSummary, score_new_jobs
 from job_scraper.storage.xlsx_store import write_xlsx
 
 _RULE = "─" * 48
 
 
-def format_summary(summary: RunSummary, table_total: int) -> str:
+def format_summary(
+    summary: RunSummary, table_total: int, scoring: ScoringSummary | None = None
+) -> str:
     """Render the end-of-run funnel: how many jobs each stage dropped, how many
     remained, the new rows written this run, and the cumulative table total."""
 
@@ -73,6 +77,16 @@ def format_summary(summary: RunSummary, table_total: int) -> str:
         row("Marked delisted", f"{summary.rows_delisted:,}"),
         row("Jobs now in table", f"{table_total:,}"),
     ]
+    if scoring is not None:
+        if scoring.skipped_reason:
+            lines.append(f"Scoring skipped: {scoring.skipped_reason}")
+        else:
+            lines.append(row("Jobs scored (LLM)", f"{scoring.jobs_scored:,}"))
+            if scoring.jobs_failed:
+                lines.append(row("Scoring failures (retried next run)",
+                                 f"{scoring.jobs_failed:,}"))
+            lines.append(row("Estimated scoring cost",
+                             f"${scoring.estimated_cost_usd:.4f}"))
     return "\n".join(lines)
 
 
@@ -134,6 +148,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--score",
+        action="store_true",
+        dest="score",
+        help=(
+            "Force the LLM scoring stage on for this run, overriding rules.json's "
+            "scoring_enabled. Costs API credits — see rules.json and "
+            "config/profile.md."
+        ),
+    )
+    parser.add_argument(
         "--show-all",
         action="store_true",
         dest="show_all",
@@ -169,9 +193,18 @@ def main() -> None:
         # it on its own rather than buried in a traceback.
         raise SystemExit(str(exc)) from None
 
+    # rules.json's scoring_enabled is authoritative; --score forces the stage
+    # on for this run regardless, e.g. to try it once before flipping the
+    # config. Off by default costs nothing: score_new_jobs is never called.
+    rules = load_rules(args.rules)
+    scoring_enabled = args.score or bool(rules.get("scoring_enabled", False))
+
+    # Score before exporting, so the spreadsheet is sorted by fresh scores.
+    scoring = score_new_jobs(args.output_db) if scoring_enabled else None
+
     table_total = write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
 
-    print(format_summary(summary, table_total), file=sys.stderr)
+    print(format_summary(summary, table_total, scoring), file=sys.stderr)
     print(f"Output: {args.output_xlsx.resolve()}")
     if table_total:
         print("Reviewed them? python -m job_scraper.review --seen-all")
