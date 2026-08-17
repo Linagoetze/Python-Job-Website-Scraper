@@ -78,6 +78,23 @@ Record any decision a future session would otherwise have to re-derive.
   `--allow-empty-delist` now means "this source genuinely emptied — delist its
   unreviewed jobs *now*", bypassing the threshold; without it a zero-row
   scrape still counts for nothing at all.
+- **WP7 follow-up (2026-08-17): scoring stays off, and API billing is not a
+  substitute question.** The owner is not opening a Developer Platform account
+  for now. A Claude Pro/subscription login is a separate product from the
+  Anthropic API: subscription auth does not authenticate `anthropic.Anthropic()`
+  and does not substitute for an `ANTHROPIC_API_KEY`, which is billed
+  separately per token. Consequence: `rules.json`'s `scoring_enabled` (default
+  `false`) is now authoritative and `--score` (replacing `--no-score`) forces
+  the stage on for one run, overriding the config — but the stage stays off by
+  default until the owner actually opens API billing, and `score_new_jobs` is
+  now only ever called when scoring is wanted, so an intentionally-off stage
+  never logs an ERROR. `anthropic` moved from a module-level import to a lazy
+  one inside `score_new_jobs` (`job_scraper/scoring.py`), so a normal run
+  never pays its import cost; kept installed (not commented out) in
+  `requirements.txt` since `tests/test_scoring.py` mocks it and CI installs
+  from that file. Do not delete `scoring.py`, the `score*` columns, or
+  `scored_description_sha256` — they are the correct dormant state until
+  billing is set up, and re-adding them later would mean a migration.
 
 ---
 
@@ -1186,6 +1203,12 @@ Branch wp7-llm-scoring. Commit, do not push. Update the plan file.
 ```
 
 ### Result
+
+**Superseded by the 2026-08-17 follow-up below:** `--no-score` was replaced
+with `--score`, and `scoring_enabled: false` in `rules.json`/
+`rules.example.json` is now the authority for whether the stage runs at all —
+see the decisions log entry above. The rest of this section is left as
+originally written, as the historical record of what WP7 shipped.
 
 224 tests pass (up from 208), `ruff check .` clean. New: `job_scraper/scoring.py`,
 `job_scraper/config/profile.example.md`, `tests/test_scoring.py`. Touched:

@@ -13,6 +13,7 @@ from job_scraper.config_loader import (
     default_rules_path,
     default_sources_path,
     default_title_keywords_path,
+    load_rules,
 )
 from job_scraper.pipeline import DEFAULT_DELIST_AFTER, RunSummary, run_pipeline
 from job_scraper.scoring import ScoringSummary, score_new_jobs
@@ -147,12 +148,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--no-score",
+        "--score",
         action="store_true",
-        dest="no_score",
+        dest="score",
         help=(
-            "Skip the LLM scoring stage. Jobs keep any score from earlier runs; "
-            "unscored jobs sort to the bottom of the xlsx."
+            "Force the LLM scoring stage on for this run, overriding rules.json's "
+            "scoring_enabled. Costs API credits — see rules.json and "
+            "config/profile.md."
         ),
     )
     parser.add_argument(
@@ -191,8 +193,14 @@ def main() -> None:
         # it on its own rather than buried in a traceback.
         raise SystemExit(str(exc)) from None
 
+    # rules.json's scoring_enabled is authoritative; --score forces the stage
+    # on for this run regardless, e.g. to try it once before flipping the
+    # config. Off by default costs nothing: score_new_jobs is never called.
+    rules = load_rules(args.rules)
+    scoring_enabled = args.score or bool(rules.get("scoring_enabled", False))
+
     # Score before exporting, so the spreadsheet is sorted by fresh scores.
-    scoring = None if args.no_score else score_new_jobs(args.output_db)
+    scoring = score_new_jobs(args.output_db) if scoring_enabled else None
 
     table_total = write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
 

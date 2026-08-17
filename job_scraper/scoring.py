@@ -13,6 +13,11 @@ the run.
 
 The API key comes from the ANTHROPIC_API_KEY environment variable only. It is
 never written to disk or to any config file.
+
+Off by default. `rules.json`'s `scoring_enabled` is authoritative; `run.py`'s
+`--score` flag forces this stage on for one run regardless. `anthropic` is an
+optional dependency (see requirements.txt) and is imported lazily, inside
+`score_new_jobs`, so a run with scoring off never pays its import cost.
 """
 
 from __future__ import annotations
@@ -24,8 +29,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import anthropic
 
 from job_scraper.config_loader import load_profile
 from job_scraper.storage.db import JobStore
@@ -233,6 +236,10 @@ def score_new_jobs(
         if not candidates:
             return ScoringSummary(0, 0, len(without_description), 0.0)
 
+        # Imported here, not at module level, so job_scraper.run only pays for
+        # the SDK's import cost on a run where scoring actually has work to do.
+        import anthropic
+
         try:
             profile = load_profile(profile_path)
         except FileNotFoundError as exc:
@@ -245,7 +252,8 @@ def score_new_jobs(
             if not os.environ.get("ANTHROPIC_API_KEY"):
                 logger.error(
                     "Scoring skipped: ANTHROPIC_API_KEY is not set. Export it in the "
-                    "shell that runs the scraper, or pass --no-score to silence this."
+                    "shell that runs the scraper, or set scoring_enabled to false in "
+                    "rules.json to turn the stage off."
                 )
                 return ScoringSummary(
                     0,

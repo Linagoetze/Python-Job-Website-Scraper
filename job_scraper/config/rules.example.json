@@ -1,6 +1,8 @@
 {
   "_comment": "Example rules. Copy to rules.json and edit: cp job_scraper/config/rules.example.json job_scraper/config/rules.json — see the README for what every key does.",
 
+  "scoring_enabled": false,
+
   "include_keywords": [],
   "exclude_keywords": [],
 

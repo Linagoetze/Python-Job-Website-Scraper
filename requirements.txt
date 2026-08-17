@@ -6,6 +6,13 @@ pyyaml>=6.0.0
 playwright>=1.40.0
 openpyxl>=3.1.0
 langdetect>=1.0.9
+
+# Optional: only used by the LLM scoring stage (job_scraper/scoring.py), which
+# is off by default (rules.json's scoring_enabled). scoring.py imports it
+# lazily, inside score_new_jobs, so it costs nothing at runtime unless
+# scoring_enabled is true or --score is passed. Kept in this file (rather than
+# a separate extras file) because the test suite mocks it and CI installs from
+# here; skip this line yourself if you never intend to turn scoring on.
 anthropic>=0.100.0
 
 # Tests and linting. Configured in pyproject.toml; CI runs both.
