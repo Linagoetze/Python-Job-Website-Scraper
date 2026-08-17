@@ -47,10 +47,11 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | done | `wp7-llm-scoring` |
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
+| 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
 
-Total roughly 27 hours. One package per week is about three months. Two evenings
+Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
 
 ## Decisions log
@@ -1499,6 +1500,51 @@ Also fix, wherever the remaining code lives:
 
 Branch wp8-retire-ladder. Commit, do not push. Update the plan file with the
 before/after diff summary.
+```
+
+---
+
+## WP8b — README reconciliation
+
+**Do this after WP8, not before.** WP8 retires two filter layers and the
+keyword CSV, which rewrites the "How it works" layer table, the language-filter
+description and a whole input-file section. Doing the README first means doing
+it twice.
+
+Nothing here is dangerous — every stale passage is misleading but inert, and no
+instruction in the README would lose data if followed. It costs confusion, not
+history, which is why it does not jump the queue.
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8b only.
+
+README.md still describes the pre-WP5 CSV store as though it were live. Bring
+it back in line with the code. Docs only: change no behaviour, and if you find
+a real bug, note it at the end rather than fixing it.
+
+Known drift, found during WP8a — verify each against the code rather than
+trusting this list, and look for more:
+
+- "Postings already stored in jobs.csv skip layer 2" — it is the SQLite store.
+- "the provisional marker isn't stored in jobs.csv" — false since WP5 added
+  the hybrid_confirmed column, which is why that re-fetch no longer happens.
+- A `### data/jobs.csv` output-file section for a file nothing writes any
+  more. It is a frozen pre-cutover archive; say so, or drop the section.
+- The retrofilter description: "re-applies the current filters to the existing
+  jobs.csv".
+- The layout table calls job_scraper/storage/ "CSV store (dedupe, schema
+  migration) and the xlsx writer". csv_store.py was deleted in WP5.
+- data/curated/blocklist.csv is presented as a live input. WP5b replaced that
+  routine; it is now a one-off import, and the review commands are the flow.
+- The options table under "Running" omits --delist-after,
+  --allow-empty-delist, --score and --show-all.
+
+Check the whole file against the current CLI while you are in there: every
+flag documented should exist, and `python -m job_scraper.run --help` is the
+authority. Do not invent example output — if a block needs new numbers, say
+where they came from or mark it illustrative.
+
+Branch wp8b-readme. Commit, do not push. Update the plan file.
 ```
 
 ---
