@@ -15,18 +15,28 @@ from job_scraper.config_loader import (
     default_title_keywords_path,
     load_rules,
 )
-from job_scraper.pipeline import DEFAULT_DELIST_AFTER, RunSummary, run_pipeline
+from job_scraper.pipeline import (
+    DEFAULT_DELIST_AFTER,
+    DEFAULT_KEEP_DROP_RUNS,
+    RunSummary,
+    run_pipeline,
+)
 from job_scraper.scoring import ScoringSummary, score_new_jobs
 from job_scraper.storage.xlsx_store import write_xlsx
 
 _RULE = "─" * 48
 
 
-def format_summary(
-    summary: RunSummary, table_total: int, scoring: ScoringSummary | None = None
-) -> str:
+def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -> str:
     """Render the end-of-run funnel: how many jobs each stage dropped, how many
-    remained, the new rows written this run, and the cumulative table total."""
+    remained, the new rows written this run, and where the table now stands.
+
+    The two closing totals are deliberately both present. "Still listed this
+    run" counts every stored job this run saw on its source, whatever its
+    review status; "Unreviewed jobs in table" counts only the ones not yet
+    decided about. A run that finds 100 jobs still listed and 2 unreviewed is a
+    normal run, not a lost-data incident — which is how the old single line,
+    labelled "Jobs now in table", read."""
 
     # All numeric columns end at the same character position for vertical scanning.
     _NUMCOL = 46  # column where the dropped/total numbers right-align to
@@ -75,7 +85,9 @@ def format_summary(
         _RULE,
         row("New rows written", f"{summary.rows_written:,}"),
         row("Marked delisted", f"{summary.rows_delisted:,}"),
-        row("Jobs now in table", f"{table_total:,}"),
+        row("Still listed this run", f"{summary.jobs_still_listed:,}"),
+        row("Unreviewed jobs in table", f"{summary.jobs_unreviewed:,}"),
+        row("Exclusions logged", f"{summary.exclusions_logged:,}"),
     ]
     if scoring is not None:
         if scoring.skipped_reason:
@@ -138,6 +150,17 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--keep-drop-runs",
+        type=int,
+        default=DEFAULT_KEEP_DROP_RUNS,
+        dest="keep_drop_runs",
+        help=(
+            "Runs of filter exclusions to keep in the drop log, read back with "
+            f"`python -m job_scraper.drops` (default: {DEFAULT_KEEP_DROP_RUNS}). "
+            "Older rows are pruned at the end of each run."
+        ),
+    )
+    parser.add_argument(
         "--allow-empty-delist",
         action="store_true",
         dest="allow_empty_delist",
@@ -187,6 +210,7 @@ def main() -> None:
             title_keywords_path=args.title_keywords,
             allow_empty_delist=args.allow_empty_delist,
             delist_after=args.delist_after,
+            keep_drop_runs=args.keep_drop_runs,
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show
@@ -202,11 +226,13 @@ def main() -> None:
     # Score before exporting, so the spreadsheet is sorted by fresh scores.
     scoring = score_new_jobs(args.output_db) if scoring_enabled else None
 
-    table_total = write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
+    shown = write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
 
-    print(format_summary(summary, table_total, scoring), file=sys.stderr)
+    print(format_summary(summary, scoring), file=sys.stderr)
     print(f"Output: {args.output_xlsx.resolve()}")
-    if table_total:
+    if summary.exclusions_logged:
+        print("Why was something dropped? python -m job_scraper.drops")
+    if shown:
         print("Reviewed them? python -m job_scraper.review --seen-all")
 
 

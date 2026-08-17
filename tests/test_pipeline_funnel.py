@@ -267,8 +267,26 @@ def test_summary_renders_every_field(env: Path) -> None:
     removed while the summary still reads it, fails here."""
     s = _run(env)
 
-    rendered = format_summary(s, table_total=len(_rows(env)))
+    rendered = format_summary(s)
 
     assert "Run summary" in rendered
     assert f"{s.rows_written:,}" in rendered
     assert len(rendered.splitlines()) > 10
+
+
+def test_summary_separates_still_listed_from_unreviewed(env: Path) -> None:
+    """The two closing totals are different questions, and the summary must say
+    which is which — the whole point of the WP8a relabelling.
+
+    The seeded 'rejected' job is still listed and is not unreviewed, so the
+    counts genuinely differ here rather than agreeing by accident.
+    """
+    s = _run(env)
+
+    assert s.jobs_unreviewed == len(_rows(env))
+    assert s.jobs_still_listed > s.jobs_unreviewed
+
+    rendered = format_summary(s)
+    assert "Still listed this run" in rendered
+    assert "Unreviewed jobs in table" in rendered
+    assert "Jobs now in table" not in rendered
