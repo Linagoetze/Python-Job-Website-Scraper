@@ -9,6 +9,9 @@ Unlike the old CSV store, this one knows *when* it saw things:
 `first_seen`/`last_seen` on jobs (ISO-8601 UTC strings), a `runs` table, and a
 `source_health` row per scrape attempt, which WP10 uses to warn about sources
 whose counts collapse.
+
+Since WP8a it also knows what it threw away: `run_exclusions` holds one row per
+filter exclusion per run, naming the rule that fired, pruned to the last N runs.
 """
 
 from __future__ import annotations
@@ -115,6 +118,31 @@ CREATE TABLE IF NOT EXISTS source_health (
     error       TEXT,
     PRIMARY KEY (source_name, run_id)
 );
+
+-- One row per filter exclusion (WP8a). Written inside the run's transaction,
+-- so a run's drops commit or roll back with everything else it decided.
+--
+-- Deliberately not keyed on dedupe_key and deliberately no foreign key to
+-- jobs: the whole point is the jobs that were *not* stored, and the same job
+-- can legitimately be dropped twice in one run (once as scraped, once as a
+-- stored row the re-filter pass rejected). `rule` names the specific keyword,
+-- term or language code that fired — the layer alone was what made a false
+-- negative impossible to find in the first place.
+--
+-- Pruned to the last N runs by `prune_exclusions`, so it cannot grow forever.
+CREATE TABLE IF NOT EXISTS run_exclusions (
+    run_id      INTEGER NOT NULL REFERENCES runs(run_id),
+    dedupe_key  TEXT NOT NULL DEFAULT '',
+    title       TEXT NOT NULL DEFAULT '',
+    company     TEXT NOT NULL DEFAULT '',
+    source_name TEXT NOT NULL DEFAULT '',
+    location    TEXT NOT NULL DEFAULT '',
+    layer       TEXT NOT NULL,
+    rule        TEXT NOT NULL,
+    excluded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_exclusions_run ON run_exclusions (run_id);
 
 -- Which job each row of the last export's review sheet holds (WP5b). This is
 -- how `python -m job_scraper.review --reject 7` knows what row 7 was, and it
@@ -489,6 +517,116 @@ class JobStore:
             if row is not None:
                 found[key] = dict(row)
         return found
+
+    # -- exclusions (the drop log) --------------------------------------------
+
+    def record_exclusions(
+        self,
+        run_id: int,
+        exclusions: list[dict[str, Any]],
+        *,
+        now: str | None = None,
+    ) -> int:
+        """Log this run's filter exclusions. Returns the number of rows written.
+
+        *exclusions* are plain dicts (dedupe_key, title, company, source_name,
+        location, layer, rule) — the same data-in/data-out shape as everything
+        else the store takes. They all share one *excluded_at*: they belong to
+        one run, and it is the run_id that orders them.
+        """
+        stamped = now or utc_now_iso()
+        self._c().executemany(
+            "INSERT INTO run_exclusions (run_id, dedupe_key, title, company, source_name,"
+            " location, layer, rule, excluded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                (
+                    run_id,
+                    str(e.get("dedupe_key") or ""),
+                    str(e.get("title") or ""),
+                    str(e.get("company") or ""),
+                    str(e.get("source_name") or ""),
+                    str(e.get("location") or ""),
+                    str(e.get("layer") or ""),
+                    str(e.get("rule") or ""),
+                    stamped,
+                )
+                for e in exclusions
+            ),
+        )
+        return len(exclusions)
+
+    def prune_exclusions(self, keep_runs: int) -> int:
+        """Keep only the *keep_runs* most recent runs' exclusions. Returns rows deleted.
+
+        Counted over the runs that actually logged exclusions, not over `runs`:
+        a run that dropped nothing should not push a useful one out of the
+        window. A full scrape logs thousands of rows, so without this the table
+        would be the largest thing in the database within a month.
+        """
+        if keep_runs < 1:
+            raise ValueError(f"keep_runs must be >= 1, got {keep_runs}")
+        cur = self._c().execute(
+            "DELETE FROM run_exclusions WHERE run_id NOT IN ("
+            " SELECT run_id FROM (SELECT DISTINCT run_id FROM run_exclusions"
+            "  ORDER BY run_id DESC LIMIT ?))",
+            (keep_runs,),
+        )
+        return cur.rowcount
+
+    def latest_exclusion_run(self) -> int | None:
+        """The most recent run_id that logged any exclusion, or None."""
+        row = self._c().execute("SELECT MAX(run_id) AS r FROM run_exclusions").fetchone()
+        return None if row is None or row["r"] is None else int(row["r"])
+
+    def exclusions(
+        self,
+        run_id: int,
+        *,
+        layer: str | None = None,
+        rule: str | None = None,
+        source: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """This run's exclusions, newest layer last, optionally filtered.
+
+        The three filters match case-insensitively on a substring, so
+        `--layer locations` finds '0-rules' drops named 'locations: ...' and
+        `--rule hybrid` finds both hybrid cases without anyone having to type a
+        rule string exactly.
+        """
+        clauses = ["run_id = ?"]
+        params: list[Any] = [run_id]
+        for column, value in (("layer", layer), ("rule", rule), ("source_name", source)):
+            if value:
+                clauses.append(f"LOWER({column}) LIKE ?")
+                params.append(f"%{value.lower()}%")
+        rows = self._c().execute(
+            f"SELECT * FROM run_exclusions WHERE {' AND '.join(clauses)}"
+            " ORDER BY layer, rule, source_name, title",
+            params,
+        )
+        return [dict(r) for r in rows]
+
+    def count_sighted_in_run(self, run_id: int) -> int:
+        """Stored jobs this run saw still listed, whatever their review status.
+
+        The honest companion to the unreviewed count: a run that turns up 100
+        jobs the owner has already decided about is not a run that found
+        nothing.
+        """
+        row = self._c().execute(
+            "SELECT COUNT(*) AS n FROM jobs WHERE last_run_id = ?", (run_id,)
+        ).fetchone()
+        return int(row["n"])
+
+    def count_with_status(self, statuses: tuple[str, ...]) -> int:
+        unknown = set(statuses) - set(JOB_STATUSES)
+        if unknown:
+            raise ValueError(f"unknown statuses {sorted(unknown)!r}")
+        placeholders = ", ".join("?" for _ in statuses)
+        row = self._c().execute(
+            f"SELECT COUNT(*) AS n FROM jobs WHERE status IN ({placeholders})", statuses
+        ).fetchone()
+        return int(row["n"])
 
     # -- export addressing ----------------------------------------------------
 
