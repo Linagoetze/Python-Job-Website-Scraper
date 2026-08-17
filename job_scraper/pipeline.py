@@ -10,11 +10,24 @@ from typing import Any
 
 from job_scraper import JobRecord
 from job_scraper.config_loader import load_rules, load_sources
+from job_scraper.drops import (
+    LAYER_DETAIL,
+    LAYER_LANGUAGE,
+    LAYER_NON_ENGLISH,
+    LAYER_REVIEW_STATUS,
+    LAYER_RULES,
+    LAYER_SENIORITY,
+    LAYER_TITLE_KEYWORD,
+    RULE_REVIEW_REJECTED,
+    exclusion,
+    refiltered,
+)
 from job_scraper.experience_filter import apply_combined_title_filter, apply_detail_filter
 from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    DROP_RULE_KEY,
     apply_language_filter,
     apply_non_english_text_filter,
     build_hybrid_pattern,
@@ -30,6 +43,23 @@ logger = logging.getLogger(__name__)
 # is marked delisted. One miss can be a paginated listing hiccup or a posting
 # briefly pulled for editing; two runs in a row is a real disappearance.
 DEFAULT_DELIST_AFTER = 2
+
+# Runs of exclusions kept in the drop log. A full scrape logs thousands of
+# rows, and the question the log answers — "did that rule change help?" — is
+# asked against recent runs, not against the whole history.
+DEFAULT_KEEP_DROP_RUNS = 10
+
+
+def _exclusions(jobs: list[JobRecord], layer: str) -> list[dict[str, Any]]:
+    """Drop-log rows for jobs a filter excluded, each naming the rule that fired.
+
+    The rule travels on the job dict; a filter that forgot to attach one is
+    logged as unattributed rather than silently dropping the row, since a
+    missing row is exactly the blindness this log exists to remove.
+    """
+    return [
+        exclusion(job, layer, str(job.get(DROP_RULE_KEY) or "unattributed")) for job in jobs
+    ]
 
 
 @dataclass
@@ -53,6 +83,13 @@ class RunSummary:
     jobs_kept_new: int
     rows_written: int
     rows_delisted: int
+    # Every stored job this run confirmed is still listed, whatever its review
+    # status, and how many jobs in the table are still unreviewed. The two
+    # differ widely on a normal run, and that gap is not a bug: most of what is
+    # still listed has already been reviewed.
+    jobs_still_listed: int
+    jobs_unreviewed: int
+    exclusions_logged: int
 
 
 def refilter_stored_jobs(
@@ -60,7 +97,7 @@ def refilter_stored_jobs(
     rules: dict[str, Any],
     title_keywords: list[tuple[str, str]],
     hybrid_pattern: Any = None,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
     """Re-apply the filter layers to stored unreviewed jobs, marking failures.
 
     The database replacement for the old CSV clean_existing_rows: when the
@@ -70,39 +107,50 @@ def refilter_stored_jobs(
     Only status 'new' rows are re-filtered. 'seen', 'shortlisted' and
     'rejected' are review history — a rule change must not silently rewrite
     what the owner already decided — and 'delisted' rows are not shown anyway.
-    Returns per-filter rejection counts.
+
+    Returns (per-filter rejection counts, drop-log rows). The drop-log rows are
+    tagged with the `refilter/` layer prefix: a stored row rejected by a
+    tightened rule is a real exclusion and belongs in the log, but it is a
+    different population from this run's scrape.
     """
     jobs = store.jobs_with_status(("new",))
     counts = {"rules": 0, "title": 0, "title_keywords": 0, "non_english_text": 0, "language": 0}
     rejected_keys: list[str] = []
+    drops: list[dict[str, Any]] = []
 
     kept: list[dict[str, Any]] = []
     for job in jobs:
         # A stored conditional-city job re-enters matches_rules without its
         # matched_reasons; the pending reason it gets passes, so the persisted
         # hybrid_confirmed flag is not needed here — Layer 2 owns that check.
-        if matches_rules(job, rules, hybrid_pattern)[0]:
+        ok, reasons = matches_rules(job, rules, hybrid_pattern)
+        if ok:
             kept.append(job)
         else:
             rejected_keys.append(job["dedupe_key"])
+            drops.append(exclusion(job, refiltered(LAYER_RULES), reasons[0]))
     counts["rules"] = len(jobs) - len(kept)
 
     kept, kw_excluded, title_excluded = apply_combined_title_filter(kept, title_keywords, rules)
     counts["title_keywords"] = len(kw_excluded)
     counts["title"] = len(title_excluded)
     rejected_keys += [j["dedupe_key"] for j in kw_excluded + title_excluded]
+    drops += _exclusions(kw_excluded, refiltered(LAYER_TITLE_KEYWORD))
+    drops += _exclusions(title_excluded, refiltered(LAYER_SENIORITY))
 
     kept, non_english = apply_non_english_text_filter(kept)
     counts["non_english_text"] = len(non_english)
     rejected_keys += [j["dedupe_key"] for j in non_english]
+    drops += _exclusions(non_english, refiltered(LAYER_NON_ENGLISH))
 
     kept, language_excluded = apply_language_filter(kept)
     counts["language"] = len(language_excluded)
     rejected_keys += [j["dedupe_key"] for j in language_excluded]
+    drops += _exclusions(language_excluded, refiltered(LAYER_LANGUAGE))
 
     if rejected_keys:
         store.set_status(rejected_keys, "rejected")
-    return counts
+    return counts, drops
 
 
 def run_pipeline(
@@ -113,6 +161,7 @@ def run_pipeline(
     title_keywords_path: Path | None = None,
     allow_empty_delist: bool = False,
     delist_after: int = DEFAULT_DELIST_AFTER,
+    keep_drop_runs: int = DEFAULT_KEEP_DROP_RUNS,
 ) -> RunSummary:
     run_started_at = utc_now_iso()
     sources = load_sources(sources_path)
@@ -124,6 +173,9 @@ def run_pipeline(
     jobs_extracted = 0
     jobs_kept = 0
     kept_rows: list[JobRecord] = []
+    # One entry per exclusion, accumulated as the layers run and written in the
+    # store transaction below, so the run's drops commit with its decisions.
+    drops: list[dict[str, Any]] = []
     processed_sources: list[dict] = []
     skipped = 0
     processed = 0
@@ -203,6 +255,10 @@ def run_pipeline(
         for job in rows:
             ok, reason_list = matches_rules(job, rules, hybrid_pattern)
             if not ok:
+                # The reason names the specific case — which keyword, or which
+                # of the location cases — so a false negative here is findable
+                # instead of vanishing into one "off-criteria" total.
+                drops.append(exclusion(job, LAYER_RULES, reason_list[0]))
                 continue
             job = dict(job)
             job["matched_reasons"] = reason_list
@@ -236,6 +292,8 @@ def run_pipeline(
     )
     jobs_keyword_excluded = len(keyword_excluded)
     jobs_title_excluded = len(title_excluded)
+    drops += _exclusions(keyword_excluded, LAYER_TITLE_KEYWORD)
+    drops += _exclusions(title_excluded, LAYER_SENIORITY)
     if jobs_keyword_excluded:
         logger.debug("Layer 1a (title keyword filter): excluded %d jobs", jobs_keyword_excluded)
     if jobs_title_excluded:
@@ -244,6 +302,7 @@ def run_pipeline(
     # Layer 1c — non-English text filter (runs before 1b to drop non-English first)
     kept_rows, non_english_excluded = apply_non_english_text_filter(kept_rows)
     jobs_non_english_excluded = len(non_english_excluded)
+    drops += _exclusions(non_english_excluded, LAYER_NON_ENGLISH)
     if jobs_non_english_excluded:
         logger.debug(
             "Layer 1c (non-English text filter): excluded %d jobs", jobs_non_english_excluded
@@ -252,6 +311,7 @@ def run_pipeline(
     # Layer 1b — language filter ("[Language] Speaker/speaking" in title)
     kept_rows, language_excluded = apply_language_filter(kept_rows)
     jobs_language_excluded = len(language_excluded)
+    drops += _exclusions(language_excluded, LAYER_LANGUAGE)
     if jobs_language_excluded:
         logger.debug("Layer 1b (language filter): excluded %d jobs", jobs_language_excluded)
 
@@ -285,6 +345,9 @@ def run_pipeline(
             if (k := dedupe_key_for_job(j)) and stored.get(k, {}).get("status") == "rejected"
         ]
         jobs_blocklist_excluded = len(blocked_jobs)
+        drops += [
+            exclusion(j, LAYER_REVIEW_STATUS, RULE_REVIEW_REJECTED) for j in blocked_jobs
+        ]
         if jobs_blocklist_excluded:
             blocked_keys = {dedupe_key_for_job(j) for j in blocked_jobs}
             kept_rows = [j for j in kept_rows if dedupe_key_for_job(j) not in blocked_keys]
@@ -339,6 +402,7 @@ def run_pipeline(
         )
         jobs_years_excluded = len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
         jobs_detail_excluded = len(detail_excluded)
+        drops += _exclusions(detail_excluded, LAYER_DETAIL)
 
         if jobs_detail_excluded:
             logger.debug(
@@ -404,12 +468,28 @@ def run_pipeline(
 
         # Re-filter stored unreviewed rows against the current rules (the old
         # clean_existing_rows, minus the deletions).
-        refiltered = refilter_stored_jobs(store, rules, title_keywords, hybrid_pattern)
-        for filter_name, count in refiltered.items():
+        refilter_counts, refilter_drops = refilter_stored_jobs(
+            store, rules, title_keywords, hybrid_pattern
+        )
+        drops += refilter_drops
+        for filter_name, count in refilter_counts.items():
             if count:
                 logger.debug(
                     "Marked %d stored jobs rejected by the %s filter", count, filter_name
                 )
+
+        exclusions_logged = store.record_exclusions(run_id, drops)
+        pruned = store.prune_exclusions(keep_drop_runs)
+        logger.debug(
+            "Drop log: recorded %d exclusions, pruned %d rows older than the last %d runs",
+            exclusions_logged,
+            pruned,
+            keep_drop_runs,
+        )
+
+        # After the re-filter pass, which can move a stored row out of 'new'.
+        jobs_still_listed = store.count_sighted_in_run(run_id)
+        jobs_unreviewed = store.count_with_status(("new",))
 
         store.finish_run(run_id)
 
@@ -433,4 +513,7 @@ def run_pipeline(
         jobs_kept_new=len(kept_new),
         rows_written=rows_written,
         rows_delisted=rows_delisted,
+        jobs_still_listed=jobs_still_listed,
+        jobs_unreviewed=jobs_unreviewed,
+        exclusions_logged=exclusions_logged,
     )
