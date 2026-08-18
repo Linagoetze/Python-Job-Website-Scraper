@@ -53,7 +53,14 @@ _SECRET_PATTERNS = (
 )
 
 
-@pytest.mark.parametrize("path", sorted(FIXTURES_DIR.iterdir()), ids=lambda p: p.name)
+# Walks the tree rather than the top level: fixtures now include directories
+# (the eval harness's config fixture), and a nested file is exactly as capable
+# of carrying a leaked value as a top-level one.
+@pytest.mark.parametrize(
+    "path",
+    sorted(p for p in FIXTURES_DIR.rglob("*") if p.is_file()),
+    ids=lambda p: str(p.relative_to(FIXTURES_DIR)),
+)
 def test_fixture_contains_no_secret_shaped_values(path: Path) -> None:
     """Guards the GitHub secret-scanning incident that prompted the sanitiser."""
     text = path.read_text(encoding="utf-8", errors="replace")
