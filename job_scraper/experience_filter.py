@@ -25,7 +25,10 @@ from job_scraper import JobRecord
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    DROP_RULE_KEY,
     _build_title_keyword_pattern,
+    build_title_keyword_matchers,
+    title_keyword_rule,
 )
 from job_scraper.storage.db import utc_now_iso
 
@@ -48,10 +51,32 @@ _MAX_DESCRIPTION_CHARS = 20_000
 _DETAIL_WORKERS = 10
 
 
+# Layer 2 rule strings for the exclusion log. The years case is formatted with
+# the number that fired, so "3+ years" and "8+ years" are separable when the
+# owner asks whether the threshold is set too low.
+RULE_PHD_REQUIRED = "phd: required (not merely preferred)"
+RULE_HYBRID_NOT_HYBRID = "hybrid: conditional city, description is not hybrid"
+RULE_HYBRID_UNVERIFIED = "hybrid: conditional city, could not read the description"
+
+
 def _build_seniority_pattern(terms: list[str]) -> re.Pattern[str]:
     escaped = [re.escape(t.strip()) for t in terms if t.strip()]
     alternation = "|".join(escaped)
     return re.compile(rf"\b(?:{alternation})\b", re.IGNORECASE)
+
+
+def _build_seniority_matchers(terms: list[str]) -> list[tuple[str, str, re.Pattern[str]]]:
+    """Per-term patterns for naming which seniority word excluded a job.
+
+    Whole-word matching, exactly as `_build_seniority_pattern` does it — the
+    same shape as the title-keyword matchers, so both report a (term, match
+    type) pair and neither is rebuilt inside a loop.
+    """
+    return build_title_keyword_matchers([(t.strip(), "word") for t in terms if t.strip()])
+
+
+def _seniority_rule(title: str, matchers: list[tuple[str, str, re.Pattern[str]]]) -> str:
+    return title_keyword_rule(title, matchers, prefix="seniority")
 
 
 def apply_title_filter(
@@ -74,12 +99,13 @@ def apply_title_filter(
         return jobs, []
 
     pattern = _build_seniority_pattern(terms)
+    matchers = _build_seniority_matchers(terms)
     kept: list[JobRecord] = []
     excluded: list[JobRecord] = []
     for job in jobs:
         title = str(job.get("title") or "")
         if pattern.search(title):
-            excluded.append(job)
+            excluded.append(dict(job, **{DROP_RULE_KEY: _seniority_rule(title, matchers)}))
         else:
             kept.append(job)
     return kept, excluded
@@ -92,16 +118,21 @@ def apply_combined_title_filter(
 ) -> tuple[list[JobRecord], list[JobRecord], list[JobRecord]]:
     """Run Layer 1a (keyword) and Layer 1 (seniority) in a single title scan.
 
-    Keyword exclusion is checked first; seniority second.
+    Keyword exclusion is checked first; seniority second. Excluded jobs carry
+    the exact term that fired under DROP_RULE_KEY; the per-term matchers are
+    built once here, alongside the combined patterns, and consulted only for
+    the jobs those patterns reject.
     Returns (kept, keyword_excluded, seniority_excluded).
     """
     kw_pattern = _build_title_keyword_pattern(entries)
+    kw_matchers = build_title_keyword_matchers(entries)
 
     seniority_enabled = rules.get("seniority_filter_enabled", True)
     terms: list[str] = [
         str(t) for t in (rules.get("seniority_exclude_titles") or []) if str(t).strip()
     ]
     sen_pattern = _build_seniority_pattern(terms) if seniority_enabled and terms else None
+    sen_matchers = _build_seniority_matchers(terms) if sen_pattern is not None else []
 
     kept: list[JobRecord] = []
     kw_excluded: list[JobRecord] = []
@@ -110,9 +141,13 @@ def apply_combined_title_filter(
     for job in jobs:
         title = str(job.get("title") or "")
         if kw_pattern and kw_pattern.search(title):
-            kw_excluded.append(job)
+            kw_excluded.append(
+                dict(job, **{DROP_RULE_KEY: title_keyword_rule(title, kw_matchers)})
+            )
         elif sen_pattern and sen_pattern.search(title):
-            sen_excluded.append(job)
+            sen_excluded.append(
+                dict(job, **{DROP_RULE_KEY: _seniority_rule(title, sen_matchers)})
+            )
         else:
             kept.append(job)
 
@@ -287,6 +322,9 @@ def apply_detail_filter(
     caller knows *not* to treat that exclusion as a durable, storable
     judgement. A transient network error must not read the same as "checked
     and confirmed not hybrid".
+    Every excluded job also carries the rule that dropped it under
+    DROP_RULE_KEY — the years threshold that fired, the PhD requirement, or
+    which of the two hybrid cases it was — for the run's exclusion log.
     Returns (kept_jobs, excluded_jobs).
     """
     kept: list[dict[str, Any]] = []
@@ -324,6 +362,7 @@ def apply_detail_filter(
                         description_text="",
                         description_fetched_at="",
                         hybrid_unverified=True,
+                        **{DROP_RULE_KEY: RULE_HYBRID_UNVERIFIED},
                     )
                 )
             else:
@@ -333,6 +372,7 @@ def apply_detail_filter(
                         experience_level="non_hybrid_conditional_location",
                         description_text=description_text,
                         description_fetched_at=fetched_at if description_text else "",
+                        **{DROP_RULE_KEY: RULE_HYBRID_NOT_HYBRID},
                     )
                 )
             continue
@@ -346,7 +386,14 @@ def apply_detail_filter(
             fetch_failed += 1
             kept.append(dict(job, experience_level="unspecified", **extra))
         elif phd_req:
-            excluded.append(dict(job, experience_level="phd_required", **extra))
+            excluded.append(
+                dict(
+                    job,
+                    experience_level="phd_required",
+                    **extra,
+                    **{DROP_RULE_KEY: RULE_PHD_REQUIRED},
+                )
+            )
         elif min_years is None:
             no_requirement += 1
             kept.append(dict(job, experience_level="unspecified", **extra))
@@ -355,7 +402,14 @@ def apply_detail_filter(
                 dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)", **extra)
             )
         else:
-            excluded.append(dict(job, experience_level=f"senior ({min_years}+yr)", **extra))
+            excluded.append(
+                dict(
+                    job,
+                    experience_level=f"senior ({min_years}+yr)",
+                    **extra,
+                    **{DROP_RULE_KEY: f"experience: {min_years}+ years required"},
+                )
+            )
 
     if jobs:
         logger.debug(

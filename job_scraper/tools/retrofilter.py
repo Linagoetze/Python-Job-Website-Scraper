@@ -25,7 +25,9 @@ def main() -> None:
     hybrid_pattern = build_hybrid_pattern(rules)
 
     with JobStore(db_path) as store:
-        counts = refilter_stored_jobs(store, rules, title_keywords, hybrid_pattern)
+        # The drop rows are discarded here on purpose: they belong to a run,
+        # and this one-off script does not open one.
+        counts, _ = refilter_stored_jobs(store, rules, title_keywords, hybrid_pattern)
 
     print(f"Marked {counts['title_keywords']} rows rejected by title keywords")
     print(

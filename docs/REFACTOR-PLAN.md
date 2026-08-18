@@ -45,11 +45,13 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 5c | Review ranges and `--reject-all` | 0.5 hr | Fable 5 | none | done | `wp5c-review-ranges` |
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | done | `wp6-persist-descriptions` |
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | done | `wp7-llm-scoring` |
+| 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
+| 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
 
-Total roughly 27 hours. One package per week is about three months. Two evenings
+Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
 
 ## Decisions log
@@ -78,6 +80,14 @@ Record any decision a future session would otherwise have to re-derive.
   `--allow-empty-delist` now means "this source genuinely emptied — delist its
   unreviewed jobs *now*", bypassing the threshold; without it a zero-row
   scrape still counts for nothing at all.
+- **Drop-log rule strings are a contract, not log text (WP8a).** The `rule`
+  column in `run_exclusions` is what `--rule` filters on and what the per-rule
+  counts group by, so changing a rule string silently splits one rule into two
+  across the retention window and makes a before/after comparison lie. Add new
+  rules freely; reword an existing one only deliberately. The filters attach
+  the rule to the excluded job under `filtering.DROP_RULE_KEY`; a layer that
+  forgets logs `unattributed` rather than dropping the row, because a missing
+  row is the exact blindness the log exists to remove.
 - **WP7 follow-up (2026-08-17): scoring stays off, and API billing is not a
   substitute question.** The owner is not opening a Developer Platform account
   for now. A Claude Pro/subscription login is a separate product from the
@@ -1288,6 +1298,176 @@ Decisions:
 
 ---
 
+## WP8a — Drop log: record every exclusion
+
+Inserted before WP8. WP8 asks for a before/after diff of what each version of
+the ladder keeps; that diff is unbuildable while every exclusion is discarded
+the moment it is counted. This package is the instrument WP8 measures with.
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8a only.
+
+Right now every filter exclusion is invisible. Layer 0 in pipeline.py calls
+continue on a failing job and writes nothing. Layers 1a to 1c return excluded
+lists that are counted for the summary and then discarded. So I have no way to
+find a false negative, and no way to tell whether a rule change helped.
+
+1. New table run_exclusions(run_id, dedupe_key, title, company, source_name,
+   location, layer, rule, excluded_at). One row per exclusion, written inside
+   the existing run transaction so it commits or rolls back with everything
+   else.
+2. "rule" must name the specific thing that fired, not the layer: the exact
+   keyword and its match type for the title filter, the specific seniority
+   term, the detected language code for langdetect. Break the location layer
+   down finely. Distinguish: an empty or missing location field; a location
+   field naming a city not on my list; a remote keyword present but overridden
+   because the field named a specific city; a conditional city without hybrid
+   confirmation.
+3. Titles and metadata only. It must not trigger a single extra HTTP request,
+   and it must not fetch detail pages.
+4. Prune rows older than N runs (default 10) so the table cannot grow forever.
+5. Add a small CLI: --show-drops [--layer X] [--rule Y] [--source Z] that
+   prints the last run's exclusions, and a --drops-csv path that exports them.
+6. Fix two run-summary labels while you are in there. "Jobs now in table"
+   reads like a table size but is an unreviewed count: rename it "Unreviewed
+   jobs in table". Add a "Still listed this run" line above it counting every
+   job sighted this run regardless of review status.
+
+Branch wp8a-drop-log. Commit, do not push. Update the plan file.
+```
+
+### Result
+
+246 tests pass (up from 228), `ruff check .` clean. New: `job_scraper/drops.py`,
+`tests/test_drop_log.py`. Touched: `filtering.py`, `experience_filter.py`,
+`pipeline.py`, `storage/db.py`, `run.py`, `tools/retrofilter.py`,
+`tests/test_pipeline_funnel.py`, `tests/test_run_scoring_gate.py`, `README.md`.
+
+**How a rule reaches the log.** The filters stay data-in/data-out: an excluded
+job is returned as a copy carrying the rule that dropped it under
+`filtering.DROP_RULE_KEY` (`"drop_rule"`), and `pipeline.py` turns those into
+log rows and applies the layer name. No callbacks, no collector object threaded
+through the ladder, and `len(excluded)` still means what it meant, so every
+existing funnel counter is untouched. The key never reaches the store's `jobs`
+table — `job_to_row` copies named columns only. `matches_rules` needed nothing
+new: it already returned a reason list, and on rejection that single reason
+*is* the rule.
+
+**Naming the specific keyword without recompiling anything per job.** The
+combined alternation stays the decision and is unchanged;
+`build_title_keyword_matchers` compiles one small pattern per configured entry
+at setup, alongside it, and those are consulted **only for the jobs the
+combined pattern already rejected**. So attribution costs nothing on the
+common path, and the compile-once rule holds. The seniority filter shares the
+same helper under its own prefix — both are a list of terms against a title.
+When two keywords match one title the rule names the first in *file* order,
+not the leftmost in the title: the file is the order the owner reads their own
+list in.
+
+**The location breakdown (item 2), and where the fourth case actually lives.**
+`_location_drop_rule` splits the old single "locations: no match" into: no
+location given / remote keyword overridden by a named city / conditional city
+with the hybrid gate unconfigured / city not on the list, tested in that order
+for the reasons in its docstring. The fourth case the prompt asked for — a
+conditional city without hybrid confirmation — is **not** a Layer 0 drop when
+the gate is configured: Layer 0 admits it provisionally and Layer 2 settles it
+against the description. So it is logged at Layer 2 as `hybrid: conditional
+city, description is not hybrid`, kept distinct from `hybrid: conditional city,
+could not read the description`, which is the fail-closed-on-a-network-error
+case WP6's follow-up made deliberately non-persistent. Both appear under
+`--rule hybrid`. `locations: conditional city, hybrid gate not configured`
+covers the remaining Layer 0 case, where the whole conditional list is inert
+because `conditional_location_keywords` is empty.
+
+**Item 3 (no extra HTTP) is pinned by a test**, not just by inspection:
+`test_logging_costs_no_extra_http_request` counts every fetch in a run and
+asserts it equals Layer 2's own intake, and that no job dropped before Layer 2
+was ever fetched. Everything the log stores was already in hand when the job
+was excluded.
+
+**Layer 2 exclusions are logged too**, which costs nothing — that fetch has
+already happened — and is the only way the hybrid cases and the years
+threshold become visible. The re-filter pass over stored unreviewed rows is
+logged as well, under the same layer names behind a `refilter/` prefix: those
+are real exclusions and belong in the log, but they are a different population
+from this run's scrape and must not be added into its funnel.
+
+**Retention.** `prune_exclusions(keep_runs)` runs at the end of every run,
+counting over the runs that actually logged exclusions rather than over `runs`,
+so a run that dropped nothing cannot push a useful one out of the window.
+`--keep-drop-runs` (default 10) is on `run.py`.
+
+**Reading it back** is `python -m job_scraper.drops` — a separate module, not a
+flag on `run.py`, because `run.py` always scrapes and the whole point is that
+inspecting the log costs nothing. Bare invocation prints the per-rule counts
+(the "did that change help?" view); `--show-drops` prints one line per excluded
+job; `--layer`/`--rule`/`--source` narrow *whichever* view was asked for, so
+the counts and the listing can never describe different sets; `--drops-csv`
+exports the same rows. The filters match case-insensitive substrings — nobody
+should have to type a rule string verbatim.
+
+### Item 6: the two closing totals
+
+`format_summary` lost its `table_total` parameter and now reads both numbers
+off `RunSummary` (`jobs_still_listed`, `jobs_unreviewed`, plus
+`exclusions_logged`). That also fixed a latent mislabelling: `table_total` came
+from `write_xlsx`'s return, which under `--show-all` is *every* job, so the
+line would have said "unreviewed" while showing the whole table. Both counts are
+taken after the re-filter pass, which can move a row out of `'new'`.
+
+### What the first real run showed (2026-08-17)
+
+Run against a **copy** of the store in a scratch directory, leaving `data/`
+untouched. 4,474 postings seen, 4,418 exclusions logged, 59 distinct rules —
+and the arithmetic reconciles with the printed funnel exactly.
+
+The headline: **3,742 of the 3,801 location drops are one rule**, `locations:
+city not on the list`, and 2,085 of those are a single source (`dsv`, which
+lists globally). That is the ladder working, not a leak. The two cases worth
+acting on are much smaller and were previously invisible inside the same total:
+
+```
+  3,742  locations: city not on the list
+     54  locations: no location given
+      5  locations: remote keyword overridden by a named city
+      0  locations: conditional city, hybrid gate not configured
+      0  hybrid: conditional city, description is not hybrid   (Layer 2)
+```
+
+The 54 "no location given" are not spread evenly — two sources account for
+half of them (16 and 10; `python -m job_scraper.drops --show-drops --rule "no
+location"` names them, and this file is public so they are not named here). A
+source whose postings systematically have no location field is an extractor
+gap, not a rejection, and every one of its jobs is being dropped sight-unseen.
+Worth checking before WP8 touches the ladder.
+
+`impactpool` returned a 522 on this run and contributed nothing, which is why
+the intake was 4,474 rather than the ~8,000 of a healthy run (see the standing
+note about that source's flaky 5xx). The exclusion counts below are therefore a
+run without the largest aggregator in the config.
+
+### For WP8
+
+The log is the evidence WP8's prompt asks for, and the first pass over it
+already argues with the ladder:
+
+- **`title_keyword: 'engineer' (prefix)` fires 125 times**, three times the next
+  keyword — worth confirming none of those are wanted before the scorer
+  inherits the job.
+- Short word-match keywords `'AI'` (24) and `'IT'` (15) are the shape most
+  likely to be catching titles by accident; `--show-drops --rule "'AI'"` lists
+  them.
+- `1c-non-english` fired 26 times across five language codes including `'af'`
+  (Afrikaans, 2) and `'et'` (Estonian, 1) — langdetect guessing on short
+  snippets, exactly the unreliability WP8 cites as its reason for deleting the
+  layer. There is now a record to check that claim against.
+- 34 of the 59 rules fired 5 times or fewer. A keyword list where most entries
+  earn almost nothing is the accretion argument in numbers.
+
+---
+
 ## WP8 — Retire the keyword ladder
 
 ```
@@ -1320,6 +1500,51 @@ Also fix, wherever the remaining code lives:
 
 Branch wp8-retire-ladder. Commit, do not push. Update the plan file with the
 before/after diff summary.
+```
+
+---
+
+## WP8b — README reconciliation
+
+**Do this after WP8, not before.** WP8 retires two filter layers and the
+keyword CSV, which rewrites the "How it works" layer table, the language-filter
+description and a whole input-file section. Doing the README first means doing
+it twice.
+
+Nothing here is dangerous — every stale passage is misleading but inert, and no
+instruction in the README would lose data if followed. It costs confusion, not
+history, which is why it does not jump the queue.
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8b only.
+
+README.md still describes the pre-WP5 CSV store as though it were live. Bring
+it back in line with the code. Docs only: change no behaviour, and if you find
+a real bug, note it at the end rather than fixing it.
+
+Known drift, found during WP8a — verify each against the code rather than
+trusting this list, and look for more:
+
+- "Postings already stored in jobs.csv skip layer 2" — it is the SQLite store.
+- "the provisional marker isn't stored in jobs.csv" — false since WP5 added
+  the hybrid_confirmed column, which is why that re-fetch no longer happens.
+- A `### data/jobs.csv` output-file section for a file nothing writes any
+  more. It is a frozen pre-cutover archive; say so, or drop the section.
+- The retrofilter description: "re-applies the current filters to the existing
+  jobs.csv".
+- The layout table calls job_scraper/storage/ "CSV store (dedupe, schema
+  migration) and the xlsx writer". csv_store.py was deleted in WP5.
+- data/curated/blocklist.csv is presented as a live input. WP5b replaced that
+  routine; it is now a one-off import, and the review commands are the flow.
+- The options table under "Running" omits --delist-after,
+  --allow-empty-delist, --score and --show-all.
+
+Check the whole file against the current CLI while you are in there: every
+flag documented should exist, and `python -m job_scraper.run --help` is the
+authority. Do not invent example output — if a block needs new numbers, say
+where they came from or mark it illustrative.
+
+Branch wp8b-readme. Commit, do not push. Update the plan file.
 ```
 
 ---

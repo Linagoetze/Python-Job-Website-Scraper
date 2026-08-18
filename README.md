@@ -110,8 +110,9 @@ its time in the Playwright-rendered sources and the layer 2 detail fetches.
 | `--sources` | `job_scraper/config/sources.yaml` |
 | `--rules` | `job_scraper/config/rules.json` |
 | `--title-keywords` | `job_scraper/config/title_exclude_keywords.csv` |
-| `--output` | `data/jobs.csv` |
+| `--output-db` | `data/jobs.sqlite3` |
 | `--output-xlsx` | `data/jobs.xlsx` |
+| `--keep-drop-runs` | `10` |
 | `-v`, `--verbose` | off |
 
 Every default resolves relative to the package, not your shell's working
@@ -138,19 +139,56 @@ Jobs seen (all pages, dupes incl.)         435
   − needs 3+ yrs / PhD (0 PhD)              −0   →     4 new jobs kept
 ────────────────────────────────────────────────
 New rows written                             4
-Delisted removed                             0
-Jobs now in table                            4
+Marked delisted                              0
+Still listed this run                        4
+Unreviewed jobs in table                     4
+Exclusions logged                          431
 ```
 
-**"New rows written" can exceed "Jobs now in table".** That is not an error. A few
-sources re-advertise the same posting under different URLs, so after the new rows
-are written a content-based pass collapses duplicates that share an employer and
-title, keeping the most recent. The written count is tallied before that pass.
+**"Still listed this run" and "Unreviewed jobs in table" are different questions,
+and they diverge.** The first counts every stored job this run found still on its
+source's career page, whatever you have already decided about it; the second counts
+only the ones you have not looked at yet. A run that reports 102 still listed and 2
+unreviewed is a completely normal run — 100 of those are postings you reviewed
+weeks ago that simply have not been filled yet.
 
-**"Delisted removed"** counts rows dropped because the posting no longer appears
-on its source's career page — it was filled or withdrawn. This only happens for
-sources that were scraped successfully on that run; if a source errors out, its
-stored rows are left alone rather than being wrongly treated as delisted.
+**"Marked delisted"** counts jobs whose posting no longer appears on its source's
+career page — filled or withdrawn — after it has been missing for
+`--delist-after` consecutive successful scrapes. Nothing is deleted: the row
+keeps its history and moves to the archive sheet. This only happens for sources
+that were scraped successfully; if a source errors out, or returns zero rows, its
+stored jobs are left alone rather than being wrongly treated as delisted.
+
+**"Exclusions logged"** is how many postings the filters dropped this run, each
+recorded with the specific rule that dropped it. See below.
+
+### Why was something dropped?
+
+Filtering 8,000 postings down to a handful is only trustworthy if you can check
+what went in the bin. Every exclusion is recorded — the job, the layer, and the
+exact rule that fired, down to which keyword, which seniority term, which
+language code, or which of the location cases:
+
+```bash
+python -m job_scraper.drops
+```
+
+That prints the last run's exclusions grouped by rule, most frequent first — the
+quickest way to see whether one over-eager keyword is costing you more than it
+saves, and to tell whether a rule change helped. To see the individual postings:
+
+```bash
+python -m job_scraper.drops --show-drops
+```
+
+`--layer`, `--rule` and `--source` narrow either view; they match on a
+case-insensitive substring, so `--rule locations` and `--layer 2` both work.
+`--drops-csv PATH` writes the matching rows out for a spreadsheet.
+
+Reading the log costs nothing and neither does writing it: it is built entirely
+from titles and metadata already fetched during the run, and never opens a
+detail page. The log keeps the last `--keep-drop-runs` runs (default 10) so it
+cannot grow forever.
 
 ## Input files
 
