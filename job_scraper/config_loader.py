@@ -46,6 +46,15 @@ def default_curated_dir() -> Path:
     return default_data_dir() / "curated"
 
 
+def default_labels_path() -> Path:
+    """The hand-labelled gold set the evaluation harness scores against (WP8c).
+
+    Gitignored, like everything else under `curated/`: it holds real titles and
+    companies, and no run regenerates it.
+    """
+    return default_curated_dir() / "labels.csv"
+
+
 def default_jobs_xlsx_path() -> Path:
     return default_data_dir() / "jobs.xlsx"
 
