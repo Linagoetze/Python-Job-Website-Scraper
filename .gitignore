@@ -32,3 +32,7 @@ data/*.sqlite3
 data/*.db-*
 data/*.sqlite3-*
 job_scraper/config/profile.md
+
+# Hand-labelled gold set for the offline evaluation harness (WP8c). Real
+# titles and companies; the harness reads it, nothing regenerates it.
+data/curated/labels.csv
