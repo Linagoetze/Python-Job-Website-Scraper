@@ -46,6 +46,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 6 | Persist detail descriptions | 1.5 hr | Sonnet 5 | `think` | done | `wp6-persist-descriptions` |
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | done | `wp7-llm-scoring` |
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
+| 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -105,6 +106,18 @@ Record any decision a future session would otherwise have to re-derive.
   from that file. Do not delete `scoring.py`, the `score*` columns, or
   `scored_description_sha256` — they are the correct dormant state until
   billing is set up, and re-adding them later would mean a migration.
+- **The gold set measures the ladder, it does not estimate the live
+  population (WP8c).** `data/curated/labels.csv` was assembled from the drop
+  log plus the review table, so it deliberately over-samples what the filters
+  rejected. Its precision and recall are comparable *between two rule
+  configurations over the same file* — which is the only comparison a rule
+  change needs — and are not an estimate of what a real run yields. Anyone
+  quoting "precision 0.257" as the scraper's precision is quoting it wrong.
+- **`review` is the positive class and beta defaults to 2 (WP8c).** A false
+  positive costs a line in a spreadsheet; a false negative costs a job the
+  owner never learns exists, which is the "never lose data" priority in metric
+  form. Any future metric added here keeps that asymmetry or states plainly
+  that it does not.
 
 ---
 
@@ -1468,6 +1481,157 @@ already argues with the ladder:
 
 ---
 
+## WP8c — Offline evaluation harness
+
+Inserted before WP8, after WP8a. WP8a made every exclusion visible; this makes
+the ladder *measurable*. WP8's prompt asks for a before/after diff of what each
+version of the ladder keeps, and "keeps" is only half an answer without a
+statement of what the owner actually wanted — otherwise a rule change that
+drops 200 fewer jobs looks like an improvement whether or not any of the 200
+were worth seeing.
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8c only.
+
+I have labelled a gold set at data/curated/labels.csv: columns dedupe_key,
+title, company, source_name, location, label, where label is review or
+discard. Add it to .gitignore.
+
+Build an offline evaluation harness so every future rule change is measured
+rather than guessed:
+
+- New module job_scraper/eval.py and a CLI entry point. It replays the filter
+  ladder over the labelled rows without any network access, and reports
+  precision, recall and F-beta with beta favouring recall, plus a confusion
+  matrix, per layer and overall.
+- Treat review as positives. A false negative is a review row that the ladder
+  dropped; those are the expensive errors and the report should list every one
+  of them by title, with the rule that killed it.
+- Support comparing two rule configurations in one command: point it at two
+  config directories and print a diff of what each keeps and drops, with the
+  precision and recall delta.
+- Add a regression test that pins current behaviour, so a later refactor that
+  silently changes filtering fails the suite.
+
+Then run it against the current configuration and give me the baseline numbers
+and the full false-negative list. Do not change any filter rule in this
+session.
+
+Branch wp8c-eval-harness. Commit, do not push. Update the plan file.
+```
+
+### Result
+
+280 tests pass (up from 246), `ruff check .` clean. New: `job_scraper/eval.py`,
+`tests/test_eval.py`, `tests/fixtures/eval_labels.csv`,
+`tests/fixtures/eval_config/`. Touched: `config_loader.py` (one
+`default_labels_path`), `tests/test_capture_fixtures.py` (its secret scan now
+walks the fixture tree, since fixtures now include a directory), `.gitignore`.
+**No filter rule changed**, which was the point: a session that both moves the
+ruler and measures with it has measured nothing.
+
+**The harness calls the pipeline's own filter functions**, never copies of
+them. `matches_rules`, `apply_combined_title_filter`,
+`apply_non_english_text_filter` and `apply_language_filter` are imported and
+run in `run_pipeline`'s order. A harness that reimplements the rules measures
+the harness.
+
+**What it does not replay, and says so in the report.** Layer 1d is review
+history rather than a rule. Layer 2 needs a detail page, and the harness makes
+no HTTP request — `test_evaluation_makes_no_network_connection` takes
+`socket.socket` away for the duration of a full evaluation rather than
+asserting the claim by inspection. So the reported recall is an upper bound:
+some kept jobs would still meet Layer 2. Jobs admitted from a hybrid-gated
+conditional city are counted as kept and flagged as provisional for the same
+reason.
+
+**The ladder order is duplicated from `pipeline.py`, deliberately.**
+Extracting the ladder into something both callers share is WP8's business;
+doing it here would mean changing filtering behaviour in the session meant to
+measure it. `test_ladder_order_matches_the_pipeline` pins the order so the
+duplication cannot drift unnoticed.
+
+**langdetect is seeded** (`DetectorFactory.seed = 0`) for the duration of the
+replay, in the eval process only. The live layer stays as non-deterministic as
+it has always been — that non-determinism is one of WP8's arguments for
+deleting it — but an eval whose numbers move on their own cannot pin anything.
+
+**The gold set is read defensively** because it is hand-maintained: the
+delimiter is sniffed (the owner's export is semicolon-separated), header names
+match casefolded, `source_name` may be absent, and a label is either `review`
+or `discard` or the row is reported rather than guessed at. A key labelled both
+ways is excluded and named, not resolved — picking a winner would invent a
+ground truth the owner never stated.
+
+**The regression pin uses fixture data, not the real files.** `rules.json` and
+`labels.csv` are gitignored personal data that change whenever the owner
+changes their mind; a test pinned to them would be a tripwire for the wrong
+thing. `tests/fixtures/eval_config/` and `tests/fixtures/eval_labels.csv` are
+sized so every layer fires once or twice, and the test asserts the confusion
+matrix, the per-layer counts and all three false negatives by hand.
+
+### Baseline, current configuration (2026-08-18)
+
+545 labelled rows → 514 usable: 19 duplicate rows collapsed (same key, same
+label) and 6 keys excluded for carrying both labels. 74 review, 440 discard.
+
+```
+                    kept        dropped
+  review            27             47
+  discard           78            362
+
+  precision  0.257     recall  0.365     F2  0.337
+
+layer               reached  dropped   lost  drop prec  recall      F2
+0-rules                 514      191     33      0.827   0.554   0.331
+1a-title-keyword        323      175     14      0.920   0.365   0.304
+1-seniority             148       37      0      1.000   0.365   0.332
+1c-non-english          111        1      0      1.000   0.365   0.333
+1b-language             110        5      0      1.000   0.365   0.337
+```
+
+Read these as a comparison instrument, not as a population estimate — see the
+decisions log. What they say about WP8:
+
+- **The recall problem is Layer 0, not the keyword ladder.** 33 of the 47 lost
+  jobs are location drops: 22 `locations: city not on the list` and 11
+  `locations: no location given`. The second group is WP8a's extractor-gap
+  finding arriving again from the other direction — those postings were never
+  judged on their merits, and a quarter of the "no location given" drops are
+  jobs the owner wanted. That is worth a look **before** WP8 touches anything,
+  and it is not a filter-rule change.
+- **The keyword layer costs 14, concentrated in six keywords.**
+  `'Specialist'` (4 of its 11 drops were wanted), `'Security'` (4 of 4),
+  `'leader'` (2 of 5), `'SEA'` (2 of 2), `'owner'` (1 of 3), `'intern'` (1 of
+  1). `'SEA'` as a whole-word match is the shape WP8a predicted would
+  misfire — it catches "Baltic Sea" and "Air & Sea". `'Security'` dropped
+  nothing the owner did not want to see.
+- **The three layers WP8 proposes to delete cost nothing here.** Seniority
+  dropped 37 with no loss; the non-English filter fired once and the
+  language-speaker filter five times, all correct on this set. The case for
+  deleting them is that they do not earn their complexity, not that they are
+  losing jobs — this set gives no evidence they are.
+- **Precision 0.257 is the scorer's problem, not the ladder's.** Of 105 kept,
+  78 are labelled discard. No amount of keyword tightening fixes that without
+  costing recall, which is the argument WP7 was built on.
+
+The full false-negative listing, with titles and the rule that killed each one,
+is what `python -m job_scraper.eval` prints. It is not reproduced here: this
+file is public and those are real postings the owner is tracking.
+
+### For WP8
+
+Run `python -m job_scraper.eval` before touching a rule, keep the number, then
+copy `job_scraper/config/` to a scratch directory, edit the copy, and run
+`python -m job_scraper.eval --compare job_scraper/config /path/to/copy`. The
+diff names every job that changed side and the rule that used to fire, and
+prints the precision/recall/F2 delta. That is the before/after diff WP8's
+prompt asks for, minus the risk of running the live pipeline twice.
+
+---
+
 ## WP8 — Retire the keyword ladder
 
 ```
@@ -1538,6 +1702,9 @@ trusting this list, and look for more:
   routine; it is now a one-off import, and the review commands are the flow.
 - The options table under "Running" omits --delist-after,
   --allow-empty-delist, --score and --show-all.
+- Nothing documents `python -m job_scraper.drops` or `python -m job_scraper.eval`
+  (WP8a and WP8c). Both are read-only, offline commands the owner will forget
+  exist if the README never names them.
 
 Check the whole file against the current CLI while you are in there: every
 flag documented should exist, and `python -m job_scraper.run --help` is the
