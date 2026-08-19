@@ -47,6 +47,8 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | done | `wp7-llm-scoring` |
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
+| 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | not started | `wp8d-unresolvable-locations` |
+| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | not scoped | `wp8e-extractor-locations` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -118,6 +120,35 @@ Record any decision a future session would otherwise have to re-derive.
   owner never learns exists, which is the "never lose data" priority in metric
   form. Any future metric added here keeps that asymmetry or states plainly
   that it does not.
+- **Three causes hide behind "location drops" (WP8d/WP8e).** Reading WP8c's
+  false-negative listing found that the 33 lost location jobs are not one bug.
+  (1) The extractor captured no location at all — a genuine extractor fault,
+  and WP8e. (2) The listing page never named the cities (`"2 locations"`), so
+  the extractor is faithfully copying a placeholder and there is nothing on
+  that page to capture. (3) The field names a region rather than a city:
+  `filtering._GENERIC_LOCATION_TOKENS` lists `"home based"` but not
+  `"home base"`, so `"Home base - EMEA"` reads as a city nobody has heard of.
+  (2) and (3) share one root cause and are WP8d — `matches_rules` knows
+  "empty" and "a specific city" and has no third state for "present, and not a
+  place".
+- **An unresolvable location defers to Layer 2, and fails closed (WP8d).**
+  Owner's decision, 2026-08-19: treat it exactly as a conditional hybrid city
+  is treated — pass Layer 0 with a pending reason, settle it against the
+  fetched description in `_resolve_hybrid`'s image, and drop it when the
+  description confirms nothing on the list. Consequence, and it is the point:
+  this does **not** hand back the lost jobs. It stops them being killed by a
+  placeholder string and gets them judged on the posting instead. The price is
+  a detail fetch for jobs that previously died at Layer 0, which WP8d must
+  measure and report rather than assume is small.
+- **The gold set measures Layer 0 changes and is blind to extractor changes
+  (WP8d/WP8e).** `labels.csv`'s `location` column holds what the extractor
+  produced at labelling time. So `eval.py` scores a `filtering.py` change
+  exactly, and reports *no improvement* for a fixed extractor — it is still
+  replaying the old broken value. WP8d is therefore measurable with the
+  harness and WP8e is not, which is why they are separate packages in that
+  order. Rows are keyed by `dedupe_key` and the review/discard judgement is
+  about the job rather than the location string, so WP8e needs the `location`
+  column refreshed from the store, not the set re-labelled.
 
 ---
 
@@ -1629,6 +1660,94 @@ copy `job_scraper/config/` to a scratch directory, edit the copy, and run
 diff names every job that changed side and the rule that used to fire, and
 prints the precision/recall/F2 delta. That is the before/after diff WP8's
 prompt asks for, minus the risk of running the live pipeline twice.
+
+---
+
+## WP8d — Unresolvable locations
+
+**Do this before WP8.** WP8c measured the ladder and the answer came back that
+the recall problem is Layer 0, not the keyword list: 33 of 47 lost jobs are
+location drops. Retiring keyword layers first would be tuning the smaller half
+of the problem, and would move the baseline WP8 is supposed to be measured
+against. See the three-causes entry in the decisions log for why this package
+covers two of those causes and WP8e covers the third.
+
+```
+think hard
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8d only.
+
+WP8c's baseline showed the ladder's recall problem is Layer 0, not the keyword
+list: 33 of 47 lost jobs are location drops. Reading the false-negative listing
+found three distinct causes, and this package fixes two of them. The third
+(extractors that capture no location at all) is WP8e and is out of scope here.
+
+The problem: matches_rules recognises only two states for a location field —
+empty, or naming a specific city. A field that says something which is not a
+place ("2 locations", "Home base - EMEA", a bare region) falls into the second
+state, matches nothing on the list, and the job dies at Layer 0 having never
+been read.
+
+Treat these the same way conditional hybrid cities are already treated:
+
+1. In filtering.py, recognise a third state: a location field that is present
+   but names no place. At minimum it must cover the "N locations" shape and
+   region-only values. Note _GENERIC_LOCATION_TOKENS has "home based" but not
+   "home base", which is why "Home base - EMEA" reads as a city today. Do NOT
+   fix that by splitting location fields on dashes — real city names contain
+   them.
+2. Such a job passes Layer 0 with a pending reason, exactly as
+   _HYBRID_PENDING_REASON works, rather than being dropped.
+3. In experience_filter.py, settle it at Layer 2 against the fetched
+   description, mirroring _resolve_hybrid. Fail closed, as _resolve_hybrid
+   does: no listed location found in the description means the job is dropped.
+4. Give it its own drop rule string and its own experience_level value so the
+   drop log tells it apart from a genuine wrong-city rejection. Per the WP8a
+   decision, add new rule strings freely but do not reword existing ones.
+5. Make sure a resolved job is not re-fetched on every subsequent run. Hybrid
+   solved this with the hybrid_confirmed column in WP5; WP6's stored
+   descriptions may already cover part of it. Work out which, say which, and do
+   not add a column that duplicates one that exists.
+6. Update job_scraper/eval.py so the new pending state is flagged as
+   provisional in the report, the way hybrid-pending jobs already are.
+   Otherwise the harness will count these as kept and overstate the recall
+   gain, since it cannot replay Layer 2.
+
+What counts as "not a place" should be configurable where it sensibly can be
+(config over code), but propose the shape before adding config keys.
+
+Do not add a filter layer. This is the existing location check learning a third
+answer, not a sixth pass.
+
+Measure it: run python -m job_scraper.eval before and after and put both sets of
+numbers in the plan file, along with how many jobs newly reach Layer 2 and what
+that costs in detail fetches per run.
+
+Branch wp8d-unresolvable-locations. Commit, do not push. Update the plan file.
+```
+
+---
+
+## WP8e — Extractor location gaps
+
+**Not yet scoped.** The third cause behind WP8c's location losses: sources whose
+extractor captures no location at all, so a real posting is indistinguishable
+from a genuinely location-less one and dies as `locations: no location given`.
+WP8a found the same gap from the drop-log side.
+
+Two things are already known and should shape the prompt when it is written:
+
+- **The eval harness cannot measure this package** — see the decisions log. Fix
+  an extractor and `eval.py` still replays the stale `location` value from
+  `labels.csv` and reports nothing gained. Verification has to come from the
+  saved fixtures in `tests/fixtures/` plus a refresh of the gold set's
+  `location` column from the store afterwards. The review/discard labels
+  themselves stay valid.
+- **Identify the affected sources from the drop log, not by guessing**:
+  `python -m job_scraper.drops --rule 'locations: no location given'` names
+  them, and WP8d will have narrowed the list by absorbing the placeholder and
+  region cases that currently land in the same bucket. Run it *after* WP8d for
+  that reason.
 
 ---
 
