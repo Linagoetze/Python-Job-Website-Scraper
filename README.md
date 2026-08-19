@@ -229,6 +229,7 @@ it.
   "conditional_locations": ["Munich", "Paris"],
   "conditional_location_keywords": ["hybrid"],
   "remote_keywords": ["remote", "anywhere"],
+  "non_place_locations": ["EMEA", "Worldwide", "home base", "Sweden"],
   "match_in": "title_and_description",
   "seniority_filter_enabled": true,
   "seniority_exclude_titles": ["Senior", "Lead", "Director"]
@@ -243,6 +244,7 @@ it.
 | `conditional_locations` | Cities admitted **only** for hybrid roles — see below. Empty list = feature off. |
 | `conditional_location_keywords` | What makes a `conditional_locations` job qualify. Matched as word prefixes, so `hybrid` also covers `hybridarbete`. Empty list makes `conditional_locations` inert. |
 | `remote_keywords` | Words that mark a job as location-independent — see the caveat below. |
+| `non_place_locations` | Regions and bare country names that name no specific place — see below. Empty or absent = only the shapes recognised in code. |
 | `match_in` | `title_and_description` (title, snippet, department and location) or `title_only`. |
 | `seniority_filter_enabled` | Turns layer 1 on or off. |
 | `seniority_exclude_titles` | Whole-word matches against the title. `"Lead"` will not match `"Leadership"`. |
@@ -258,6 +260,24 @@ layer 2 this **fails closed**: if the description can't be fetched, the job is
 dropped, because a conditional location is out of range by default. Jobs from
 these cities are re-checked on every run rather than served from the table cache
 (the provisional marker isn't stored in `jobs.csv`).
+
+**Unresolvable locations.** Plenty of listing pages never name the duty station:
+the field says `2 Locations`, `Multiple locations`, `Home base - EMEA`, or just a
+country. That is not a city that failed to match your list — there is nothing on
+the page to match — so judging it against `locations` throws the job away
+unread. Such a field is instead admitted provisionally and settled by layer 2
+against the fetched description, exactly as a conditional location is, and it
+**fails closed** in the same way: if the description names none of your
+`locations`, the job is dropped. The `"N locations"` and `"Multiple locations"`
+shapes and `home based` are recognised without configuration;
+`non_place_locations` is where you add the regions and countries no code list
+could guess. Terms are matched whole-word and case-insensitively against each
+segment of the field, and a segment still counts as a place if anything is left
+once they are struck out — `Barcelona, Spain` is Barcelona, not a placeholder.
+
+The price is a detail fetch for jobs that used to cost nothing, mostly on the
+first run after switching it on: a job dropped this way is stored as rejected
+and skipped thereafter, so the load falls back to newly posted jobs.
 
 **The remote caveat.** A `remote_keyword` only admits a job when its location
 field names no specific city. Some job boards tag every single posting
