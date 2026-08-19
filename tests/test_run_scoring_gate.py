@@ -34,6 +34,7 @@ _EMPTY_SUMMARY = RunSummary(
     jobs_detail_excluded=0,
     jobs_phd_excluded=0,
     jobs_hybrid_excluded=0,
+    jobs_location_excluded=0,
     jobs_kept_new=0,
     rows_written=0,
     rows_delisted=0,

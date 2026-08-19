@@ -79,8 +79,10 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         row("stored, hybrid recheck", f"{summary.jobs_stored_rechecked:,}", indent=6),
         row("new, detail-checked", f"{summary.jobs_new_checked:,}", indent=6),
         cut(f"needs 3+ yrs / PhD ({summary.jobs_phd_excluded} PhD)",
-            summary.jobs_detail_excluded - summary.jobs_hybrid_excluded),
-        cut("non-hybrid (distant city)", summary.jobs_hybrid_excluded,
+            summary.jobs_detail_excluded - summary.jobs_hybrid_excluded
+            - summary.jobs_location_excluded),
+        cut("non-hybrid (distant city)", summary.jobs_hybrid_excluded),
+        cut("location unresolvable in the text", summary.jobs_location_excluded,
             (summary.jobs_kept_new, "new jobs kept")),
         _RULE,
         row("New rows written", f"{summary.rows_written:,}"),

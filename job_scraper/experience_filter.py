@@ -17,6 +17,7 @@ import logging
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -25,6 +26,8 @@ from job_scraper import JobRecord
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    _UNRESOLVED_CONFIRMED_REASON,
+    _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
     _build_title_keyword_pattern,
     build_title_keyword_matchers,
@@ -57,6 +60,19 @@ _DETAIL_WORKERS = 10
 RULE_PHD_REQUIRED = "phd: required (not merely preferred)"
 RULE_HYBRID_NOT_HYBRID = "hybrid: conditional city, description is not hybrid"
 RULE_HYBRID_UNVERIFIED = "hybrid: conditional city, could not read the description"
+# WP8d's two, deliberately separate from the location rules Layer 0 owns: a job
+# that got this far was never rejected for being in the wrong city, it was read
+# and found to name no listed one.
+RULE_LOCATION_NOT_LISTED = "location: unresolvable field, description names no listed place"
+RULE_LOCATION_UNVERIFIED = "location: unresolvable field, could not read the description"
+
+# Marks an exclusion this run could not actually verify — no URL, a fetch or
+# parse error, or no pattern configured — as opposed to one that was checked and
+# failed. Both deferred states (hybrid and unresolvable location) fail closed, so
+# both can be dropped by a network hiccup, and neither may be persisted as a
+# permanent 'rejected'. One key, because it is one fact about the run rather than
+# two facts about two filters (WP8d; was `hybrid_unverified` in WP5/WP6).
+UNVERIFIED_KEY = "unverified_this_run"
 
 
 def _build_seniority_pattern(terms: list[str]) -> re.Pattern[str]:
@@ -235,39 +251,64 @@ def _has_phd_required(text: str) -> bool:
     return bool(_PHD_REQUIRED.search(text))
 
 
+@dataclass(frozen=True)
+class _DetailSignals:
+    """What one detail page said about one job.
+
+    A record rather than a tuple: WP8d needs a second deferred-state answer out
+    of the same fetch, and a seventh positional element is where a tuple stops
+    being readable at the call site.
+    """
+
+    job: JobRecord
+    min_years: int | None = None
+    phd_required: bool = False
+    fetch_failed: bool = False
+    # None means "the description could not be read at all" (no URL, fetch
+    # failed, or no pattern configured) rather than read-and-not-found. Both
+    # deferred states fail closed, so the caller must tell the two apart.
+    hybrid_found: bool | None = None
+    listed_location_found: bool | None = None
+    description_text: str = ""
+
+
 def _fetch_and_analyze(
     job: JobRecord,
     fn: Callable[[str], str],
     hybrid_pattern: re.Pattern[str] | None = None,
-) -> tuple[JobRecord, int | None, bool, bool, bool | None, str]:
-    """Fetch a job's detail page and extract experience/PhD signals.
+    location_pattern: re.Pattern[str] | None = None,
+) -> _DetailSignals:
+    """Fetch a job's detail page and extract experience/PhD/deferred-state signals.
 
-    Returns (job, min_years, phd_required, fetch_failed, hybrid_found, description_text).
     min_years is None when no numeric requirement was found or there was no URL.
-    hybrid_found is None when the description could not be read at all (no URL,
-    fetch failed, or no pattern configured) — the caller decides what that means.
     description_text is the stripped page text, capped at _MAX_DESCRIPTION_CHARS,
     or '' when nothing was fetched — WP7's scorer reads this back from the store
     rather than re-fetching.
+    One fetch answers every question: the hybrid gate and WP8d's unresolvable
+    location are both searched in the text already in hand, so neither costs an
+    HTTP request of its own.
     """
     url = str(job.get("detail_url") or job.get("apply_url") or "").strip()
     if not url:
-        return job, None, False, False, None, ""
+        return _DetailSignals(job=job)
     try:
         html = fn(url)
         text = _strip_html(html)
-        hybrid = bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None
-        return (
-            job,
-            _extract_min_years(text),
-            _has_phd_required(text),
-            False,
-            hybrid,
-            text[:_MAX_DESCRIPTION_CHARS],
+        return _DetailSignals(
+            job=job,
+            min_years=_extract_min_years(text),
+            phd_required=_has_phd_required(text),
+            hybrid_found=(
+                bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None
+            ),
+            listed_location_found=(
+                bool(location_pattern.search(text)) if location_pattern is not None else None
+            ),
+            description_text=text[:_MAX_DESCRIPTION_CHARS],
         )
     except Exception as exc:
         logger.debug("Layer 2: fetch failed for %r — keeping job. Error: %s", url, exc)
-        return job, None, False, True, None, ""
+        return _DetailSignals(job=job, fetch_failed=True)
 
 
 def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | None:
@@ -293,11 +334,39 @@ def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | No
     )
 
 
+def _resolve_unresolved_location(
+    job: JobRecord, listed_location_found: bool | None
+) -> JobRecord | None:
+    """Settle a job whose location field named no place, against the description.
+
+    Returns the job with its pending marker rewritten to confirmed, or None if it
+    must be excluded. Jobs not awaiting a location decision are returned unchanged.
+
+    Fails closed, exactly as `_resolve_hybrid` does and for the same reason: the
+    listing never established that this job is in range, so a description that
+    names nothing on the list has not established it either. WP8d's point is that
+    these jobs get *read* before they are dropped, not that they are kept.
+    """
+    reasons = job.get("matched_reasons") or []
+    if _UNRESOLVED_PENDING_REASON not in reasons:
+        return job
+    if not listed_location_found:
+        return None
+    return dict(
+        job,
+        matched_reasons=[
+            _UNRESOLVED_CONFIRMED_REASON if r == _UNRESOLVED_PENDING_REASON else r
+            for r in reasons
+        ],
+    )
+
+
 def apply_detail_filter(
     jobs: list[JobRecord],
     fetch_text: Callable[[str], str],
     source_fetch_map: dict[str, Callable[[str], str]] | None = None,
     hybrid_pattern: re.Pattern[str] | None = None,
+    location_pattern: re.Pattern[str] | None = None,
 ) -> tuple[list[JobRecord], list[JobRecord]]:
     """Fetch each job's detail page and filter by experience requirement and PhD.
 
@@ -310,18 +379,24 @@ def apply_detail_filter(
     hybrid_pattern resolves jobs that Layer 1 admitted provisionally from a
     conditional location: the same fetched description is searched for it, so
     those jobs cost no extra HTTP request. They fail closed — see _resolve_hybrid.
+    location_pattern does the same for WP8d's other deferred state, a job whose
+    location field named no place at all: the description must name a listed
+    location or the job is dropped — see _resolve_unresolved_location. Unlike
+    the hybrid case these jobs *are* an extra HTTP request, because they died at
+    Layer 0 before this package and never reached here at all.
     Fetches run in parallel with up to _DETAIL_WORKERS threads.
     Each returned job dict is annotated with description_text and
     description_fetched_at from this fetch (both '' when nothing was fetched),
     so the caller can persist them — that is what lets a later run skip the
     fetch entirely, on both the kept and the excluded side. The one exception
-    is a conditional-location job whose hybrid arrangement could not actually
-    be verified this run (no URL, a fetch/parse error, or no pattern
-    configured): it is still excluded for this run — failing closed is
-    unchanged and deliberate — but is marked `hybrid_unverified=True` so the
-    caller knows *not* to treat that exclusion as a durable, storable
-    judgement. A transient network error must not read the same as "checked
-    and confirmed not hybrid".
+    is a job dropped by one of the two deferred states — a conditional location
+    whose hybrid arrangement, or an unresolvable location field whose place,
+    could not actually be verified this run (no URL, a fetch/parse error, or no
+    pattern configured). It is still excluded for this run — failing closed is
+    unchanged and deliberate — but is marked with UNVERIFIED_KEY so the caller
+    knows *not* to treat that exclusion as a durable, storable judgement. A
+    transient network error must not read the same as "checked and found
+    lacking".
     Every excluded job also carries the rule that dropped it under
     DROP_RULE_KEY — the years threshold that fired, the PhD requirement, or
     which of the two hybrid cases it was — for the run's exclusion log.
@@ -332,49 +407,91 @@ def apply_detail_filter(
     fetch_failed = 0
     no_requirement = 0
     hybrid_excluded = 0
-    hybrid_unverified = 0
+    location_excluded = 0
+    unverified = 0
     fetched_at = utc_now_iso()
 
-    def _task(job: JobRecord) -> tuple[JobRecord, int | None, bool, bool, bool | None, str]:
+    def _task(job: JobRecord) -> _DetailSignals:
         source = str(job.get("source_name") or "")
         fn = (source_fetch_map or {}).get(source, fetch_text)
-        return _fetch_and_analyze(job, fn, hybrid_pattern)
+        return _fetch_and_analyze(job, fn, hybrid_pattern, location_pattern)
 
     with ThreadPoolExecutor(max_workers=_DETAIL_WORKERS) as pool:
         results = list(pool.map(_task, jobs))
 
-    for job, min_years, phd_req, failed, hybrid_found, description_text in results:
-        resolved = _resolve_hybrid(job, hybrid_found)
+    def _deferred_exclusion(
+        job: JobRecord,
+        signals: _DetailSignals,
+        level: str,
+        verified: bool,
+        checked_rule: str,
+        unverified_rule: str,
+    ) -> dict[str, Any]:
+        """A drop from one of the two fail-closed deferred states.
+
+        `verified` is False when the page could not be read at all (no URL, a
+        fetch/parse exception, or no pattern configured) rather than read and
+        found lacking. That is not a judgement about the job, only a fact about
+        this run's network conditions, so it carries no description and must not
+        be persisted as a permanent rejection — see the docstring above and
+        pipeline.py's use of UNVERIFIED_KEY.
+        """
+        if not verified:
+            return dict(
+                job,
+                experience_level=level,
+                description_text="",
+                description_fetched_at="",
+                **{UNVERIFIED_KEY: True, DROP_RULE_KEY: unverified_rule},
+            )
+        return dict(
+            job,
+            experience_level=level,
+            description_text=signals.description_text,
+            description_fetched_at=fetched_at if signals.description_text else "",
+            **{DROP_RULE_KEY: checked_rule},
+        )
+
+    for signals in results:
+        job = signals.job
+        min_years, phd_req, failed = signals.min_years, signals.phd_required, signals.fetch_failed
+        description_text = signals.description_text
+
+        # The two deferred states, settled in Layer 0's order. Either can drop
+        # the job outright; a job carrying neither marker passes both untouched.
+        resolved = _resolve_hybrid(job, signals.hybrid_found)
         if resolved is None:
             hybrid_excluded += 1
-            # hybrid_found is None when the page could not be read at all (no
-            # URL, a fetch/parse exception, or no pattern configured) rather
-            # than read-and-found-not-hybrid. That is not a judgement about
-            # the job, only a fact about this run's network conditions, so it
-            # must not be persisted as a permanent rejection — see the
-            # docstring above and pipeline.py's use of this flag.
-            if hybrid_found is None:
-                hybrid_unverified += 1
-                excluded.append(
-                    dict(
-                        job,
-                        experience_level="non_hybrid_conditional_location",
-                        description_text="",
-                        description_fetched_at="",
-                        hybrid_unverified=True,
-                        **{DROP_RULE_KEY: RULE_HYBRID_UNVERIFIED},
-                    )
+            if signals.hybrid_found is None:
+                unverified += 1
+            excluded.append(
+                _deferred_exclusion(
+                    job,
+                    signals,
+                    "non_hybrid_conditional_location",
+                    signals.hybrid_found is not None,
+                    RULE_HYBRID_NOT_HYBRID,
+                    RULE_HYBRID_UNVERIFIED,
                 )
-            else:
-                excluded.append(
-                    dict(
-                        job,
-                        experience_level="non_hybrid_conditional_location",
-                        description_text=description_text,
-                        description_fetched_at=fetched_at if description_text else "",
-                        **{DROP_RULE_KEY: RULE_HYBRID_NOT_HYBRID},
-                    )
+            )
+            continue
+
+        job = resolved
+        resolved = _resolve_unresolved_location(job, signals.listed_location_found)
+        if resolved is None:
+            location_excluded += 1
+            if signals.listed_location_found is None:
+                unverified += 1
+            excluded.append(
+                _deferred_exclusion(
+                    job,
+                    signals,
+                    "unresolvable_location",
+                    signals.listed_location_found is not None,
+                    RULE_LOCATION_NOT_LISTED,
+                    RULE_LOCATION_UNVERIFIED,
                 )
+            )
             continue
         job = resolved
 
@@ -415,13 +532,16 @@ def apply_detail_filter(
         logger.debug(
             "Layer 2: %d/%d jobs failed to fetch (kept fail-open); "
             "%d had no numeric requirement; "
-            "%d dropped as non-hybrid in a conditional location "
-            "(%d of those because the hybrid arrangement could not be verified "
-            "this run, not because it was checked and found lacking)",
+            "%d dropped as non-hybrid in a conditional location; "
+            "%d dropped because an unresolvable location field named no listed place "
+            "in the description "
+            "(%d of those two totals because nothing could be verified this run, not "
+            "because it was checked and found lacking)",
             fetch_failed,
             len(jobs),
             no_requirement,
             hybrid_excluded,
-            hybrid_unverified,
+            location_excluded,
+            unverified,
         )
     return kept, excluded
