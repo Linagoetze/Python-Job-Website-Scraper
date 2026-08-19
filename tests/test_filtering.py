@@ -6,10 +6,13 @@ from unittest.mock import MagicMock, patch
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    _UNRESOLVED_PENDING_REASON,
     apply_language_filter,
     apply_non_english_text_filter,
     apply_title_keyword_filter,
     build_hybrid_pattern,
+    build_location_pattern,
+    build_non_place_pattern,
     matches_rules,
 )
 
@@ -38,6 +41,22 @@ _COND = {
 # Built once, mirroring how the real pipeline compiles it once per run and
 # passes it down rather than rebuilding it inside matches_rules.
 _COND_HYBRID_PATTERN = build_hybrid_pattern(_COND)
+
+# Rules for WP8d's third location state. The non-place list is deliberately
+# short: the shapes recognised in code ("2 Locations", "Home based") must work
+# without it, and the list only adds the regions and countries no code list
+# could guess.
+_UNRESOLVABLE = {
+    "locations": ["Malmö", "Lund", "Copenhagen"],
+    "conditional_locations": [],
+    "remote_keywords": ["remote", "anywhere"],
+    "non_place_locations": ["EMEA", "Worldwide", "home base", "Sweden", "United Kingdom"],
+}
+_NON_PLACE_PATTERN = build_non_place_pattern(_UNRESOLVABLE)
+
+
+def _unresolvable(job):
+    return matches_rules(job, _UNRESOLVABLE, None, non_place_pattern=_NON_PLACE_PATTERN)
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +165,84 @@ class TestMatchesRules:
         ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), rules, None)
         assert not ok
 
+    # -----------------------------------------------------------------
+    # WP8d — the third location state: present, but naming no place
+    # -----------------------------------------------------------------
+
+    def test_placeholder_location_count_is_pending_not_dropped(self):
+        # "2 Locations" is a listing page refusing to name its duty stations.
+        # Judging it against the city list is judging a placeholder.
+        for placeholder in ("2 Locations", "21 Locations", "Multiple locations"):
+            ok, reasons = _unresolvable(_job(location=placeholder))
+            assert ok, placeholder
+            assert _UNRESOLVED_PENDING_REASON in reasons, placeholder
+
+    def test_region_only_location_is_pending(self):
+        for region in ("Home base - EMEA", "Home based - Worldwide", "Sweden"):
+            ok, reasons = _unresolvable(_job(location=region))
+            assert ok, region
+            assert _UNRESOLVED_PENDING_REASON in reasons, region
+
+    def test_home_base_singular_is_recognised(self):
+        # The bug this package was written for: _GENERIC_LOCATION_TOKENS has
+        # "home based" but not "home base", so this read as a city.
+        ok, reasons = _unresolvable(_job(location="Home base - EMEA"))
+        assert ok
+        assert _UNRESOLVED_PENDING_REASON in reasons
+
+    def test_a_named_city_beside_a_region_still_names_a_place(self):
+        # The reason the classifier strikes terms out and looks at what is left
+        # rather than splitting on dashes: real city names contain them, and a
+        # country suffix does not turn a city into a placeholder.
+        for named in ("Barcelona, Sweden", "Sweden - Uppsala", "Aix-en-Provence"):
+            ok, _ = _unresolvable(_job(location=named))
+            assert not ok, named
+
+    def test_empty_location_is_still_its_own_case(self):
+        # An extractor gap (WP8e) must not be laundered into "unresolvable":
+        # there is nothing on the page to resolve it against.
+        ok, reasons = matches_rules(
+            _job(location="", raw_snippet="Analyst"),
+            _UNRESOLVABLE,
+            None,
+            non_place_pattern=_NON_PLACE_PATTERN,
+        )
+        assert not ok
+        assert reasons == ["locations: no location given"]
+
+    def test_listed_city_never_becomes_pending(self):
+        ok, reasons = _unresolvable(_job(location="Malmö, Sweden"))
+        assert ok
+        assert reasons == ["locations: matched"]
+
+    def test_remote_role_is_still_admitted_outright(self):
+        # Cheaper than deferring: a genuine anywhere role needs no detail page.
+        ok, reasons = _unresolvable(_job(location="Remote", raw_snippet="Analyst remote"))
+        assert ok
+        assert reasons == ["locations: matched via remote_keywords"]
+
+    def test_the_code_shapes_work_without_any_configured_terms(self):
+        rules = {"locations": ["Malmö"], "remote_keywords": []}
+        for placeholder in ("3 Locations", "Home based"):
+            ok, reasons = matches_rules(_job(location=placeholder), rules, None)
+            assert ok, placeholder
+            assert _UNRESOLVED_PENDING_REASON in reasons, placeholder
+
+    def test_conditional_city_keeps_its_own_pending_state(self):
+        # A hybrid-gated city is resolvable — it names a place — so it must not
+        # be swallowed by the new state.
+        rules = dict(_COND, non_place_locations=["Sweden"])
+        ok, reasons = matches_rules(
+            _job(location="Stockholm, Sweden"),
+            rules,
+            _COND_HYBRID_PATTERN,
+            non_place_pattern=build_non_place_pattern(rules),
+        )
+        assert ok
+        assert _HYBRID_PENDING_REASON in reasons
+
+
+class TestMatchesRulesKeywords:
     def test_exclude_keyword_rejects(self):
         rules = {"exclude_keywords": ["intern"], "locations": []}
         ok, _ = matches_rules(_job(title="Marketing Intern"), rules, None)
@@ -165,6 +262,25 @@ class TestMatchesRules:
 # ---------------------------------------------------------------------------
 # apply_title_keyword_filter
 # ---------------------------------------------------------------------------
+
+class TestBuildLocationPattern:
+    """Layer 2's copy of `locations`, for searching a description."""
+
+    def test_matches_a_listed_city_whole_word(self):
+        pattern = build_location_pattern(_UNRESOLVABLE)
+        assert pattern is not None
+        assert pattern.search("The team sits in Lund, two days a week.")
+
+    def test_does_not_match_a_city_name_inside_a_longer_word(self):
+        # Substring matching is fine against a short location field and wrong
+        # against a page of prose: "Lund" is inside plenty of Swedish surnames.
+        pattern = build_location_pattern(_UNRESOLVABLE)
+        assert pattern is not None
+        assert not pattern.search("Report to Anna Lundberg, Head of Delivery.")
+
+    def test_returns_none_when_locations_are_unconfigured(self):
+        assert build_location_pattern({"locations": []}) is None
+
 
 class TestTitleKeywordFilter:
     def test_word_match_excludes(self):
