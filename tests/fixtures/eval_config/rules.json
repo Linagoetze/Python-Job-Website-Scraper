@@ -8,6 +8,7 @@
   "conditional_locations": ["Stockholm"],
   "conditional_location_keywords": ["hybrid"],
   "remote_keywords": ["remote"],
+  "non_place_locations": ["EMEA", "Sweden"],
 
   "match_in": "title_and_description",
 

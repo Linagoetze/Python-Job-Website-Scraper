@@ -79,7 +79,7 @@ def config():
 def test_semicolon_delimiter_is_sniffed(gold: list[LabelledJob]) -> None:
     # The fixture is semicolon-separated, as a spreadsheet on a Swedish locale
     # writes it. Guessing comma would give one column and no usable rows.
-    assert len(gold) == 13
+    assert len(gold) == 14
     assert {job.title for job in gold} >= {"Junior Data Analyst", "Sales Manager"}
 
 
@@ -109,7 +109,7 @@ def test_a_key_labelled_both_ways_is_excluded_not_guessed(gold: list[LabelledJob
 
 def test_an_unrecognised_label_is_reported_with_its_line_number() -> None:
     _, issues = load_labels(LABELS)
-    assert issues.unreadable == [(18, "unrecognised label '(blank)'")]
+    assert issues.unreadable == [(19, "unrecognised label '(blank)'")]
 
 
 def test_source_name_is_optional(gold: list[LabelledJob]) -> None:
@@ -219,6 +219,22 @@ def test_a_conditional_city_is_kept_but_flagged_for_layer_two(gold, config) -> N
     assert not by_title["Hybrid Product Analyst"].pending_hybrid
 
 
+def test_an_unresolvable_location_is_kept_but_flagged_for_layer_two(gold, config) -> None:
+    """WP8d's provisional state, kept separate from an outright keep.
+
+    Without this flag the harness would count a deferred job as a recall win it
+    has not earned: Layer 2 settles these against the description and fails
+    closed, and no offline replay can know which way that goes.
+    """
+    by_title = {v.job.title: v for v in replay(gold, config)}
+    provisional = by_title["Field Officer"]
+    assert provisional.kept
+    assert provisional.pending_location
+    assert not provisional.pending_hybrid
+    # A job that named a real city is decided here and now, not deferred.
+    assert not by_title["Junior Data Analyst"].pending_location
+
+
 def test_replay_is_deterministic(gold, config) -> None:
     """langdetect seeds itself randomly; the harness seeds it so pins can hold."""
     first = [(v.job.dedupe_key, v.layer, v.rule) for v in replay(gold, config)]
@@ -256,18 +272,22 @@ def test_regression_pins_current_ladder(gold, config) -> None:
         result.confusion.false_positives,
         result.confusion.false_negatives,
         result.confusion.true_negatives,
-    ) == (3, 1, 3, 6)
-    assert result.confusion.precision == pytest.approx(0.75)
-    assert result.confusion.recall == pytest.approx(0.5)
-    assert result.confusion.fbeta(2.0) == pytest.approx(0.5357142857142857)
+    ) == (4, 1, 3, 6)
+    assert result.confusion.precision == pytest.approx(0.8)
+    assert result.confusion.recall == pytest.approx(0.5714285714285714)
+    assert result.confusion.fbeta(2.0) == pytest.approx(0.6060606060606061)
+    # One of those four true positives is provisional, not won: 'Field Officer'
+    # is deferred to Layer 2, which this harness cannot replay and which fails
+    # closed. See test_an_unresolvable_location_is_kept_but_flagged_for_layer_two.
+    assert len(result.pending_location_wanted) == 1
 
     # (layer, reached, dropped, false negatives it caused)
     assert [(r.layer, r.reached, r.dropped, r.dropped_wanted) for r in result.layers] == [
-        (LAYER_RULES, 13, 3, 1),
-        (LAYER_TITLE_KEYWORD, 10, 2, 1),
-        (LAYER_SENIORITY, 8, 2, 1),
-        (LAYER_NON_ENGLISH, 6, 1, 0),
-        (LAYER_LANGUAGE, 5, 1, 0),
+        (LAYER_RULES, 14, 3, 1),
+        (LAYER_TITLE_KEYWORD, 11, 2, 1),
+        (LAYER_SENIORITY, 9, 2, 1),
+        (LAYER_NON_ENGLISH, 7, 1, 0),
+        (LAYER_LANGUAGE, 6, 1, 0),
     ]
 
     assert [(v.job.title, v.layer, v.rule) for v in result.false_negatives] == [
@@ -293,6 +313,8 @@ def test_report_names_every_false_negative(gold, config) -> None:
     # And admits what it could not evaluate.
     assert "1d-review-status not replayed" in text
     assert "2-detail not replayed" in text
+    assert "unresolvable location field" in text
+    assert "ceiling on the recall this buys" in text
 
 
 # ---------------------------------------------------------------------------
