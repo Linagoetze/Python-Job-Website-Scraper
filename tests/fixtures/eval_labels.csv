@@ -1,0 +1,18 @@
+dedupe_key;title;company;location;label
+https://example.test/1;Junior Data Analyst;Acme;Lund;review
+https://example.test/2;Sales Manager;Acme;Lund;discard
+https://example.test/3;Graphic Designer;Acme;Malmö;review
+https://example.test/4;Senior Data Engineer;Acme;Copenhagen;discard
+https://example.test/5;Head of Operations;Acme;Lund;review
+https://example.test/6;Programme Officer;Globex;Berlin;review
+https://example.test/7;Office Coordinator;Globex;;discard
+https://example.test/8;Remote Research Assistant;Globex;Remote;review
+https://example.test/9;Support Engineer;Globex;Remote | Nairobi;discard
+https://example.test/10;Hybrid Product Analyst;Initech;Stockholm;review
+https://example.test/11;Data Coordinator;Initech;Stockholm;discard
+https://example.test/12;Danish speaking Customer Agent;Initech;Copenhagen;discard
+https://example.test/13;Vi söker en administratör till vårt kontor som gärna vill utvecklas hos oss;Initech;Lund;discard
+https://example.test/1;Junior Data Analyst;Acme;Lund;Review
+https://example.test/14;Conflicted Job;Acme;Lund;review
+https://example.test/14;Conflicted Job;Acme;Lund;discard
+https://example.test/15;Unlabelled Job;Acme;Lund;
