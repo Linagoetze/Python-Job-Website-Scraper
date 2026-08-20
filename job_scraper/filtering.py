@@ -228,7 +228,15 @@ def _lower(s: str) -> str:
 
 # Generic (non-city) location segments that indicate a role is not tied to a
 # specific duty station, beyond the configured remote_keywords (e.g. "Remote").
-_GENERIC_LOCATION_TOKENS = ("home based", "home-based", "homebased")
+#
+# Both spellings of the home-base wording live here rather than in config: this
+# is English, not a place list, so no rules.json should have to know it. Sorted
+# longest first because `_location_names_no_place` strikes them out by plain
+# substring — with "home base" tried first, "home based" would leave a stray
+# "d" behind and read as a place.
+_GENERIC_LOCATION_TOKENS = tuple(
+    sorted({"home based", "home-based", "homebased", "home base"}, key=len, reverse=True)
+)
 
 # Separators used inside a single location field, e.g. "Remote | Nairobi".
 _LOCATION_SPLIT = re.compile(r"[|/\n]+")
@@ -397,18 +405,32 @@ def _location_names_no_place(
     if not loc_field_cf.strip():
         return False
     remote_cf = [_lower(rk) for rk in remote_keywords]
+    # A field made only of remote keywords is "remote", a state the location
+    # rules already have an answer for — it must not be re-labelled
+    # unresolvable and sent to Layer 2 for a fetch. That distinction is
+    # invisible under `match_in: title_and_description`, where the location
+    # field is part of the haystack and `remote_ok` settles such a job before
+    # this function is reached, and it is the whole story under `title_only`,
+    # where it is not.
+    placeless_for_a_reason = False
     for raw_seg in _LOCATION_SPLIT.split(loc_field_cf):
         seg = raw_seg.strip()
         if not seg:
             continue
-        remainder = _PLACEHOLDER_LOCATION.sub(" ", seg)
-        for term in (*remote_cf, *_GENERIC_LOCATION_TOKENS):
+        remainder = seg
+        for term in remote_cf:
+            remainder = remainder.replace(term, " ")
+        if not _LETTER.search(remainder):
+            continue
+        remainder = _PLACEHOLDER_LOCATION.sub(" ", remainder)
+        for term in _GENERIC_LOCATION_TOKENS:
             remainder = remainder.replace(term, " ")
         if non_place_pattern is not None:
             remainder = non_place_pattern.sub(" ", remainder)
         if _LETTER.search(remainder):
             return False
-    return True
+        placeless_for_a_reason = True
+    return placeless_for_a_reason
 
 
 def _location_drop_rule(
@@ -537,10 +559,18 @@ def matches_rules(
                 reasons.append(_HYBRID_CONFIRMED_REASON)
             else:
                 reasons.append(_HYBRID_PENDING_REASON)
-        elif _location_names_no_place(loc_field, remote_keywords, non_place_pattern):
+        elif locations and _location_names_no_place(
+            loc_field, remote_keywords, non_place_pattern
+        ):
             # Present, but naming no place this layer can resolve. Judging it
             # against the list would be judging a placeholder, so defer to
             # Layer 2 and let the description decide (it fails closed there).
+            #
+            # Only worth deferring when there *is* a list: with `locations`
+            # empty, Layer 2 has nothing to search the description for, so
+            # every deferred job would come back unverifiable — dropped for the
+            # run, never stored, and re-fetched on every run after it. Defer
+            # only what can actually be settled.
             reasons.append(_UNRESOLVED_PENDING_REASON)
         else:
             return False, [

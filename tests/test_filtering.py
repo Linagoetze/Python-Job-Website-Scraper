@@ -184,11 +184,50 @@ class TestMatchesRules:
             assert _UNRESOLVED_PENDING_REASON in reasons, region
 
     def test_home_base_singular_is_recognised(self):
-        # The bug this package was written for: _GENERIC_LOCATION_TOKENS has
+        # The bug this package was written for: _GENERIC_LOCATION_TOKENS had
         # "home based" but not "home base", so this read as a city.
         ok, reasons = _unresolvable(_job(location="Home base - EMEA"))
         assert ok
         assert _UNRESOLVED_PENDING_REASON in reasons
+
+    def test_both_home_base_spellings_are_recognised_in_code(self):
+        # The wording is English, not a place list, so it must not depend on
+        # rules.json. (The region *after* it still does — that is what
+        # non_place_locations is for, and "Home base - EMEA" needs both halves.)
+        rules = {"locations": ["Malmö"], "remote_keywords": []}
+        for spelling in ("Home base", "Home based", "home-based", "Homebased"):
+            ok, reasons = matches_rules(_job(location=spelling), rules, None)
+            assert ok, spelling
+            assert _UNRESOLVED_PENDING_REASON in reasons, spelling
+
+    def test_a_field_of_only_remote_keywords_is_remote_not_unresolvable(self):
+        # Under title_only the location field is outside the haystack, so
+        # remote_ok cannot fire. Deferring "Remote" to Layer 2 would buy a
+        # detail fetch for a shape the location rules already have an answer
+        # for — and on an aggregator that tags every posting "Remote", a great
+        # many of them.
+        rules = {"locations": ["Malmö"], "remote_keywords": ["remote", "anywhere"],
+                 "match_in": "title_only"}
+        ok, reasons = matches_rules(_job(location="Remote"), rules, None)
+        assert not ok
+        assert reasons == ["locations: city not on the list"]
+
+    def test_nothing_is_deferred_when_there_are_no_locations_to_defer_to(self):
+        # Layer 2 settles a deferred job by searching the description for a
+        # listed location. With none configured it can never settle one, so the
+        # job would be dropped unverifiable, never stored, and re-fetched on
+        # every subsequent run.
+        rules = {
+            "locations": [],
+            "conditional_locations": ["Stockholm"],
+            "conditional_location_keywords": ["hybrid"],
+            "remote_keywords": ["remote"],
+        }
+        ok, reasons = matches_rules(
+            _job(location="2 Locations"), rules, build_hybrid_pattern(rules)
+        )
+        assert not ok
+        assert _UNRESOLVED_PENDING_REASON not in reasons
 
     def test_a_named_city_beside_a_region_still_names_a_place(self):
         # The reason the classifier strikes terms out and looks at what is left

@@ -1764,8 +1764,35 @@ place — the remote keywords, `_GENERIC_LOCATION_TOKENS`, the configured
 `non_place_locations`, and the `"N locations"` shape — from each segment and
 asks whether a *letter* survives. `home base - emea` empties out;
 `barcelona, spain` keeps Barcelona, which is the case a plain "contains a
-region word" test gets wrong. `"home base"` covers `"home based"` as a prefix,
-so the specific bug in the decisions log needed no new token of its own.
+region word" test gets wrong.
+
+**The home-base wording is code, the region after it is config.** Both
+spellings now sit in `_GENERIC_LOCATION_TOKENS`, which is struck out by plain
+substring, so the tuple is sorted longest-first — with `"home base"` tried
+first, `"home based"` would leave a stray `"d"` behind and read as a place.
+Configured terms are matched **whole-word**, so `"home base"` in `rules.json`
+would *not* have covered `"home based"`; an earlier draft of this entry claimed
+it did, and that was wrong. Note what this does and does not fix: the brief's
+`"Home base - EMEA"` needs both halves — the wording from code and `EMEA` from
+`non_place_locations` — because no code list can enumerate the world's regions.
+Bare `"Home base"` and `"Home based"` are handled with no config at all.
+
+**Two guards on when it is worth deferring at all**, both added after review
+and neither reachable with the owner's current config:
+
+- **Nothing is deferred when `locations` is empty.** Layer 2 settles a deferred
+  job by searching the description for a listed location; with none configured
+  it can never settle one, so every deferred job would come back
+  `unverified` — dropped for the run, never stored, and re-fetched on every run
+  after it, for ever. A `conditional_locations`-only configuration is enough to
+  hit that, so `matches_rules` now defers only what can actually be settled.
+- **A field made only of remote keywords is "remote", not "unresolvable".**
+  Under `match_in: title_and_description` the location field is part of the
+  haystack, so `remote_ok` settles a bare `"Remote"` before the new branch is
+  reached. Under `title_only` it is not, and without this guard every
+  `"Remote"`-tagged posting on an aggregator that tags all of them would have
+  bought a detail fetch. The location rules already have an answer for that
+  shape; the new state must not re-label it.
 
 **Deliberately not the inverse of `_location_names_specific_city`.** That
 function answers a different question — may a remote tag stand? — and teaching
@@ -1876,6 +1903,30 @@ aggregator (CLAUDE.md priority 3), and it lands in a single run at
 `_DETAIL_WORKERS = 10`. If it matters, run it once at a lower worker count and
 the steady state takes care of itself.
 
+### What actually happened (run 9, 2026-08-20)
+
+The projection above did not stay a projection. The owner's own scrape at
+06:16 UTC ran while this package was on disk, so **run 9 executed the change
+against the live store** — unplanned, and the first real evidence either way.
+It also predates the two guards and the `"home base"` token above, none of
+which alter a judgement it made (with `locations` non-empty and `match_in`
+set to `title_and_description`, both guards are no-ops, and the token only ever
+defers *more*).
+
+```
+  161  dropped by 'location: unresolvable field, description names no listed
+       place', all stored 'rejected' and skipped from now on
+    0  dropped as 'could not read the description' — no unverified drops
+    2  kept, and sitting in the table for review
+```
+
+So ~163 jobs newly reached Layer 2 against the 183 projected, and the yield of
+the whole package on one run is **two postings the owner can now see that Layer
+0 would have destroyed unread**. That is the trade this package was always
+making, now with a number on both sides of it: fail-closed means most of the
+603 admitted at Layer 0 still end up rejected — the point is that they are
+rejected *after* being read.
+
 **A third shape came along with the two the prompt named.** The 43 rows above
 are `Remote | <country>` and `Remote | Multiple locations` — a remote tag whose
 companion segment is not a city either. The old code read the country as a duty
@@ -1887,9 +1938,9 @@ is a fifth of the new Layer 0 intake.
 
 `python -m job_scraper.drops --rule 'locations: no location given'` is now a
 clean signal: the placeholder and region cases that used to land in the same
-bucket are gone, and the 54 `no location given` rows on run 8 are genuinely
-empty fields — the same 54 WP8a's first real run reported, untouched by this
-package.
+bucket are gone, and the 54 `no location given` rows are genuinely empty
+fields — the same 54 on run 8 and run 9, and the same 54 WP8a's first real run
+reported, untouched by this package.
 
 ---
 

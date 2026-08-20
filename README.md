@@ -269,9 +269,11 @@ unread. Such a field is instead admitted provisionally and settled by layer 2
 against the fetched description, exactly as a conditional location is, and it
 **fails closed** in the same way: if the description names none of your
 `locations`, the job is dropped. The `"N locations"` and `"Multiple locations"`
-shapes and `home based` are recognised without configuration;
-`non_place_locations` is where you add the regions and countries no code list
-could guess. Terms are matched whole-word and case-insensitively against each
+shapes and the home-base wording (`Home base`, `Home based`, `home-based`) are
+recognised without configuration; `non_place_locations` is where you add the
+regions and countries no code list could guess. A value that combines the two,
+like `Home base - EMEA`, needs `EMEA` in the list — the wording alone is not
+enough, because what is left over is still a name this filter has to judge. Terms are matched whole-word and case-insensitively against each
 segment of the field, and a segment still counts as a place if anything is left
 once they are struck out — `Barcelona, Spain` is Barcelona, not a placeholder.
 
