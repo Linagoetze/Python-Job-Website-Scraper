@@ -47,7 +47,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 7 | LLM scoring stage | 3.5 hr | Fable 5 | `think hard` | done | `wp7-llm-scoring` |
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
-| 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | not started | `wp8d-unresolvable-locations` |
+| 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | not scoped | `wp8e-extractor-locations` |
 | 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
@@ -149,6 +149,25 @@ Record any decision a future session would otherwise have to re-derive.
   order. Rows are keyed by `dedupe_key` and the review/discard judgement is
   about the job rather than the location string, so WP8e needs the `location`
   column refreshed from the store, not the set re-labelled.
+- **`non_place_locations` extends the code tokens, it does not replace them
+  (WP8d).** Owner's decision, 2026-08-19: one new `rules.json` key, seeded with
+  regions *and* bare country names, matched whole-word per segment. A
+  `rules.json` without the key still recognises the `"N locations"` shape and
+  `home based`, so the feature cannot be switched off by a config file that
+  predates it. Consequence for anyone editing the list: a term only matters
+  when striking it out leaves no letter behind in that segment, so adding
+  `"Spain"` does not turn `Barcelona, Spain` into a placeholder.
+- **A deferred state is not a recall win, and the eval report says so
+  (WP8d).** `eval.py` flags `pending_location` jobs the way it already flags
+  `pending_hybrid` ones. Layer 2 settles both and fails closed, and the harness
+  makes no HTTP request, so the recall it reports over deferred jobs is a
+  ceiling. On the 2026-08-19 gold set the entire 0.365 → 0.432 gain is
+  provisional; quoting it as achieved recall is quoting it wrong.
+- **`UNVERIFIED_KEY` replaces `hybrid_unverified` (WP8d).** Both fail-closed
+  deferred states can be dropped by a network hiccup rather than a judgement,
+  and neither may be persisted as `'rejected'`. One key on the job dict, not
+  one per filter — a second flag is one `pipeline.py` forgets to check, and the
+  cost of forgetting is a job permanently lost to a timeout.
 
 ---
 
@@ -1725,6 +1744,203 @@ that costs in detail fetches per run.
 
 Branch wp8d-unresolvable-locations. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+306 tests pass (up from 281), `ruff check .` clean. Touched: `filtering.py`,
+`experience_filter.py`, `pipeline.py`, `run.py`, `eval.py`, `config/rules.json`
+and `rules.example.json`, `README.md`, and five test files.
+
+**The third state lives in `matches_rules`, not in a new layer.** The location
+branch had two answers and now has three: matched, deferred, dropped. The new
+`elif` sits after the conditional-city branch and before the drop, so a
+hybrid-gated city is still a hybrid-gated city and nothing that used to match
+now defers.
+
+**"Names no place" is decided by striking terms out, not by splitting.** The
+prompt forbids splitting on dashes and it is right to: `Aix-en-Provence` is a
+city. `_location_names_no_place` instead removes every term that names no
+place — the remote keywords, `_GENERIC_LOCATION_TOKENS`, the configured
+`non_place_locations`, and the `"N locations"` shape — from each segment and
+asks whether a *letter* survives. `home base - emea` empties out;
+`barcelona, spain` keeps Barcelona, which is the case a plain "contains a
+region word" test gets wrong.
+
+**The home-base wording is code, the region after it is config.** Both
+spellings now sit in `_GENERIC_LOCATION_TOKENS`, which is struck out by plain
+substring, so the tuple is sorted longest-first — with `"home base"` tried
+first, `"home based"` would leave a stray `"d"` behind and read as a place.
+Configured terms are matched **whole-word**, so `"home base"` in `rules.json`
+would *not* have covered `"home based"`; an earlier draft of this entry claimed
+it did, and that was wrong. Note what this does and does not fix: the brief's
+`"Home base - EMEA"` needs both halves — the wording from code and `EMEA` from
+`non_place_locations` — because no code list can enumerate the world's regions.
+Bare `"Home base"` and `"Home based"` are handled with no config at all.
+
+**Two guards on when it is worth deferring at all**, both added after review
+and neither reachable with the owner's current config:
+
+- **Nothing is deferred when `locations` is empty.** Layer 2 settles a deferred
+  job by searching the description for a listed location; with none configured
+  it can never settle one, so every deferred job would come back
+  `unverified` — dropped for the run, never stored, and re-fetched on every run
+  after it, for ever. A `conditional_locations`-only configuration is enough to
+  hit that, so `matches_rules` now defers only what can actually be settled.
+- **A field made only of remote keywords is "remote", not "unresolvable".**
+  Under `match_in: title_and_description` the location field is part of the
+  haystack, so `remote_ok` settles a bare `"Remote"` before the new branch is
+  reached. Under `title_only` it is not, and without this guard every
+  `"Remote"`-tagged posting on an aggregator that tags all of them would have
+  bought a detail fetch. The location rules already have an answer for that
+  shape; the new state must not re-label it.
+
+**Deliberately not the inverse of `_location_names_specific_city`.** That
+function answers a different question — may a remote tag stand? — and teaching
+it about regions would quietly admit `Remote | Berlin, EMEA` as a genuine
+anywhere role. Two questions, two classifiers, and only the new one moved.
+
+**Config shape (owner's decision, 2026-08-19).** One new `rules.json` key,
+`non_place_locations`, seeded with regions *and* bare country names. It extends
+the built-in tokens rather than replacing them, so a `rules.json` without the
+key behaves as it did before, and the `"N locations"` / `"Multiple locations"`
+shapes stay a code regex because no list can enumerate every N. Documented in
+`README.md` and `rules.example.json`. Countries were measured before being
+chosen: on the gold set they defer 19 more jobs to buy at most 1 wanted one,
+and the owner took that trade knowingly.
+
+**Item 5: no new column, and none was needed.** Worked out rather than assumed.
+`hybrid_confirmed` exists for one reason — `_is_hybrid_pending` forces a
+re-fetch of stored conditional jobs, which exists so rows written *before* WP5
+added the column get re-checked exactly once. A state introduced today has no
+legacy population, so nothing forces a re-fetch and `_is_stored` alone is the
+whole mechanism. Both halves are pinned end to end:
+a resolved job is stored and skipped
+(`test_resolved_unresolvable_location_is_not_refetched_next_run`), and a job
+dropped by the fail-closed path is stored `'rejected'` and caught by Layer 1d
+(`test_unresolvable_location_dropped_at_layer_2_is_not_refetched_either`).
+WP6's `description_text` covers the rest: the page that settled the job is
+persisted either way, so nothing re-reads it.
+
+**`hybrid_unverified` became `UNVERIFIED_KEY = "unverified_this_run"`.** Both
+deferred states fail closed, so both can be dropped by a network hiccup, and
+neither may be written as a permanent `'rejected'`. That is one fact about the
+run, not two facts about two filters, so it is one key rather than a second
+flag `pipeline.py` would have to remember to check. The WP6 entry above still
+describes it under its old name; this is the rename.
+
+**One fetch answers both questions.** `_fetch_and_analyze` returns a
+`_DetailSignals` record instead of a six-tuple — a seventh positional element
+is where a tuple stops being readable — and the hybrid gate and the location
+search both read the text already in hand.
+
+### Before and after (`python -m job_scraper.eval`, 2026-08-19)
+
+Same 514-row gold set, same config directory, only `filtering.py` and the new
+`non_place_locations` key differ.
+
+```
+                     before            after
+  review    kept       27               32
+            dropped    47               42
+  discard   kept       78               84
+            dropped   362              356
+
+  precision          0.257            0.276
+  recall             0.365            0.432
+  F2                 0.337            0.388
+
+layer               reached  dropped  lost      reached  dropped  lost
+0-rules                 514      191    33          514      156    23
+1a-title-keyword        323      175    14          358      195    19
+1-seniority             148       37     0          163       41     0
+1c-non-english          111        1     0          122        1     0
+1b-language             110        5     0          121        5     0
+```
+
+**Read the recall gain as a ceiling, not a result, and the harness now says so
+in the report.** All five newly-kept `review` jobs are the five flagged
+`pending_location`: Layer 2 has not run on them, it fails closed, and this
+harness cannot replay it. If Layer 2 confirms none of them, recall returns to
+0.365 exactly. What is *not* provisional is the 35 jobs that stopped dying at
+Layer 0 unread, which was the point.
+
+Two other movements are worth naming before WP8 reads these numbers:
+
+- **`locations: city not on the list` fell from 22 lost of 145 drops to 12 of
+  110.** `locations: no location given` is untouched at 11 of 46 — that is
+  WP8e's population, and this package deliberately did not launder it into the
+  new state.
+- **The keyword layer's cost rose from 14 to 19.** Nothing about it changed:
+  five jobs that Layer 0 used to kill now reach it and die there instead. The
+  loss did not appear, it moved, and it is now attributed to the rule that
+  actually fires. WP8's baseline should be re-taken from the "after" column.
+
+### What it costs in detail fetches
+
+Measured offline against run 8's drop log (8,109 exclusions, 7,387 at Layer 0),
+by replaying the new Layer 0 over the rows it excluded — no network, and
+`data/` untouched.
+
+```
+  603  newly pass Layer 0, out of 7,387 Layer 0 drops (560 of the 6,846 'city
+       not on the list', 43 of the 487 'remote keyword overridden by a named
+       city'; none of the 54 'no location given')
+ -361  then dropped by 1a title keyword
+  -52  then dropped by 1 seniority
+   -7  then dropped by 1c non-English and 1b language
+  183  reach Layer 2 = 183 extra detail fetches
+```
+
+**183 extra fetches on the first run after this change, then close to none.**
+The layers between Layer 0 and Layer 2 absorb 70% of the new intake for free,
+and everything Layer 2 then drops is stored `'rejected'`, so Layer 1d skips it
+on every later run. The recurring cost is newly posted jobs with an
+unresolvable location, not 183 a run.
+
+The one-off is not evenly spread: 103 of the 183 are `impactpool`, 33
+`canonical`, 22 `jpal`. That is a real politeness cost concentrated on one
+aggregator (CLAUDE.md priority 3), and it lands in a single run at
+`_DETAIL_WORKERS = 10`. If it matters, run it once at a lower worker count and
+the steady state takes care of itself.
+
+### What actually happened (run 9, 2026-08-20)
+
+The projection above did not stay a projection. The owner's own scrape at
+06:16 UTC ran while this package was on disk, so **run 9 executed the change
+against the live store** — unplanned, and the first real evidence either way.
+It also predates the two guards and the `"home base"` token above, none of
+which alter a judgement it made (with `locations` non-empty and `match_in`
+set to `title_and_description`, both guards are no-ops, and the token only ever
+defers *more*).
+
+```
+  161  dropped by 'location: unresolvable field, description names no listed
+       place', all stored 'rejected' and skipped from now on
+    0  dropped as 'could not read the description' — no unverified drops
+    2  kept, and sitting in the table for review
+```
+
+So ~163 jobs newly reached Layer 2 against the 183 projected, and the yield of
+the whole package on one run is **two postings the owner can now see that Layer
+0 would have destroyed unread**. That is the trade this package was always
+making, now with a number on both sides of it: fail-closed means most of the
+603 admitted at Layer 0 still end up rejected — the point is that they are
+rejected *after* being read.
+
+**A third shape came along with the two the prompt named.** The 43 rows above
+are `Remote | <country>` and `Remote | Multiple locations` — a remote tag whose
+companion segment is not a city either. The old code read the country as a duty
+station overriding the remote tag; it now defers like any other unresolvable
+field. Same root cause, so it belongs here, but it was not in the brief and it
+is a fifth of the new Layer 0 intake.
+
+### For WP8e
+
+`python -m job_scraper.drops --rule 'locations: no location given'` is now a
+clean signal: the placeholder and region cases that used to land in the same
+bucket are gone, and the 54 `no location given` rows are genuinely empty
+fields — the same 54 on run 8 and run 9, and the same 54 WP8a's first real run
+reported, untouched by this package.
 
 ---
 

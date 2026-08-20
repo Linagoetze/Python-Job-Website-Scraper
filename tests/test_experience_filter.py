@@ -2,6 +2,9 @@
 
 
 from job_scraper.experience_filter import (
+    RULE_LOCATION_NOT_LISTED,
+    RULE_LOCATION_UNVERIFIED,
+    UNVERIFIED_KEY,
     _extract_min_years,
     _strip_html,
     apply_detail_filter,
@@ -10,7 +13,10 @@ from job_scraper.experience_filter import (
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    _UNRESOLVED_CONFIRMED_REASON,
+    _UNRESOLVED_PENDING_REASON,
     build_hybrid_pattern,
+    build_location_pattern,
 )
 
 # ---------------------------------------------------------------------------
@@ -184,3 +190,116 @@ class TestHybridResolution:
         )
         assert not kept
         assert excluded[0]["experience_level"] == "senior (8+yr)"
+
+
+# ---------------------------------------------------------------------------
+# apply_detail_filter — unresolvable locations (WP8d)
+# ---------------------------------------------------------------------------
+
+class TestUnresolvableLocationResolution:
+    """The second deferred state, settled against the same fetched description.
+
+    Mirrors TestHybridResolution deliberately: same two-stage contract, same
+    fail-closed direction. What differs is the question — "does this page name
+    a place I would actually commute to?" — and that these jobs are new load,
+    since before WP8d they died at Layer 0 and never reached this layer.
+    """
+
+    _PATTERN = build_location_pattern({"locations": ["Malmö", "Lund", "Copenhagen"]})
+
+    @staticmethod
+    def _job(reasons, url="https://example.com/job"):
+        return {
+            "source_name": "test",
+            "title": "Analyst",
+            "location": "2 Locations",
+            "detail_url": url,
+            "apply_url": "",
+            "raw_snippet": "Analyst",
+            "matched_reasons": list(reasons),
+        }
+
+    def _run(self, job, html="<p>A great role.</p>"):
+        return apply_detail_filter([job], lambda _url: html, location_pattern=self._PATTERN)
+
+    def test_listed_place_in_description_confirms(self):
+        kept, excluded = self._run(
+            self._job([_UNRESOLVED_PENDING_REASON]),
+            "<p>You will be based in our Lund office.</p>",
+        )
+        assert len(kept) == 1
+        assert not excluded
+        assert kept[0]["matched_reasons"] == [_UNRESOLVED_CONFIRMED_REASON]
+
+    def test_no_listed_place_in_description_excludes(self):
+        kept, excluded = self._run(
+            self._job([_UNRESOLVED_PENDING_REASON]),
+            "<p>The role is based in Nairobi.</p>",
+        )
+        assert not kept
+        assert excluded[0]["experience_level"] == "unresolvable_location"
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_NOT_LISTED
+
+    def test_a_read_rejection_keeps_its_description_so_it_is_not_refetched(self):
+        _, excluded = self._run(
+            self._job([_UNRESOLVED_PENDING_REASON]), "<p>Based in Nairobi.</p>"
+        )
+        assert "Nairobi" in excluded[0]["description_text"]
+        assert excluded[0]["description_fetched_at"]
+        assert not excluded[0].get(UNVERIFIED_KEY)
+
+    def test_fails_closed_on_fetch_error_but_marks_it_unverified(self):
+        def boom(_url):
+            raise RuntimeError("network down")
+
+        kept, excluded = apply_detail_filter(
+            [self._job([_UNRESOLVED_PENDING_REASON])], boom, location_pattern=self._PATTERN
+        )
+        assert not kept
+        assert excluded[0][UNVERIFIED_KEY] is True
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_UNVERIFIED
+        # Nothing durable may be written from a network hiccup.
+        assert excluded[0]["description_text"] == ""
+
+    def test_fails_closed_without_url(self):
+        kept, excluded = self._run(self._job([_UNRESOLVED_PENDING_REASON], url=""))
+        assert not kept
+        assert excluded[0][UNVERIFIED_KEY] is True
+
+    def test_fails_closed_when_no_locations_are_configured(self):
+        kept, excluded = apply_detail_filter(
+            [self._job([_UNRESOLVED_PENDING_REASON])],
+            lambda _url: "<p>Based in Lund.</p>",
+            location_pattern=None,
+        )
+        assert not kept
+        assert excluded[0][UNVERIFIED_KEY] is True
+
+    def test_non_pending_job_is_untouched(self):
+        kept, _ = self._run(self._job(["locations: matched"]), "<p>Based in Nairobi.</p>")
+        assert len(kept) == 1
+        assert kept[0]["matched_reasons"] == ["locations: matched"]
+
+    def test_confirmed_job_is_still_experience_filtered(self):
+        kept, excluded = self._run(
+            self._job([_UNRESOLVED_PENDING_REASON]),
+            "<p>Based in Lund. Requires 8 years of experience.</p>",
+        )
+        assert not kept
+        assert excluded[0]["experience_level"] == "senior (8+yr)"
+
+    def test_both_deferred_states_resolve_from_one_fetch(self):
+        # A job can carry both markers; one page answers both questions, so
+        # neither state costs an HTTP request the other did not already make.
+        job = self._job([_HYBRID_PENDING_REASON, _UNRESOLVED_PENDING_REASON])
+        kept, _ = apply_detail_filter(
+            [job],
+            lambda _url: "<p>A hybrid role based in Lund.</p>",
+            hybrid_pattern=build_hybrid_pattern({"conditional_location_keywords": ["hybrid"]}),
+            location_pattern=self._PATTERN,
+        )
+        assert len(kept) == 1
+        assert kept[0]["matched_reasons"] == [
+            _HYBRID_CONFIRMED_REASON,
+            _UNRESOLVED_CONFIRMED_REASON,
+        ]

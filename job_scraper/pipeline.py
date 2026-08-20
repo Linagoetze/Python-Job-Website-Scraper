@@ -22,15 +22,22 @@ from job_scraper.drops import (
     exclusion,
     refiltered,
 )
-from job_scraper.experience_filter import apply_combined_title_filter, apply_detail_filter
+from job_scraper.experience_filter import (
+    UNVERIFIED_KEY,
+    apply_combined_title_filter,
+    apply_detail_filter,
+)
 from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
     apply_language_filter,
     apply_non_english_text_filter,
     build_hybrid_pattern,
+    build_location_pattern,
+    build_non_place_pattern,
     load_title_exclude_keywords,
     matches_rules,
 )
@@ -80,6 +87,7 @@ class RunSummary:
     jobs_detail_excluded: int
     jobs_phd_excluded: int
     jobs_hybrid_excluded: int
+    jobs_location_excluded: int
     jobs_kept_new: int
     rows_written: int
     rows_delisted: int
@@ -97,6 +105,7 @@ def refilter_stored_jobs(
     rules: dict[str, Any],
     title_keywords: list[tuple[str, str]],
     hybrid_pattern: Any = None,
+    non_place_pattern: Any = None,
 ) -> tuple[dict[str, int], list[dict[str, Any]]]:
     """Re-apply the filter layers to stored unreviewed jobs, marking failures.
 
@@ -123,7 +132,12 @@ def refilter_stored_jobs(
         # A stored conditional-city job re-enters matches_rules without its
         # matched_reasons; the pending reason it gets passes, so the persisted
         # hybrid_confirmed flag is not needed here — Layer 2 owns that check.
-        ok, reasons = matches_rules(job, rules, hybrid_pattern)
+        # A stored job with an unresolvable location field passes the same way,
+        # and for the same reason: Layer 2 already settled it once, and a
+        # re-filter pass has no description to settle it against.
+        ok, reasons = matches_rules(
+            job, rules, hybrid_pattern, non_place_pattern=non_place_pattern
+        )
         if ok:
             kept.append(job)
         else:
@@ -169,6 +183,8 @@ def run_pipeline(
     title_keywords = load_title_exclude_keywords(title_keywords_path) if title_keywords_path else []
     # Compiled once for the whole run and passed down — never rebuilt per job.
     hybrid_pattern = build_hybrid_pattern(rules)
+    non_place_pattern = build_non_place_pattern(rules)
+    location_pattern = build_location_pattern(rules)
 
     jobs_extracted = 0
     jobs_kept = 0
@@ -253,7 +269,9 @@ def run_pipeline(
             source_scraped_keys[name] = {k for r in rows if (k := dedupe_key_for_job(r))}
 
         for job in rows:
-            ok, reason_list = matches_rules(job, rules, hybrid_pattern)
+            ok, reason_list = matches_rules(
+                job, rules, hybrid_pattern, non_place_pattern=non_place_pattern
+            )
             if not ok:
                 # The reason names the specific case — which keyword, or which
                 # of the location cases — so a false negative here is findable
@@ -274,6 +292,18 @@ def run_pipeline(
         logger.debug(
             "Layer 0 (rules): %d jobs admitted from a conditional location, pending hybrid check",
             conditional_admits,
+        )
+    unresolved_admits = sum(
+        1 for j in kept_rows if _UNRESOLVED_PENDING_REASON in (j.get("matched_reasons") or [])
+    )
+    if unresolved_admits:
+        # Every one of these is a detail fetch this run would not have made
+        # before WP8d, and most will fail closed at Layer 2. Logged so the cost
+        # is visible in the run rather than inferred from the drop log.
+        logger.debug(
+            "Layer 0 (rules): %d jobs admitted with an unresolvable location field, "
+            "pending a Layer 2 read of the description",
+            unresolved_admits,
         )
 
     sources_csv_path = out_db_path.parent / "jobs_sources.csv"
@@ -390,6 +420,7 @@ def run_pipeline(
             fetch_text,
             source_fetch_map=source_fetch_map,
             hybrid_pattern=hybrid_pattern,
+            location_pattern=location_pattern,
         )
 
         jobs_phd_excluded = sum(
@@ -400,7 +431,13 @@ def run_pipeline(
             for j in detail_excluded
             if j.get("experience_level") == "non_hybrid_conditional_location"
         )
-        jobs_years_excluded = len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
+        jobs_location_excluded = sum(
+            1 for j in detail_excluded if j.get("experience_level") == "unresolvable_location"
+        )
+        jobs_years_excluded = (
+            len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
+            - jobs_location_excluded
+        )
         jobs_detail_excluded = len(detail_excluded)
         drops += _exclusions(detail_excluded, LAYER_DETAIL)
 
@@ -408,11 +445,12 @@ def run_pipeline(
             logger.debug(
                 "Layer 2 (detail filter): excluded %d jobs "
                 "(%d requiring 3+ years, %d requiring PhD, %d non-hybrid in a conditional "
-                "location)",
+                "location, %d whose unresolvable location named no listed place)",
                 jobs_detail_excluded,
                 jobs_years_excluded,
                 jobs_phd_excluded,
                 jobs_hybrid_excluded,
+                jobs_location_excluded,
             )
 
         # Store everything sighted and passing: new jobs insert as 'new';
@@ -433,18 +471,19 @@ def run_pipeline(
         # the next run and Layer 2 never sees them again, the same as any
         # other rejected job.
         #
-        # Exception: a conditional-location job whose hybrid arrangement
-        # could not actually be verified this run (network hiccup, no URL,
-        # no pattern configured — see apply_detail_filter's
-        # `hybrid_unverified` flag) is excluded for this run only. 'rejected'
-        # is permanent by design (nothing automatic ever un-rejects a job,
+        # Exception: a job dropped by one of the two fail-closed deferred
+        # states — a conditional location's hybrid arrangement, or WP8d's
+        # unresolvable location field — that could not actually be verified
+        # this run (network hiccup, no URL, no pattern configured — see
+        # apply_detail_filter's UNVERIFIED_KEY flag) is excluded for this
+        # run only. 'rejected' is permanent by design (nothing automatic ever un-rejects a job,
         # and rejected jobs never appear in jobs.xlsx), so writing one here
         # would let a single transient fetch failure silently and
         # permanently drop a job — exactly what CLAUDE.md's "never lose
         # data" rule forbids. Leaving it unstored reproduces the pre-WP6
         # behaviour for this case: dropped for this run, retried next run.
         detail_rejected_rows = [
-            r for j in detail_excluded if not j.get("hybrid_unverified") and (r := _row(j))
+            r for j in detail_excluded if not j.get(UNVERIFIED_KEY) and (r := _row(j))
         ]
         if detail_rejected_rows:
             inserted_rejected, refreshed_rejected = store.upsert_jobs(
@@ -469,7 +508,7 @@ def run_pipeline(
         # Re-filter stored unreviewed rows against the current rules (the old
         # clean_existing_rows, minus the deletions).
         refilter_counts, refilter_drops = refilter_stored_jobs(
-            store, rules, title_keywords, hybrid_pattern
+            store, rules, title_keywords, hybrid_pattern, non_place_pattern
         )
         drops += refilter_drops
         for filter_name, count in refilter_counts.items():
@@ -510,6 +549,7 @@ def run_pipeline(
         jobs_detail_excluded=jobs_detail_excluded,
         jobs_phd_excluded=jobs_phd_excluded,
         jobs_hybrid_excluded=jobs_hybrid_excluded,
+        jobs_location_excluded=jobs_location_excluded,
         jobs_kept_new=len(kept_new),
         rows_written=rows_written,
         rows_delisted=rows_delisted,

@@ -380,3 +380,107 @@ def test_failed_hybrid_check_is_not_permanently_rejected(env: dict[str, Any]) ->
     assert fetches[url] == 2, "retried next run rather than silently dropped forever"
     assert second.jobs_kept_new == 0
     assert url not in _db_jobs(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Unresolvable locations, end to end (WP8d)
+# ---------------------------------------------------------------------------
+
+_UNRESOLVABLE_RULES = {
+    "locations": ["Berlin"],
+    "non_place_locations": ["Worldwide"],
+}
+
+
+def test_resolved_unresolvable_location_is_not_refetched_next_run(
+    env: dict[str, Any],
+) -> None:
+    """No new column for this state, and none needed.
+
+    `hybrid_confirmed` exists to re-check rows written before it existed; a
+    state introduced today has no such legacy population, so being in the store
+    is enough to skip the fetch — and WP6 already persists the description that
+    settled it.
+    """
+    tmp_path = env["tmp_path"]
+    (tmp_path / "rules.json").write_text(json.dumps(_UNRESOLVABLE_RULES), encoding="utf-8")
+    job = _job("Data Analyst", location="Home based - Worldwide", slug="unresolvable")
+    env["extracted"][:] = [job]
+    url = job["detail_url"]
+
+    def fake_fetch(u: str, *a: Any, **k: Any) -> str:
+        env["fetches"][u] += 1
+        return "You will work from our Berlin office. No experience required."
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", fake_fetch)
+
+        first = _run(tmp_path)
+        assert first.jobs_kept_new == 1, "the description named a listed place"
+        assert env["fetches"][url] == 1
+
+        second = _run(tmp_path)
+
+    assert second.jobs_already_stored == 1
+    assert env["fetches"][url] == 1, "no re-fetch: being stored is the whole mechanism"
+
+
+def test_unresolvable_location_dropped_at_layer_2_is_not_refetched_either(
+    env: dict[str, Any],
+) -> None:
+    """The other half of item 5: a fail-closed drop is stored as 'rejected',
+    so Layer 1d catches it next run and Layer 2 never pays for it twice."""
+    tmp_path = env["tmp_path"]
+    (tmp_path / "rules.json").write_text(json.dumps(_UNRESOLVABLE_RULES), encoding="utf-8")
+    job = _job("Data Analyst", location="Home based - Worldwide", slug="unresolvable")
+    env["extracted"][:] = [job]
+    url = job["detail_url"]
+
+    def fake_fetch(u: str, *a: Any, **k: Any) -> str:
+        env["fetches"][u] += 1
+        return "You will work from our Nairobi office. No experience required."
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", fake_fetch)
+
+        first = _run(tmp_path)
+        assert first.jobs_location_excluded == 1
+        assert first.jobs_kept_new == 0
+        assert _db_jobs(tmp_path)[url]["status"] == "rejected"
+
+        second = _run(tmp_path)
+
+    assert second.jobs_blocklist_excluded == 1
+    assert env["fetches"][url] == 1, "judged once, then skipped as any rejected job is"
+
+
+def test_unverified_unresolvable_location_is_retried_not_permanently_dropped(
+    env: dict[str, Any],
+) -> None:
+    """A network hiccup must not read as "checked and found lacking"."""
+    tmp_path = env["tmp_path"]
+    (tmp_path / "rules.json").write_text(json.dumps(_UNRESOLVABLE_RULES), encoding="utf-8")
+    job = _job("Data Analyst", location="Home based - Worldwide", slug="unresolvable")
+    env["extracted"][:] = [job]
+    url = job["detail_url"]
+    fetches = env["fetches"]
+
+    def failing_fetch(u: str, *a: Any, **k: Any) -> str:
+        fetches[u] += 1
+        raise TimeoutError("simulated network hiccup")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", failing_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", failing_fetch)
+
+        first = _run(tmp_path)
+        assert first.jobs_kept_new == 0, "fails closed for this run"
+        assert first.jobs_location_excluded == 1
+        assert url not in _db_jobs(tmp_path), "not persisted as a permanent rejection"
+
+        second = _run(tmp_path)
+
+    assert fetches[url] == 2, "retried next run rather than silently dropped forever"
+    assert second.jobs_kept_new == 0

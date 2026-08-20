@@ -228,10 +228,28 @@ def _lower(s: str) -> str:
 
 # Generic (non-city) location segments that indicate a role is not tied to a
 # specific duty station, beyond the configured remote_keywords (e.g. "Remote").
-_GENERIC_LOCATION_TOKENS = ("home based", "home-based", "homebased")
+#
+# Both spellings of the home-base wording live here rather than in config: this
+# is English, not a place list, so no rules.json should have to know it. Sorted
+# longest first because `_location_names_no_place` strikes them out by plain
+# substring — with "home base" tried first, "home based" would leave a stray
+# "d" behind and read as a place.
+_GENERIC_LOCATION_TOKENS = tuple(
+    sorted({"home based", "home-based", "homebased", "home base"}, key=len, reverse=True)
+)
 
 # Separators used inside a single location field, e.g. "Remote | Nairobi".
 _LOCATION_SPLIT = re.compile(r"[|/\n]+")
+
+# Listing pages that will not name their duty stations: "2 Locations",
+# "Multiple locations". A shape rather than a list — no config key can
+# enumerate every N — so this one stays in code (WP8d).
+_PLACEHOLDER_LOCATION = re.compile(r"(?:\d+|multiple|several|various)\s+locations?")
+
+# A segment still names a place if any *letter* survives having every non-place
+# term struck out of it. Digits and punctuation do not count: "home base - emea,
+# 2" has nothing left to look up, while "barcelona, spain" keeps Barcelona.
+_LETTER = re.compile(r"[^\W\d_]")
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +274,61 @@ _LOCATION_SPLIT = re.compile(r"[|/\n]+")
 # is what put it there in the first place.
 _HYBRID_PENDING_REASON = "locations: conditional (hybrid unconfirmed)"
 _HYBRID_CONFIRMED_REASON = "locations: conditional (hybrid confirmed)"
+
+
+# ---------------------------------------------------------------------------
+# Unresolvable locations (WP8d)
+# ---------------------------------------------------------------------------
+#
+# The third state a location field can be in. Layer 0 used to know two: empty,
+# or naming a specific city. A field that is present but names no place at all
+# — "2 Locations", "Home base - EMEA", a bare country — fell into the second
+# and died against a list it was never going to match, having never been read.
+#
+# It is now treated exactly as a hybrid-gated city is: admitted provisionally,
+# then settled at Layer 2 against the fetched description, and dropped if the
+# description names nothing on the list. Same two-stage contract, same failure
+# direction — see `_resolve_unresolved_location` in experience_filter.py.
+#
+# No store column backs this one. A hybrid confirmation needed `hybrid_confirmed`
+# only to re-check rows written before that column existed; a state introduced
+# today has no such legacy population, so "already in the store" is enough to
+# skip the re-fetch, and WP6's stored `description_text` already keeps the page
+# itself. See the WP8d section of docs/REFACTOR-PLAN.md.
+_UNRESOLVED_PENDING_REASON = "locations: unresolvable field (place unconfirmed)"
+_UNRESOLVED_CONFIRMED_REASON = "locations: unresolvable field (place confirmed)"
+
+
+def build_non_place_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
+    """Compile the configured terms that name no specific place.
+
+    `non_place_locations` in rules.json: regions ("EMEA", "Worldwide") and bare
+    country names, matched as whole words. It *extends* `_GENERIC_LOCATION_TOKENS`
+    rather than replacing it, so a rules.json without the key behaves as it did
+    before WP8d. Longest first, so "United States of America" is struck out
+    whole rather than leaving "of America" behind.
+    Returns None when the key is absent or empty.
+    """
+    terms = sorted(
+        {str(x).strip() for x in (rules.get("non_place_locations") or []) if str(x).strip()},
+        key=len,
+        reverse=True,
+    )
+    return _build_title_keyword_pattern([(t, "word") for t in terms])
+
+
+def build_location_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
+    """Compile `locations` for searching a *description* (Layer 2's copy).
+
+    Whole-word, unlike `matches_rules`'s substring test against the location
+    field: a city name loose in a page of prose needs the tighter match, or
+    "Lund" finds "Lundberg" in a hiring manager's name. Conditional locations
+    are deliberately absent — a conditional city still owes a hybrid check, and
+    resolving one unconfirmed state into another is not a decision.
+    Returns None when `locations` is unconfigured.
+    """
+    locations = [str(x).strip() for x in (rules.get("locations") or []) if str(x).strip()]
+    return _build_title_keyword_pattern([(loc, "word") for loc in locations])
 
 
 def build_hybrid_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
@@ -306,6 +379,60 @@ def _location_names_specific_city(loc_field_cf: str, remote_keywords: list[str])
     return False
 
 
+def _location_names_no_place(
+    loc_field_cf: str,
+    remote_keywords: list[str],
+    non_place_pattern: re.Pattern[str] | None,
+) -> bool:
+    """Return True if the (casefolded) location field names no place at all.
+
+    The third state (WP8d): present, but unresolvable from the listing page —
+    "2 Locations", "Home base - EMEA", a bare country. Distinct from an empty
+    field, which is an extractor gap and keeps RULE_LOC_EMPTY.
+
+    A segment is judged by striking out every term that names no place — the
+    remote keywords, the generic tokens, the configured `non_place_locations` —
+    and asking whether any letter survives. That is what separates
+    "home base - emea" (nothing left to look up) from "barcelona, spain"
+    (Barcelona is a place whatever country follows it), *without* splitting on
+    dashes: real city names contain them.
+
+    Deliberately not `_location_names_specific_city`'s inverse. That function
+    answers a different question — may a remote tag stand? — and widening its
+    idea of "not a city" would quietly admit "Remote | Berlin, EMEA" as a
+    genuine anywhere role. Two questions, two classifiers.
+    """
+    if not loc_field_cf.strip():
+        return False
+    remote_cf = [_lower(rk) for rk in remote_keywords]
+    # A field made only of remote keywords is "remote", a state the location
+    # rules already have an answer for — it must not be re-labelled
+    # unresolvable and sent to Layer 2 for a fetch. That distinction is
+    # invisible under `match_in: title_and_description`, where the location
+    # field is part of the haystack and `remote_ok` settles such a job before
+    # this function is reached, and it is the whole story under `title_only`,
+    # where it is not.
+    placeless_for_a_reason = False
+    for raw_seg in _LOCATION_SPLIT.split(loc_field_cf):
+        seg = raw_seg.strip()
+        if not seg:
+            continue
+        remainder = seg
+        for term in remote_cf:
+            remainder = remainder.replace(term, " ")
+        if not _LETTER.search(remainder):
+            continue
+        remainder = _PLACEHOLDER_LOCATION.sub(" ", remainder)
+        for term in _GENERIC_LOCATION_TOKENS:
+            remainder = remainder.replace(term, " ")
+        if non_place_pattern is not None:
+            remainder = non_place_pattern.sub(" ", remainder)
+        if _LETTER.search(remainder):
+            return False
+        placeless_for_a_reason = True
+    return placeless_for_a_reason
+
+
 def _location_drop_rule(
     loc_field_cf: str,
     remote_kw_present: bool,
@@ -349,6 +476,8 @@ def matches_rules(
     job: JobRecord,
     rules: dict[str, Any],
     hybrid_pattern: re.Pattern[str] | None,
+    *,
+    non_place_pattern: re.Pattern[str] | None = None,
 ) -> tuple[bool, list[str]]:
     """
     Return (passes, reasons).
@@ -363,10 +492,18 @@ def matches_rules(
       admit the job when a `conditional_location_keywords` term (e.g. "hybrid") is
       present. If the keyword is not visible at this layer the job passes with
       `_HYBRID_PENDING_REASON` for Layer 2 to confirm against the description.
+    - A field that is present but names no place (WP8d: "2 Locations",
+      "Home base - EMEA", a bare country) is not a city that failed to match.
+      It passes with `_UNRESOLVED_PENDING_REASON`, again for Layer 2 to settle
+      against the description.
 
-    `hybrid_pattern` gates `conditional_locations` and must be built once via
-    `build_hybrid_pattern(rules)` by the caller and passed down — never rebuilt
-    here, since this runs once per job.
+    `hybrid_pattern` gates `conditional_locations` and `non_place_pattern` carries
+    the configured `non_place_locations`. Both must be built once by the caller —
+    `build_hybrid_pattern(rules)` and `build_non_place_pattern(rules)` — and passed
+    down, never rebuilt here, since this runs once per job. `non_place_pattern` is
+    keyword-only and defaults to None so it can never be mistaken for the hybrid
+    one; None only narrows the third state to the shapes recognised in code, it
+    does not switch it off.
 
     On rejection the single returned reason is the drop rule: it names the
     keyword or the specific location case that fired, and the caller records it
@@ -422,6 +559,19 @@ def matches_rules(
                 reasons.append(_HYBRID_CONFIRMED_REASON)
             else:
                 reasons.append(_HYBRID_PENDING_REASON)
+        elif locations and _location_names_no_place(
+            loc_field, remote_keywords, non_place_pattern
+        ):
+            # Present, but naming no place this layer can resolve. Judging it
+            # against the list would be judging a placeholder, so defer to
+            # Layer 2 and let the description decide (it fails closed there).
+            #
+            # Only worth deferring when there *is* a list: with `locations`
+            # empty, Layer 2 has nothing to search the description for, so
+            # every deferred job would come back unverifiable — dropped for the
+            # run, never stored, and re-fetched on every run after it. Defer
+            # only what can actually be settled.
+            reasons.append(_UNRESOLVED_PENDING_REASON)
         else:
             return False, [
                 _location_drop_rule(loc_field, remote_kw_present, conditional_locations)
