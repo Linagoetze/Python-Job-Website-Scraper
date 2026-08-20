@@ -48,8 +48,8 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
-| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | not scoped | `wp8e-extractor-locations` |
-| 8 | Retire the keyword ladder | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-retire-ladder` |
+| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | not started | `wp8e-extractor-locations` |
+| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -168,6 +168,18 @@ Record any decision a future session would otherwise have to re-derive.
   and neither may be persisted as `'rejected'`. One key on the job dict, not
   one per filter — a second flag is one `pipeline.py` forgets to check, and the
   cost of forgetting is a job permanently lost to a timeout.
+- **WP8's original premise died with WP7, and its prompt was rewritten
+  (2026-08-20).** As first written, WP8 opened "with LLM scoring in place" and
+  justified every deletion with "subsumed by the scorer". The scorer is off —
+  `scoring_enabled` is `false`, and the WP7 entry above says it stays off until
+  the owner opens API billing — so deleting a layer today hands its job to
+  nothing, not to the scorer. Consequences, all now in the rewritten prompt:
+  `title_exclude_keywords.csv` is **not** deleted, because nothing replaces it;
+  it is pruned against the harness instead. The two language layers are still
+  deleted, but on the smaller and honest grounds that they cost complexity and
+  buy almost nothing. Two of the prompt's three performance fixes were already
+  done or overstated. If API billing is ever opened, revisit the keyword CSV:
+  that is the moment the original argument becomes true.
 
 ---
 
@@ -1946,69 +1958,182 @@ reported, untouched by this package.
 
 ## WP8e — Extractor location gaps
 
-**Not yet scoped.** The third cause behind WP8c's location losses: sources whose
-extractor captures no location at all, so a real posting is indistinguishable
-from a genuinely location-less one and dies as `locations: no location given`.
-WP8a found the same gap from the drop-log side.
+The third cause behind WP8c's location losses, and the one WP8d deliberately
+did not launder into its new deferred state: sources whose extractor captures
+no location at all, so a real posting is indistinguishable from a genuinely
+location-less one and dies as `locations: no location given`. WP8a found the
+same gap from the drop-log side.
 
-Two things are already known and should shape the prompt when it is written:
+The population is now a clean signal and a stable one — the same 54 exclusions
+across 11 sources on runs 8 and 9, unchanged by WP8d, because the placeholder
+and region cases that used to share this bucket have moved out of it. Two
+sources account for nearly half. Get the current breakdown with:
 
-- **The eval harness cannot measure this package** — see the decisions log. Fix
-  an extractor and `eval.py` still replays the stale `location` value from
-  `labels.csv` and reports nothing gained. Verification has to come from the
-  saved fixtures in `tests/fixtures/` plus a refresh of the gold set's
-  `location` column from the store afterwards. The review/discard labels
-  themselves stay valid.
-- **Identify the affected sources from the drop log, not by guessing**:
-  `python -m job_scraper.drops --rule 'locations: no location given'` names
-  them, and WP8d will have narrowed the list by absorbing the placeholder and
-  region cases that currently land in the same bucket. Run it *after* WP8d for
-  that reason.
+```
+python -m job_scraper.drops --rule 'locations: no location given' --show-drops
+```
+
+It is not reproduced here — this file is public and those are real postings.
+
+**There are two shapes in that list, and they need different fixes.** Most are
+a posting whose location is on the page but never captured, sometimes visible
+in the title suffix. But at least one source is emitting a row that is not a
+job at all: a department heading scraped as a posting, which is the Teamtailor
+quirk WP2 pinned and never fixed. That one is not a missing field — fixing it
+deletes a phantom row rather than recovering a real posting, and it should be
+counted as noise removed, not recall gained.
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8e only.
+
+Some extractors never populate the location field, so a real posting is
+indistinguishable from a genuinely location-less one and Layer 0 drops it as
+'locations: no location given'. WP8d fixed the two neighbouring causes and left
+this one alone on purpose; this package is the extractor work.
+
+Start from the evidence, not from a guess:
+
+  python -m job_scraper.drops --rule 'locations: no location given' --show-drops
+
+That is 54 exclusions across 11 sources, stable across the last two runs. Work
+down it by source, biggest first.
+
+Expect two shapes and treat them differently:
+- The page names a location and the extractor does not capture it — sometimes
+  it is sitting in the title suffix. Fix the selector.
+- The extractor emitted a row that is not a posting at all (a department
+  heading). tests/test_extractors_golden.py pins one such row for the
+  Teamtailor source, documented under WP2. Fixing it changes a golden file, so
+  update the pin deliberately and say so; that is the fix landing, not a
+  regression.
+
+Rules for this package:
+
+- Work against the saved fixtures in tests/fixtures/. Do NOT scrape live sites
+  to investigate, and do not add fixtures by hand. If a source has no fixture
+  and you need one, say so and stop rather than fetching.
+- Every extractor you change needs its golden-file assertion updated in the
+  same commit, with the old and new job count stated.
+- Do not add a fallback that parses the location out of the title inside
+  storage or the filter layers. If a location lives in the title on a given
+  site, that site's extractor is where it gets split out.
+- The eval harness cannot score this work: labels.csv holds the location the
+  extractor produced at labelling time, so eval.py will replay the old empty
+  value and report nothing gained. Do not treat a flat eval number as failure,
+  and do not "fix" it by editing labels.csv.
+
+Report at the end, per source: rows affected, whether the location was
+recoverable, and — for anything you fixed — whether those postings look like
+jobs the owner would actually want. A source whose postings are all outside the
+configured locations is a correct drop arriving by the wrong route; fixing its
+extractor is still right, but it is not a recall win and the plan file should
+not claim it is.
+
+Branch wp8e-extractor-locations. Commit, do not push. Update the plan file.
+```
+
+**After this package**, refresh the `location` column in `data/curated/labels.csv`
+from the store for the affected `dedupe_key` rows, so future eval runs replay
+the fixed value. The review/discard labels themselves stay valid — they are a
+judgement about the job, not about the location string.
 
 ---
 
-## WP8 — Retire the keyword ladder
+## WP8 — Trim the ladder, prune the keywords
+
+**This prompt was rewritten on 2026-08-20.** The original opened "with LLM
+scoring in place, the five-layer regex ladder can shrink" and justified every
+deletion with "subsumed by the scorer". That premise is dead: WP7 ended with
+scoring off by default and the WP7 decision-log entry says it stays off until
+the owner opens API billing. Deleting the keyword list today would hand its job
+to nothing at all. Three other instructions had also gone stale — see the
+decisions log. What survives is a smaller, honest package: delete two layers
+that genuinely earn nothing, prune the keyword list with evidence instead of
+deleting it, and fix the seniority list if the evidence still supports it.
+
+The baseline to measure against is the **"after" column** of WP8d's before/after
+table, not WP8c's original numbers. WP8d moved five losses from Layer 0 into the
+keyword layer without changing anything about the keyword layer; its cost reads
+14 in the old numbers and 19 in the current ones.
 
 ```
 think hard
 
-Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8 only.
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8 only. Read the WP8
+preamble in the plan file before this prompt: an earlier version of it assumed
+the LLM scorer was running, and it is not.
 
-With LLM scoring in place, the five-layer regex ladder can shrink. Before
-changing anything, run the current pipeline and the new one over the same stored
-jobs and show me a diff of what each keeps, so the decision is evidence-based.
+Take the baseline first, and do not run the live pipeline to get it:
 
-Candidates for removal, in this order:
-- apply_non_english_text_filter: already inert in refilter_stored_jobs (the
-  old clean_existing_rows) because stored rows have no raw_snippet, and
-  langdetect on short snippets is unreliable and nondeterministic. The scorer
-  handles language better.
-- apply_language_filter (the "X speaker" pattern): subsumed by the scorer.
-- title_exclude_keywords.csv: subsumed by the scorer.
+  python -m job_scraper.eval
 
-Keep: location rules, the review statuses, and the numeric experience
-extraction. These are cheap, deterministic, and correct.
+WP8c built that harness for exactly this package. Compare configurations with
+--compare against a copy of job_scraper/config/ rather than scraping twice.
 
-Also fix, wherever the remaining code lives:
-- build_hybrid_pattern is called per job inside matches_rules. Compile once and
-  pass it down.
-- _build_title_keyword_pattern recompiles on every call.
-- The seniority list has false positives: "Lead" matches "Lead Generation
-  Analyst", "Architect" matches roles that may be junior. Propose fixes, do not
-  just delete entries.
+1. DELETE apply_non_english_text_filter (Layer 1c) and apply_language_filter
+   (Layer 1b), with their config keys, tests and drop-log layer constants.
 
-Branch wp8-retire-ladder. Commit, do not push. Update the plan file with the
-before/after diff summary.
+   Be honest about why in the plan file. The argument is NOT that the scorer
+   covers them, because it is switched off. It is that they are two layers of
+   complexity that between them fire six times on a 514-row gold set, cost zero
+   wanted jobs, and one of them (non-English) is already inert on the
+   refilter_stored_jobs path because stored rows carry no raw_snippet, while
+   langdetect is nondeterministic enough that the harness has to seed it.
+   Deleting them keeps roughly six more unwanted jobs and loses nothing.
+   Measure the real number with --compare and report it. If it comes back
+   materially worse than that, stop and say so rather than pressing on.
+
+2. DO NOT delete config/title_exclude_keywords.csv. Nothing subsumes it with
+   scoring off. Prune it instead, with evidence:
+
+   - The current numbers say the keyword layer costs 19 wanted jobs. Use
+     --compare to measure removing individual keywords, and report the recall
+     and precision delta per keyword rather than in one lump.
+   - WP8c named the worst offenders and one of them, 'SEA' as a whole-word
+     match, catches phrases like "Baltic Sea" and "Air & Sea". Re-derive that
+     list from the current baseline rather than trusting the WP8c figures.
+   - Propose the pruned list and the measured cost of each removal. Removing a
+     keyword that only ever dropped unwanted jobs is not an improvement; it is
+     churn.
+
+3. The seniority list still contains 'Lead' and 'Architect', and the original
+   prompt called them false positives ("Lead Generation Analyst", junior
+   architect roles). Check that against the gold set before acting: the
+   seniority layer currently drops 41 jobs and loses zero wanted ones, so the
+   harness gives no evidence the problem is real on this data. If you cannot
+   demonstrate the false positive, say so and leave the list alone. If you can,
+   propose narrowed patterns; do not just delete entries.
+
+4. Performance, corrected from the original prompt:
+   - build_hybrid_pattern is ALREADY compiled once and passed down; matches_rules
+     takes it as a parameter. Nothing to do. Do not "fix" it again.
+   - _build_title_keyword_pattern is called once per batch inside
+     apply_combined_title_filter, not once per job. Decide whether hoisting it
+     to setup is worth the plumbing, and if it is not, say so and move on. Do
+     not restructure the call sites for a compile that happens twice a run.
+
+Keep, as before: the location rules, the review statuses, and the numeric
+experience extraction. Do not touch WP8d's deferred-location state.
+
+Branch wp8-trim-ladder. Commit, do not push. Update the plan file with the
+before/after numbers from --compare, per change rather than in one lump.
 ```
 
 ---
 
 ## WP8b — README reconciliation
 
-**Do this after WP8, not before.** WP8 retires two filter layers and the
-keyword CSV, which rewrites the "How it works" layer table, the language-filter
-description and a whole input-file section. Doing the README first means doing
-it twice.
+**Do this after WP8, not before.** WP8 deletes two filter layers and prunes
+the keyword CSV, which rewrites the "How it works" layer table and the
+language-filter description. The keyword CSV itself stays — the rewritten WP8
+no longer deletes it — so that input-file section needs updating rather than
+removing. Doing the README first means doing it twice.
+
+Note that WP8d also changed the README's location story: there is now a third
+Layer 0 answer and a `non_place_locations` key, both already documented by that
+package, so check rather than assume that section is stale.
 
 Nothing here is dangerous — every stale passage is misleading but inert, and no
 instruction in the README would lose data if followed. It costs confusion, not
