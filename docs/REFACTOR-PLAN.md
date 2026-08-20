@@ -48,7 +48,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
-| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | partial — 1/11 sources fixed, 10 blocked on missing fixtures | `wp8e-extractor-locations` |
+| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -2041,93 +2041,100 @@ judgement about the job, not about the location string.
 
 ### Result
 
-One source fixed with evidence; ten stopped on, for lack of a fixture.
+Ran in two sessions on the same branch. The first had a fixture only for
+`storytel` and fixed that one source, stopping on the other ten per the rule
+against scraping live sites to investigate. The owner then ran
+`scripts/capture_fixtures.py` for all ten and handed back the fixtures, so
+this session finished the population against real evidence instead of
+guesses. Final tally: **8 of 11 sources fixed (41 of the 54 rows recovered)**;
+3 sources (13 rows) confirmed genuinely location-less on the page, which is
+not an extractor bug and is left alone.
 
-`tests/fixtures/` only has a saved page for one of the eleven sources in the
-54-row breakdown: `storytel.html`. Ten sources — `against_malaria_foundation`,
-`bearingpoint_sweden`, `fjallraven`, `founders_pledge`, `futurelearn`,
-`giving_what_we_can`, `jpal`, `path`, `planted`, `seven_perigee` — have no
-fixture, and the package rules say to stop rather than scrape live sites to
-get one. So this package fixes exactly what it could look at, and reports the
-rest as blocked on capture rather than guessed at.
+**storytel (5 rows) — the original fix, unchanged.** The page had been
+redesigned since WP2 pinned its golden: titles moved from a `<div>` into a
+`<span title="...">` sibling of the metadata `<div>`, and `teamtailor.py`'s
+div-based title fallback started grabbing the metadata div instead — on every
+row, not just the one WP2 read as a phantom "department heading". There never
+was a separate phantom row. `teamtailor.py` now reads a `<span title>` before
+falling back to the div.
 
-**storytel — fixed, 5 rows, all recoverable, all real jobs.** Running
-`teamtailor.py` (unmodified) over the fixture showed all 6 jobs losing their
-location, not the one WP2 pinned as a "department heading". The site had been
-redesigned since WP2: titles moved from a `<div>` into a `<span title="...">`
-sibling of the metadata `<div>`, and the extractor's title fallback (first
-child `<div>`) started grabbing the metadata div instead — for every row, not
-just one. What WP2 read as a phantom department-heading posting was this same
-bug on row 1; there never was a separate phantom row to delete. `teamtailor.py`
-now reads a `<span title>` when no `<h3>` is present, before falling back to
-the div (`job_scraper/extractors/teamtailor.py:56-74`), and the metadata
-lookup treats that single remaining `<div>` as the metadata block when a
-`title_span` was used (`teamtailor.py:88-93`). Both older shapes (Fjällräven's
-`<h3>` markup, FutureLearn's sibling `<p>`) are untouched by the new branch.
+**fjallraven (3), founders_pledge (6), futurelearn (3), planted (17), seven_perigee
+(1) — 30 rows, fixed once real fixtures showed the actual markup.** All five
+turned out to share a second redesign, distinct from storytel's: the title is
+now bare text directly inside `<a>` (no `<span title>`, no `<h3>`), and the
+metadata block is a `<div>` that is a **sibling** of `<a>`, not a child —
+`teamtailor.py`'s old sibling-lookup only tried a sibling `<p>`, which no
+longer exists anywhere in the captured markup. Two things had to change
+beyond "look for a sibling `<div>` too":
 
-Golden updated in `tests/test_extractors_golden.py`: count stays 6 (no row
-removed or added), first job's `title`/`department`/`location`/`raw_snippet`
-go from `"Product & Tech · Stockholm"` / `""` / `""` / same, to `"Senior Data
-Engineer"` / `"Product & Tech"` / `"Stockholm"` / `"Senior Data Engineer
-Product & Tech Stockholm"`. All 6 rows now carry a real location (Stockholm ×4,
-Stockholm+Umeå ×1, København ×1) — Nordic tech and support roles at a company
-already on the source list, so on the shape of the postings alone these look
-like exactly the kind of jobs the owner scrapes storytel to see. Whether they
-individually clear the title-keyword and experience layers is a question for
-those layers, not this package.
+- **Segment count is not fixed.** `founders_pledge`/`planted` show `Dept ·
+  Location`; `fjallraven`/`seven_perigee` sometimes show only `Location` (no
+  department chip at all — a real one-job case, not a parsing failure); and
+  `futurelearn`'s board additionally prefixes a brand segment (`FutureLearn ·
+  Admissions · Spain (remote)`), the multi-brand case the old docstring called
+  out for its previous `<p>`-based markup. The old `_split_meta` assumed
+  exactly two segments and treated a single leftover segment as *department*,
+  which is backwards for `fjallraven`/`seven_perigee`. It now reads dept and
+  location off the **end** of the segment list (`parts[-2]`, `parts[-1]`), so
+  one segment is a location with no department, two is dept+location, three+
+  drops the leading brand — one rule for all four shapes instead of a
+  per-source flag.
+- **The work-type tag ("Hybrid", "Fully Remote", ...) is detected structurally,
+  not by string list.** The original `_WORK_TYPES` vocabulary
+  (`hybrid`/`remote`/`on-site`) missed `planted`'s "Fully Remote" label, which
+  would otherwise have been misread as the location on one row
+  (`"Gebietsleitung Gastronomie & Foodservice"` — department/location came
+  out as `"Berlin"`/`"Fully Remote"` before this fix). Every redesigned card
+  wraps the work-type chip in its own `<span>` next to a `wd-icon`/`fa-wifi`
+  icon regardless of its label text, so the new `_content_segments` picks it
+  out by that structural marker instead of matching known strings — a label
+  Teamtailor adds later, in any language, still gets classified correctly.
 
-**The other five Teamtailor-hosted sources (fjallraven, founders_pledge,
-futurelearn, planted, seven_perigee) are not thereby fixed.** They share
-`teamtailor.py`, and the new branch is additive and safe for them, but nothing
-confirms their listing pages use the redesigned span+title markup rather than
-the older `<h3>` or sibling-`<p>` shapes the docstring already documented as
-working. Several of `planted`'s dropped titles carry a city in the title
-itself (`"Logistiker:in (f/m/d) - Memmingen Germany"`), which the prompt calls
-out as the "sitting in the title suffix" shape — a real gap, but a different
-one from storytel's, and the fix belongs in `teamtailor.py`'s title-suffix
-handling once a fixture shows the actual markup, not assumed from this
-session's fix. Rows affected without a fixture: planted 17, founders_pledge 6,
-fjallraven 3, futurelearn 3, seven_perigee 1 — 30 rows, unresolved pending capture.
+Golden checked by hand against the redesigned markup, not just re-run: e.g.
+planted's `"Gebietsleitung..."` row now reads department `"Sales & Business
+Development"` / location `"Berlin"`, correctly separating the actual base
+office from the "Fully Remote" work-type tag that used to swallow it.
 
-**Four more sources, four more bespoke extractors, no fixture for any of
-them:**
+**bearingpoint_sweden (6 rows) — a third, unrelated redesign, same session.**
+This extractor already had its own location selector (`a.find("p")`), which
+had also gone stale: the page moved location from a `<p>` into a sibling
+`<div class="columns job-info">` inside the same `<div class="row">` as the
+title. Fixed by trying the `<p>` first (for an older-markup regional page, if
+one still exists — no fixture confirms that) and falling back to
+`div.job-info`.
 
-- `against_malaria_foundation` (2 rows) and `giving_what_we_can` (1 row):
-  their extractors hardcode `"location": ""` — they never attempt to read a
-  location at all (`extractors/against_malaria.py:47`,
-  `extractors/giving_what_we_can.py:51`). Not a selector that drifted; a field
-  that was never wired up. Recoverable in principle, but only from a fixture
-  showing whether either listing page names a location anywhere.
-- `jpal` (2 rows) and `bearingpoint_sweden` (6 rows): both extractors do
-  attempt a location selector (`div.job-teaser-country`,
-  and a `<p>` respectively) that evidently is not matching on these
-  particular postings. Could be selector drift, could be postings that
-  genuinely have no location on the page (WP8d's cause 2) reaching this rule
-  by a different route — indistinguishable without a fixture.
-- `path` (8 rows, the largest of these four): uses the shared `workday.py`,
-  which is confirmed working elsewhere (the `busuu` golden pins a correctly
-  captured `"Madrid - Busuu"`), so this is not a code bug in the shared
-  extractor. It's specific to what PATH's Workday tenant actually renders for
-  these 8 cards — plausibly missing a "Primary location" list item entirely —
-  and needs its own fixture to confirm.
+**Three sources (13 rows) confirmed genuinely location-less, not fixed —
+correctly so:**
 
-**Net for this session:** 5 of the 54 rows fixed and reasoned about
-end-to-end; 49 rows across 10 sources correctly diagnosed to the extractor
-(or "extractor never tried") level but left alone, because confirming or
-fixing them means capturing pages this session was told not to fetch.
-Recommended next step: run `scripts/capture_fixtures.py` for the ten
-uncovered sources (an owner action, since it's a live fetch), then re-open
-this population — likely as a WP8e follow-up rather than reopening WP8e
-itself, since the `planted` title-suffix shape looks like it wants its own
-small design decision (where does the suffix split from the title?) rather
-than a mechanical continuation.
+- `against_malaria_foundation` (2) and `giving_what_we_can` (1): neither
+  listing page has a location field anywhere in its markup, structured or
+  otherwise — just free-text blurbs (e.g. "UK-based" in a paragraph) that
+  this package's rules correctly forbid mining out of prose. Their extractors'
+  `"location": ""` was never a bug; it was told the truth.
+- `jpal` (confirmed 1 of its 2 rows; the second, "Research Assistant - World
+  Bank Africa", is no longer on the live page and can't be checked against
+  this fixture): the "Director / Associate Director - Research-Informed
+  Delivery" node has no `div.job-teaser-country` in the HTML at all — an
+  external partner listing J-PAL didn't tag with a country. Confirmed by
+  reading the raw node, not inferred.
+- `path` (8 of its 20 jobs): `workday.py`'s two location selectors both work
+  correctly elsewhere in this same fixture (12 of 20 rows resolve fine, and
+  the shared code is separately confirmed by the `busuu` golden), so this is
+  not a code bug. All 8 empty rows share one cause, verified in the raw HTML:
+  their Workday subtitle list contains only the requisition ID, with no
+  location line rendered at all — these are consultancy postings PATH
+  evidently listed without a location.
 
-Not done, per the eval-harness note in the package rules: `labels.csv` was not
-touched — nothing here is scored by `eval.py` regardless, since it replays the
-old empty location value either way, fixed or not. The `data/curated/labels.csv`
-refresh instruction below this package's prompt applies once affected rows are
-in the live store; the owner performs that refresh after a real run, not this
-session (no live scrape happened here).
+**Not attempted:** parsing a location out of a job title (e.g. planted's
+`"... - Memmingen Germany"` suffix, which turned out to be redundant with a
+real `location` field already recovered above, not a case that needed it) —
+the package rules forbid this outside the extractor itself, and no source in
+this population needed it once the real bug was found.
+
+`data/curated/labels.csv` was not touched — the package rules say `eval.py`
+can't score this work regardless (it replays the old empty location value),
+and the refresh instruction below applies after a real run against the fixed
+extractors, which is the owner's step, not this session's.
 
 ---
 

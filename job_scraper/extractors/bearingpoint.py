@@ -7,6 +7,17 @@ pagination. Each job is an anchor whose href contains '/open-roles/offer/':
       <p>Stockholm</p>
     </a>
 
+The page was redesigned (WP8e, 2026-08-20): the location moved from that <p>
+into a sibling <div class="columns job-info">:
+    <a href="...">
+      <div class="row">
+        <div class="columns job-title"><h3>...</h3></div>
+        <div class="columns job-info">Stockholm</div>
+      </div>
+    </a>
+Both are read for; the <p> is tried first in case an older-markup regional
+page still uses it, since there is no fixture yet for any page but en-se.
+
 To target other BearingPoint regional pages replace the listing URL with the
 appropriate locale path (e.g. /en-gb/careers/open-roles/).
 """
@@ -44,8 +55,8 @@ def extract(
         if not title:
             continue
 
-        p = a.find("p")
-        location = p.get_text(" ", strip=True) if p else ""
+        location_tag = a.find("p") or a.find("div", class_="job-info")
+        location = location_tag.get_text(" ", strip=True) if location_tag else ""
 
         raw_snippet = " ".join(x for x in [title, location] if x)
         out.append(
