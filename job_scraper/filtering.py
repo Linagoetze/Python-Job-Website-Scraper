@@ -31,7 +31,6 @@ DROP_RULE_KEY = "drop_rule"
 # location rules reject the overwhelming majority of everything scraped, and
 # "off-criteria" is not a diagnosis.
 RULE_INCLUDE_NO_MATCH = "include_keywords: no match"
-RULE_LOC_EMPTY = "locations: no location given"
 RULE_LOC_UNLISTED_CITY = "locations: city not on the list"
 RULE_LOC_REMOTE_OVERRIDDEN = "locations: remote keyword overridden by a named city"
 RULE_LOC_CONDITIONAL_UNGATED = "locations: conditional city, hybrid gate not configured"
@@ -299,6 +298,27 @@ _UNRESOLVED_PENDING_REASON = "locations: unresolvable field (place unconfirmed)"
 _UNRESOLVED_CONFIRMED_REASON = "locations: unresolvable field (place confirmed)"
 
 
+# ---------------------------------------------------------------------------
+# Empty locations (WP8f)
+# ---------------------------------------------------------------------------
+#
+# The fourth Layer 0 outcome. An empty location field is not a placeholder
+# that might name a place once read (WP8d's third state) and it is not a
+# conditional city awaiting a hybrid check — it is an extractor or listing
+# page that never had a location to give, and WP8e confirmed real postings
+# die here for want of one nobody ever had. Keyword and seniority filters
+# never get a turn to judge these jobs today; they die before Layer 1.
+#
+# Unlike the two pending states above, this is settled here and permanently:
+# no description is going to retroactively supply a location that was never
+# on the listing, so there is nothing for Layer 2 to confirm. This reason is
+# therefore *not* wired into `_resolve_hybrid`/`_resolve_unresolved_location`
+# or `UNVERIFIED_KEY` — a job carrying it must not cost a detail fetch it
+# would not otherwise need, and must not be mistaken by Layer 2 for a marker
+# it is meant to settle.
+_LOCATION_EMPTY_ADMITTED_REASON = "locations: no location given (admitted)"
+
+
 def build_non_place_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
     """Compile the configured terms that name no specific place.
 
@@ -388,7 +408,8 @@ def _location_names_no_place(
 
     The third state (WP8d): present, but unresolvable from the listing page —
     "2 Locations", "Home base - EMEA", a bare country. Distinct from an empty
-    field, which is an extractor gap and keeps RULE_LOC_EMPTY.
+    field, which is WP8f's fourth state and is admitted outright rather than
+    deferred to Layer 2.
 
     A segment is judged by striking out every term that names no place — the
     remote keywords, the generic tokens, the configured `non_place_locations` —
@@ -441,20 +462,17 @@ def _location_drop_rule(
     """Name why the location rules rejected a job.
 
     Reached only from the failing branch of `matches_rules`, so the listed
-    locations are already known not to match. The order below is the order the
+    locations are already known not to match, and — since WP8f — the field is
+    already known not to be empty: `matches_rules` intercepts that case before
+    this function is ever called. The order below is the order the remaining
     cases are worth telling apart:
 
-    - no location field at all (an extractor that never populates it looks
-      identical to a genuinely location-less posting, and only this rule makes
-      that visible);
     - a remote keyword was present but the field also named a city, so the
       remote tag was overridden (Impactpool's "Remote | Nairobi" shape);
     - a conditional city matched but the hybrid gate is unconfigured, leaving
       the whole conditional list inert;
     - otherwise the field simply names somewhere not on the list.
     """
-    if not loc_field_cf.strip():
-        return RULE_LOC_EMPTY
     if remote_kw_present:
         return RULE_LOC_REMOTE_OVERRIDDEN
     if any(_lower(loc) in loc_field_cf for loc in conditional_locations):
@@ -496,6 +514,11 @@ def matches_rules(
       "Home base - EMEA", a bare country) is not a city that failed to match.
       It passes with `_UNRESOLVED_PENDING_REASON`, again for Layer 2 to settle
       against the description.
+    - A field that is empty (WP8f: no location was ever given, an extractor or
+      listing-page gap rather than a placeholder) is not the same failure as
+      an unresolvable one — there is no page for Layer 2 to read it off, so it
+      is admitted outright with `_LOCATION_EMPTY_ADMITTED_REASON` rather than
+      deferred. This is settled here, permanently.
 
     `hybrid_pattern` gates `conditional_locations` and `non_place_pattern` carries
     the configured `non_place_locations`. Both must be built once by the caller —
@@ -572,6 +595,13 @@ def matches_rules(
             # run, never stored, and re-fetched on every run after it. Defer
             # only what can actually be settled.
             reasons.append(_UNRESOLVED_PENDING_REASON)
+        elif not loc_field.strip():
+            # A genuinely empty field (WP8f), as opposed to WP8d's "present but
+            # names no place" — the branch above already refuses that case for
+            # an empty field, so this is reached only when the field truly has
+            # nothing in it. Settled here, permanently: see the reason's own
+            # comment for why this must not become a Layer 2 pending marker.
+            reasons.append(_LOCATION_EMPTY_ADMITTED_REASON)
         else:
             return False, [
                 _location_drop_rule(loc_field, remote_kw_present, conditional_locations)
