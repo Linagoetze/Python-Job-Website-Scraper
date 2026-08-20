@@ -50,6 +50,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
+| 8g | ISS location extraction | 1.5 hr | Sonnet 5 | `think` | not started — 33 ISS rows read `"Title"` as their location, 9 of them wanted | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -184,6 +185,27 @@ Record any decision a future session would otherwise have to re-derive.
   function is ever reached) and was deleted, per WP8a's rule that a drop-log
   rule string going silent is a contract change to call out, not a private
   implementation detail.
+- **A wrong location and a missing one are the same bug wearing different
+  clothes (WP8g).** Found while reviewing WP8f, 2026-08-20. WP8e's population
+  was "sources that captured no location", and WP8f then admitted exactly that
+  case. ISS is in the same population and neither package saw it, because its
+  extractor does not return an empty string — it returns the literal word
+  `"Title"`, a table header read as data, on all 33 of its rows in the gold
+  set. An empty field now passes Layer 0; `"Title"` is judged as a city nobody
+  has heard of and dropped under `RULE_LOC_UNLISTED_CITY`. Nine of those 33 are
+  labelled `review`, so the leftover case costs as much as WP8f's whole gain.
+  Consequence for the queue: WP8g goes **before** WP8, and the `location`
+  column refresh below stops being optional — see the next entry.
+- **The labels refresh is a prerequisite for WP8, not housekeeping (WP8g).**
+  The rule three entries up still holds: `eval.py` replays `labels.csv`'s
+  stored `location`, so a fixed extractor scores as no improvement until the
+  column is refreshed from the store. WP8e and WP8f could both live with that,
+  because neither needed the harness to see the fixed values. WP8 cannot: it
+  prunes `title_exclude_keywords.csv` by measuring which keywords cost wanted
+  jobs, and a wanted job still blocked at Layer 0 by a stale `"Title"` never
+  reaches the keyword layer to be counted. Pruning on that evidence would keep
+  a keyword whose real cost is higher than measured. So the order is WP8g, then
+  a real run, then the refresh, then WP8's baseline.
 - **WP8's original premise died with WP7, and its prompt was rewritten
   (2026-08-20).** As first written, WP8 opened "with LLM scoring in place" and
   justified every deletion with "subsumed by the scorer". The scorer is off —
@@ -2257,6 +2279,126 @@ pending states, both as instructed; `eval.py` itself needed no code change —
 the new state naturally falls out as an ordinary "kept" verdict with neither
 pending flag set, which is exactly what a permanently-settled Layer 0 outcome
 should look like to the harness.
+
+---
+
+## WP8g — ISS location extraction
+
+**Do this before WP8, and note the labels refresh between them.** Found while
+reviewing WP8f on 2026-08-20, not during a run. WP8e fixed the sources that
+captured *no* location and WP8f then admitted that case at Layer 0. ISS is in
+the same population and fell through both, because its extractor does not
+return an empty string — it returns a wrong one.
+
+### The evidence
+
+In `data/curated/labels.csv` (545 rows, snapshot of 2026-08-18) **all 33 ISS
+rows carry the literal string `"Title"` in the `location` column**, and all 33
+are dropped at Layer 0 under `RULE_LOC_UNLISTED_CITY` — "city not on the list".
+**Nine of them are labelled `review`**, i.e. jobs the owner wanted. That is the
+same recall this project bought with the whole of WP8f, sitting in one source.
+
+`"Title"` is a table column heading, so the reading is that the extractor is
+picking up a header cell as if it were data.
+
+### The likely mechanism — verify it, do not trust it
+
+`successfactors_html._parse_listing` guesses the location as "the first text in
+the nearest `li`/`tr`/`div` ancestor that is not the title"
+(`successfactors_html.py`, the `texts[0]` heuristic). ISS is the only one of the
+four SuccessFactors sources fetched with Playwright (`strategy: dynamic`,
+`page_step=20`), and its rendered markup evidently puts the header row inside
+the container that heuristic walks up to.
+
+This was inferred from the labelled data plus a reading of the code. **No fixture
+existed for ISS when this package was written and the live site was not
+fetched**, so the first job of the package is to confirm the mechanism against
+the captured HTML rather than assume it.
+
+The other three SuccessFactors sources are healthy on the same code path — DSV,
+Novo Nordisk and Coloplast all produce real locations in the gold set
+(`"Landskrona, Skane, SE, 261 51"`, `"Kalundborg, Region Zealand, DK"`). So this
+is an ISS-specific markup difference, not a flaw in the shared extractor's
+design, and the fix must not regress them. `tests/fixtures/dsv.html` and its
+golden test are the guard.
+
+### Before the session: capture the fixture
+
+The owner runs this once, first. It is the only step that touches the network,
+and the package rules forbid the session doing it:
+
+```
+python scripts/capture_fixtures.py iss
+```
+
+Writes `tests/fixtures/iss.html` (sanitised, via Playwright since `iss` is
+`strategy: dynamic` in `sources.yaml`) and prints the byte size and the number
+of jobs parsed. Check both before trusting it: a cookie wall or an unrendered
+page is a successful HTTP response and a much smaller file. A capture that
+reports 0 jobs, or one whose rows do not show the `"Title"` bug, changes the
+package — say so rather than proceeding.
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8g only.
+
+The ISS extractor puts the literal word "Title" in every posting's location
+field. All 33 ISS rows in the gold set do this, all 33 are dropped as "city
+not on the list", and 9 of them are jobs the owner wanted. The fixture is
+already captured at tests/fixtures/iss.html — do not fetch anything.
+
+1. CONFIRM THE CAUSE against the fixture before changing a line. Read the raw
+   markup around a job link and establish what the container actually holds
+   and why texts[0] is the header. If the cause is not what the plan file
+   guesses, follow the fixture and say so in the plan.
+
+2. FIX IT in job_scraper/extractors/successfactors_html.py. The bar is that
+   ISS rows come out with a real place in `location`, or with an honest empty
+   string where the listing genuinely gives none — WP8f admits empty fields
+   now, so an honest blank is an acceptable outcome and a wrong value is not.
+
+   Do not special-case ISS by source_name if the markup supports a structural
+   fix that serves all four SuccessFactors sources. A header cell is not a
+   location for DSV either; it just does not currently appear in DSV's markup.
+
+3. DO NOT REGRESS the other three. dsv is the one with a fixture and a golden
+   test; novo_nordisk and coloplast share the code path with no fixture, so
+   reason about them explicitly in the plan file rather than only running the
+   suite.
+
+4. WIRE THE FIXTURE IN. Add an `iss` entry to tests/fixture_cases.py
+   FIXTURE_CASES with its registry arguments (page_step=20,
+   base_search_url="https://jobs.issworld.com/search/"), so the golden-file
+   and capture-script tests pick it up like every other fixture. Add a test
+   pinning the specific bug: no ISS row's location may be the word "Title".
+
+5. DO NOT EXPECT eval.py TO SHOW A GAIN, and do not report one. Per the
+   decisions log, the harness replays labels.csv's stored location column, so
+   a fixed extractor scores as no change until the owner refreshes it. Running
+   it to show *no regression* is fine; quoting a recall improvement is wrong.
+   Say in the plan that the 9 jobs are the expected gain once refreshed.
+
+Do not touch filtering.py, the location rules, or WP8d/WP8f's states. If the
+fixture shows a second unrelated extractor bug, note it at the end rather than
+fixing it.
+
+Branch wp8g-iss-location. Commit, do not push. Update the plan file.
+```
+
+### After the session, before WP8
+
+Two owner steps, in this order:
+
+1. A real run, so the store holds ISS rows with corrected locations.
+2. Refresh the `location` column in `data/curated/labels.csv` from the store,
+   keyed on `dedupe_key` — the review/discard judgements are about the jobs and
+   must not be re-labelled. See "the gold set is blind to extractor changes" in
+   the decisions log.
+
+Only then take WP8's baseline. Skipping the refresh means WP8 prunes the keyword
+list against a gold set where these 9 wanted jobs are still blocked at Layer 0
+and never reach the keyword layer to be counted.
 
 ---
 
