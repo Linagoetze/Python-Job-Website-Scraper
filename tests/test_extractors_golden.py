@@ -115,21 +115,229 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "storytel": {
+        # WP8e (2026-08-20): fixed. The page had been redesigned since WP2 pinned
+        # this fixture — titles moved from a <div> into a <span title="...">, and
+        # teamtailor.py's div-based fallback then picked up the metadata <div> as
+        # the title for every row, not just one. What WP2 read as "a department
+        # heading scraped as a posting" was this bug on row 1, not a real
+        # department heading: teamtailor.py now reads the <span title> when
+        # present, so all 6 rows get their real title and location. Count is
+        # unchanged at 6 (no phantom row existed to remove); every row's title
+        # and location go from wrong/empty to correct.
         "count": 6,
         "first_job": {
             "source_name": "storytel",
-            # Quirk, pinned deliberately: teamtailor.py's first match on this
-            # page is a department heading, so the title and raw_snippet are
-            # "Product & Tech · Stockholm" and location comes back empty. Layer
-            # 0 drops it later. Fixing the selector is an extractor change, not
-            # a test change — if a later package fixes it, this moves.
-            "title": "Product & Tech · Stockholm",
-            "department": "",
-            "location": "",
+            "title": "Senior Data Engineer",
+            "department": "Product & Tech",
+            "location": "Stockholm",
             "listing_url": "https://jobs.storytel.com/jobs",
             "detail_url": "https://jobs.storytel.com/jobs/8090473-senior-data-engineer",
             "apply_url": "https://jobs.storytel.com/jobs/8090473-senior-data-engineer",
-            "raw_snippet": "Product & Tech · Stockholm",
+            "raw_snippet": "Senior Data Engineer Product & Tech Stockholm",
+        },
+    },
+    # --- WP8e (2026-08-20): fixtures captured to investigate "no location given"
+    # drops. Five of these (fjallraven, founders_pledge, futurelearn, planted,
+    # seven_perigee) share teamtailor.py's fix above but needed a second one:
+    # their redesigned markup puts the metadata <div> as a *sibling* of <a>, not
+    # a child, with a varying number of "·"-joined segments (sometimes no
+    # department at all) and a structurally-detected work-type tag ("Hybrid",
+    # "Fully Remote", ...) rather than a fixed vocabulary. bearingpoint_sweden
+    # needed its own fix: the same site redesign moved its location from a <p>
+    # into a sibling <div class="job-info">. against_malaria_foundation,
+    # giving_what_we_can, jpal and path are pinned with an empty location as-is
+    # — confirmed genuinely absent from the page, not an extractor gap; see the
+    # WP8e Result section in docs/REFACTOR-PLAN.md.
+    "fjallraven": {
+        "count": 3,
+        "first_job": {
+            "source_name": "fjallraven",
+            "title": "Administrator",
+            "department": "",
+            "location": "Solna, Sweden",
+            "listing_url": "https://career.fjallraven.com/jobs",
+            "detail_url": "https://career.fjallraven.com/jobs/8044352-administrator",
+            "apply_url": "https://career.fjallraven.com/jobs/8044352-administrator",
+            "raw_snippet": "Administrator Solna, Sweden",
+        },
+    },
+    "founders_pledge": {
+        "count": 6,
+        "first_job": {
+            "source_name": "founders_pledge",
+            "title": "Funds Program Manager",
+            "department": "Research",
+            "location": "New York, San Francisco",
+            "listing_url": "https://careers.founderspledge.com/jobs",
+            "detail_url": "https://careers.founderspledge.com/jobs/8230675-funds-program-manager",
+            "apply_url": "https://careers.founderspledge.com/jobs/8230675-funds-program-manager",
+            "raw_snippet": (
+                "Funds Program Manager Research New York, San Francisco Hybrid"
+            ),
+        },
+    },
+    "futurelearn": {
+        "count": 3,
+        "first_job": {
+            "source_name": "futurelearn",
+            "title": "Consulente commerciale - Vendita Educazione",
+            "department": "Admissions",
+            "location": "Spain (remote)",
+            "listing_url": "https://gusglobaluniversitysystems-futurelearn.teamtailor.com/",
+            "detail_url": (
+                "https://gusglobaluniversitysystems-futurelearn.teamtailor.com/jobs/"
+                "8191472-consulente-commerciale-vendita-educazione"
+            ),
+            "apply_url": (
+                "https://gusglobaluniversitysystems-futurelearn.teamtailor.com/jobs/"
+                "8191472-consulente-commerciale-vendita-educazione"
+            ),
+            "raw_snippet": (
+                "Consulente commerciale - Vendita Educazione Admissions "
+                "Spain (remote) Hybrid"
+            ),
+        },
+    },
+    "planted": {
+        "count": 16,
+        "first_job": {
+            "source_name": "planted",
+            "title": "Produktionsmitarbeiter:in (f/m/d) - Memmingen Germany",
+            "department": "Production",
+            "location": "Memmingen",
+            "listing_url": "https://careers.eatplanted.com/jobs",
+            "detail_url": (
+                "https://careers.eatplanted.com/de-inf/jobs/"
+                "5548595-produktionsmitarbeiter-in-f-m-d-memmingen-germany"
+            ),
+            "apply_url": (
+                "https://careers.eatplanted.com/de-inf/jobs/"
+                "5548595-produktionsmitarbeiter-in-f-m-d-memmingen-germany"
+            ),
+            "raw_snippet": (
+                "Produktionsmitarbeiter:in (f/m/d) - Memmingen Germany "
+                "Production Memmingen"
+            ),
+        },
+    },
+    "seven_perigee": {
+        "count": 1,
+        "first_job": {
+            "source_name": "seven_perigee",
+            "title": "iOS Developer",
+            "department": "",
+            "location": "Malmö",
+            "listing_url": "https://careers.perigee.se",
+            "detail_url": "https://careers.perigee.se/jobs/3401069-ios-developer",
+            "apply_url": "https://careers.perigee.se/jobs/3401069-ios-developer",
+            "raw_snippet": "iOS Developer Malmö",
+        },
+    },
+    "bearingpoint_sweden": {
+        "count": 6,
+        "first_job": {
+            "source_name": "bearingpoint_sweden",
+            "title": "Manager – Strategy & Operations, Retail and Manufacturing (Malmö)",
+            "department": "",
+            "location": "Malmö",
+            "listing_url": "https://www.bearingpoint.com/en-se/careers/open-roles/",
+            "detail_url": (
+                "https://www.bearingpoint.com/en-se/careers/open-roles/offer/?id=T7972813"
+            ),
+            "apply_url": (
+                "https://www.bearingpoint.com/en-se/careers/open-roles/offer/?id=T7972813"
+            ),
+            "raw_snippet": (
+                "Manager – Strategy & Operations, Retail and Manufacturing (Malmö) Malmö"
+            ),
+        },
+    },
+    "against_malaria_foundation": {
+        # Not a bug: this page has no location field at all, structured or
+        # otherwise (free-text blurbs mention e.g. "UK-based" in prose, which
+        # this extractor correctly does not attempt to mine). Pinned empty.
+        "count": 2,
+        "first_job": {
+            "source_name": "against_malaria_foundation",
+            "title": "Senior Software Engineer",
+            "department": "",
+            "location": "",
+            "listing_url": "https://www.againstmalaria.com/Vacancies.aspx",
+            "detail_url": (
+                "https://www.againstmalaria.com/NewsItem.aspx?"
+                "newsitem=AMF-is-hiring-Senior-Software-Engineer"
+            ),
+            "apply_url": (
+                "https://www.againstmalaria.com/NewsItem.aspx?"
+                "newsitem=AMF-is-hiring-Senior-Software-Engineer"
+            ),
+            "raw_snippet": "Senior Software Engineer",
+        },
+    },
+    "giving_what_we_can": {
+        # Not a bug: the only listing on this page has no location anywhere in
+        # its markup, just a closed-applications note. Pinned empty.
+        "count": 1,
+        "first_job": {
+            "source_name": "giving_what_we_can",
+            "title": "Head of Marketing",
+            "department": "",
+            "location": "",
+            "listing_url": "https://www.givingwhatwecan.org/get-involved/careers",
+            "detail_url": "https://www.givingwhatwecan.org/head-of-marketing",
+            "apply_url": "https://www.givingwhatwecan.org/head-of-marketing",
+            "raw_snippet": "Head of Marketing",
+        },
+    },
+    "jpal": {
+        "count": 9,
+        "first_job": {
+            "source_name": "jpal",
+            "title": "Field-Based Research Associate - Democratic Republic of Congo",
+            "department": "",
+            "location": "Democratic Republic of the Congo",
+            "listing_url": "https://www.povertyactionlab.org/careers",
+            "detail_url": (
+                "https://www.povertyactionlab.org/careers/"
+                "field-based-research-associate-democratic-republic-congo-job-105604"
+            ),
+            "apply_url": (
+                "https://www.povertyactionlab.org/careers/"
+                "field-based-research-associate-democratic-republic-congo-job-105604"
+            ),
+            "raw_snippet": (
+                "Field-Based Research Associate - Democratic Republic of Congo "
+                "Democratic Republic of the Congo"
+            ),
+        },
+    },
+    "path": {
+        # Not a bug: workday.py's location selectors both work here (the busuu
+        # golden above pins the same code succeeding). 9 of these 20 rows carry
+        # an empty location because their Workday subtitle list holds only the
+        # req ID with no location line at all — confirmed against the raw HTML,
+        # not assumed.
+        "count": 20,
+        "first_job": {
+            "source_name": "path",
+            "title": "Consultant – Planning and Finance Management, Technical Support Unit",
+            "department": "",
+            "location": "India, New Delhi Country Program Office",
+            "listing_url": "https://path.wd1.myworkdayjobs.com/en-US/External",
+            "detail_url": (
+                "https://path.wd1.myworkdayjobs.com/en-US/External/job/"
+                "India-New-Delhi-Country-Program-Office/"
+                "Consultant---Planning-and-Finance-Management--Technical-Support-Unit_JR2742"
+            ),
+            "apply_url": (
+                "https://path.wd1.myworkdayjobs.com/en-US/External/job/"
+                "India-New-Delhi-Country-Program-Office/"
+                "Consultant---Planning-and-Finance-Management--Technical-Support-Unit_JR2742"
+            ),
+            "raw_snippet": (
+                "Consultant – Planning and Finance Management, Technical Support Unit "
+                "India, New Delhi Country Program Office"
+            ),
         },
     },
 }

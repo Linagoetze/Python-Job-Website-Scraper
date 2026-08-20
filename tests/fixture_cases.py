@@ -28,9 +28,13 @@ import capture_fixtures  # noqa: E402
 from capture_fixtures import single_response_fetch  # noqa: E402
 
 from job_scraper.extractors import (  # noqa: E402
+    against_malaria,
     ashby,
+    bearingpoint,
+    giving_what_we_can,
     greenhouse,
     impactpool,
+    jpal,
     successfactors_html,
     teamtailor,
     workday,
@@ -85,6 +89,60 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "impactpool.html",
         "https://www.impactpool.org/search",
         lambda url, fetch: impactpool.extract(url, fetch, source_name="impactpool"),
+    ),
+    "against_malaria_foundation": (
+        "against_malaria_foundation.html",
+        "https://www.againstmalaria.com/Vacancies.aspx",
+        lambda url, fetch: against_malaria.extract(
+            url, fetch, source_name="against_malaria_foundation"
+        ),
+    ),
+    "bearingpoint_sweden": (
+        "bearingpoint_sweden.html",
+        "https://www.bearingpoint.com/en-se/careers/open-roles/",
+        lambda url, fetch: bearingpoint.extract(url, fetch, source_name="bearingpoint_sweden"),
+    ),
+    "fjallraven": (
+        "fjallraven.html",
+        "https://career.fjallraven.com/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="fjallraven"),
+    ),
+    "founders_pledge": (
+        "founders_pledge.html",
+        "https://careers.founderspledge.com/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="founders_pledge"),
+    ),
+    "futurelearn": (
+        "futurelearn.html",
+        "https://gusglobaluniversitysystems-futurelearn.teamtailor.com/",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="futurelearn"),
+    ),
+    "giving_what_we_can": (
+        "giving_what_we_can.html",
+        "https://www.givingwhatwecan.org/get-involved/careers",
+        lambda url, fetch: giving_what_we_can.extract(
+            url, fetch, source_name="giving_what_we_can"
+        ),
+    ),
+    "jpal": (
+        "jpal.html",
+        "https://www.povertyactionlab.org/careers",
+        lambda url, fetch: jpal.extract(url, fetch, source_name="jpal"),
+    ),
+    "path": (
+        "path.html",
+        "https://path.wd1.myworkdayjobs.com/en-US/External",
+        lambda url, fetch: workday.extract(url, fetch, source_name="path"),
+    ),
+    "planted": (
+        "planted.html",
+        "https://careers.eatplanted.com/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="planted"),
+    ),
+    "seven_perigee": (
+        "seven_perigee.html",
+        "https://careers.perigee.se",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="seven_perigee"),
     ),
 }
 
