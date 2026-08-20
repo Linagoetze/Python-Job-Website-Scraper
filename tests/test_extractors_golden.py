@@ -115,21 +115,25 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "storytel": {
+        # WP8e (2026-08-20): fixed. The page had been redesigned since WP2 pinned
+        # this fixture — titles moved from a <div> into a <span title="...">, and
+        # teamtailor.py's div-based fallback then picked up the metadata <div> as
+        # the title for every row, not just one. What WP2 read as "a department
+        # heading scraped as a posting" was this bug on row 1, not a real
+        # department heading: teamtailor.py now reads the <span title> when
+        # present, so all 6 rows get their real title and location. Count is
+        # unchanged at 6 (no phantom row existed to remove); every row's title
+        # and location go from wrong/empty to correct.
         "count": 6,
         "first_job": {
             "source_name": "storytel",
-            # Quirk, pinned deliberately: teamtailor.py's first match on this
-            # page is a department heading, so the title and raw_snippet are
-            # "Product & Tech · Stockholm" and location comes back empty. Layer
-            # 0 drops it later. Fixing the selector is an extractor change, not
-            # a test change — if a later package fixes it, this moves.
-            "title": "Product & Tech · Stockholm",
-            "department": "",
-            "location": "",
+            "title": "Senior Data Engineer",
+            "department": "Product & Tech",
+            "location": "Stockholm",
             "listing_url": "https://jobs.storytel.com/jobs",
             "detail_url": "https://jobs.storytel.com/jobs/8090473-senior-data-engineer",
             "apply_url": "https://jobs.storytel.com/jobs/8090473-senior-data-engineer",
-            "raw_snippet": "Product & Tech · Stockholm",
+            "raw_snippet": "Senior Data Engineer Product & Tech Stockholm",
         },
     },
 }

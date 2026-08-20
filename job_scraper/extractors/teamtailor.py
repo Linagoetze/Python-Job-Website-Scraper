@@ -2,7 +2,9 @@
 
 Handles the common Teamtailor HTML patterns:
   - <a href="/jobs/ID-slug"><h3>Title</h3><p>Dept · Location</p></a>  (Fjällräven, Planted, Lifesum)
-  - <a href="/jobs/ID-slug"><div>Title</div><div>Dept · Location</div></a>  (Storytel)
+  - <a href="/jobs/ID-slug"><div>Title</div><div>Dept · Location</div></a>  (Storytel, older markup)
+  - <a href="/jobs/ID-slug"><span title="Title">Title</span><div>Dept · Location</div></a>
+    (Storytel, redesigned 2026-08 markup)
   - <a href="/jobs/ID-slug"><h3>Title</h3></a><p>Org · Dept · Location</p>  (FutureLearn)
 """
 
@@ -52,20 +54,26 @@ def extract(
             continue
         seen.add(full)
 
-        # Title: prefer <h3>, fall back to first direct child <div>
+        # Title: prefer <h3>, then a <span title="..."> (redesigned Storytel),
+        # fall back to first direct child <div>
         h3 = a.find("h3")
+        title_span: Tag | None = None
         if h3:
             title = h3.get_text(" ", strip=True)
         else:
-            first_div = next(
-                (c for c in a.children if isinstance(c, Tag) and c.name == "div"),
-                None,
-            )
-            title = (
-                first_div.get_text(" ", strip=True)
-                if first_div
-                else a.get_text(" ", strip=True)
-            )
+            title_span = a.find("span", title=True)
+            if title_span:
+                title = title_span.get("title", "").strip()
+            else:
+                first_div = next(
+                    (c for c in a.children if isinstance(c, Tag) and c.name == "div"),
+                    None,
+                )
+                title = (
+                    first_div.get_text(" ", strip=True)
+                    if first_div
+                    else a.get_text(" ", strip=True)
+                )
 
         if not title:
             continue
@@ -77,9 +85,12 @@ def extract(
         skip_first = False
 
         if not meta_tag:
-            # Storytel: second direct child <div> holds metadata
             child_divs = [c for c in a.children if isinstance(c, Tag) and c.name == "div"]
-            if len(child_divs) >= 2:
+            if title_span and len(child_divs) >= 1:
+                # Redesigned Storytel: title is a <span>, metadata is the (only) <div>
+                meta_tag = child_divs[-1]
+            elif len(child_divs) >= 2:
+                # Storytel (older markup): second direct child <div> holds metadata
                 meta_tag = child_divs[-1]
 
         if not meta_tag:

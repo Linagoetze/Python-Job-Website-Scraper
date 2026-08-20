@@ -48,7 +48,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8a | Drop log: record every exclusion | 2.5 hr | Opus 5 | `think hard` | done | `wp8a-drop-log` |
 | 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
-| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | not started | `wp8e-extractor-locations` |
+| 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | partial — 1/11 sources fixed, 10 blocked on missing fixtures | `wp8e-extractor-locations` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -2038,6 +2038,96 @@ Branch wp8e-extractor-locations. Commit, do not push. Update the plan file.
 from the store for the affected `dedupe_key` rows, so future eval runs replay
 the fixed value. The review/discard labels themselves stay valid — they are a
 judgement about the job, not about the location string.
+
+### Result
+
+One source fixed with evidence; ten stopped on, for lack of a fixture.
+
+`tests/fixtures/` only has a saved page for one of the eleven sources in the
+54-row breakdown: `storytel.html`. Ten sources — `against_malaria_foundation`,
+`bearingpoint_sweden`, `fjallraven`, `founders_pledge`, `futurelearn`,
+`giving_what_we_can`, `jpal`, `path`, `planted`, `seven_perigee` — have no
+fixture, and the package rules say to stop rather than scrape live sites to
+get one. So this package fixes exactly what it could look at, and reports the
+rest as blocked on capture rather than guessed at.
+
+**storytel — fixed, 5 rows, all recoverable, all real jobs.** Running
+`teamtailor.py` (unmodified) over the fixture showed all 6 jobs losing their
+location, not the one WP2 pinned as a "department heading". The site had been
+redesigned since WP2: titles moved from a `<div>` into a `<span title="...">`
+sibling of the metadata `<div>`, and the extractor's title fallback (first
+child `<div>`) started grabbing the metadata div instead — for every row, not
+just one. What WP2 read as a phantom department-heading posting was this same
+bug on row 1; there never was a separate phantom row to delete. `teamtailor.py`
+now reads a `<span title>` when no `<h3>` is present, before falling back to
+the div (`job_scraper/extractors/teamtailor.py:56-74`), and the metadata
+lookup treats that single remaining `<div>` as the metadata block when a
+`title_span` was used (`teamtailor.py:88-93`). Both older shapes (Fjällräven's
+`<h3>` markup, FutureLearn's sibling `<p>`) are untouched by the new branch.
+
+Golden updated in `tests/test_extractors_golden.py`: count stays 6 (no row
+removed or added), first job's `title`/`department`/`location`/`raw_snippet`
+go from `"Product & Tech · Stockholm"` / `""` / `""` / same, to `"Senior Data
+Engineer"` / `"Product & Tech"` / `"Stockholm"` / `"Senior Data Engineer
+Product & Tech Stockholm"`. All 6 rows now carry a real location (Stockholm ×4,
+Stockholm+Umeå ×1, København ×1) — Nordic tech and support roles at a company
+already on the source list, so on the shape of the postings alone these look
+like exactly the kind of jobs the owner scrapes storytel to see. Whether they
+individually clear the title-keyword and experience layers is a question for
+those layers, not this package.
+
+**The other five Teamtailor-hosted sources (fjallraven, founders_pledge,
+futurelearn, planted, seven_perigee) are not thereby fixed.** They share
+`teamtailor.py`, and the new branch is additive and safe for them, but nothing
+confirms their listing pages use the redesigned span+title markup rather than
+the older `<h3>` or sibling-`<p>` shapes the docstring already documented as
+working. Several of `planted`'s dropped titles carry a city in the title
+itself (`"Logistiker:in (f/m/d) - Memmingen Germany"`), which the prompt calls
+out as the "sitting in the title suffix" shape — a real gap, but a different
+one from storytel's, and the fix belongs in `teamtailor.py`'s title-suffix
+handling once a fixture shows the actual markup, not assumed from this
+session's fix. Rows affected without a fixture: planted 17, founders_pledge 6,
+fjallraven 3, futurelearn 3, seven_perigee 1 — 30 rows, unresolved pending capture.
+
+**Four more sources, four more bespoke extractors, no fixture for any of
+them:**
+
+- `against_malaria_foundation` (2 rows) and `giving_what_we_can` (1 row):
+  their extractors hardcode `"location": ""` — they never attempt to read a
+  location at all (`extractors/against_malaria.py:47`,
+  `extractors/giving_what_we_can.py:51`). Not a selector that drifted; a field
+  that was never wired up. Recoverable in principle, but only from a fixture
+  showing whether either listing page names a location anywhere.
+- `jpal` (2 rows) and `bearingpoint_sweden` (6 rows): both extractors do
+  attempt a location selector (`div.job-teaser-country`,
+  and a `<p>` respectively) that evidently is not matching on these
+  particular postings. Could be selector drift, could be postings that
+  genuinely have no location on the page (WP8d's cause 2) reaching this rule
+  by a different route — indistinguishable without a fixture.
+- `path` (8 rows, the largest of these four): uses the shared `workday.py`,
+  which is confirmed working elsewhere (the `busuu` golden pins a correctly
+  captured `"Madrid - Busuu"`), so this is not a code bug in the shared
+  extractor. It's specific to what PATH's Workday tenant actually renders for
+  these 8 cards — plausibly missing a "Primary location" list item entirely —
+  and needs its own fixture to confirm.
+
+**Net for this session:** 5 of the 54 rows fixed and reasoned about
+end-to-end; 49 rows across 10 sources correctly diagnosed to the extractor
+(or "extractor never tried") level but left alone, because confirming or
+fixing them means capturing pages this session was told not to fetch.
+Recommended next step: run `scripts/capture_fixtures.py` for the ten
+uncovered sources (an owner action, since it's a live fetch), then re-open
+this population — likely as a WP8e follow-up rather than reopening WP8e
+itself, since the `planted` title-suffix shape looks like it wants its own
+small design decision (where does the suffix split from the title?) rather
+than a mechanical continuation.
+
+Not done, per the eval-harness note in the package rules: `labels.csv` was not
+touched — nothing here is scored by `eval.py` regardless, since it replays the
+old empty location value either way, fixed or not. The `data/curated/labels.csv`
+refresh instruction below this package's prompt applies once affected rows are
+in the live store; the owner performs that refresh after a real run, not this
+session (no live scrape happened here).
 
 ---
 
