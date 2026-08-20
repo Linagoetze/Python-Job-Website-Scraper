@@ -31,6 +31,7 @@ from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    _LOCATION_EMPTY_ADMITTED_REASON,
     _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
     apply_language_filter,
@@ -304,6 +305,19 @@ def run_pipeline(
             "Layer 0 (rules): %d jobs admitted with an unresolvable location field, "
             "pending a Layer 2 read of the description",
             unresolved_admits,
+        )
+    empty_location_admits = sum(
+        1
+        for j in kept_rows
+        if _LOCATION_EMPTY_ADMITTED_REASON in (j.get("matched_reasons") or [])
+    )
+    if empty_location_admits:
+        # Unlike the two counts above, this is not a Layer 2 cost — see
+        # _LOCATION_EMPTY_ADMITTED_REASON's comment in filtering.py. Logged
+        # anyway, so the volume WP8f admits is as visible as what WP8d defers.
+        logger.debug(
+            "Layer 0 (rules): %d jobs admitted with no location given at all",
+            empty_location_admits,
         )
 
     sources_csv_path = out_db_path.parent / "jobs_sources.csv"

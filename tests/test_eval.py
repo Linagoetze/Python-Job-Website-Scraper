@@ -53,7 +53,7 @@ from job_scraper.eval import (
     main,
     replay,
 )
-from job_scraper.filtering import RULE_LOC_EMPTY, RULE_LOC_UNLISTED_CITY
+from job_scraper.filtering import RULE_LOC_UNLISTED_CITY
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LABELS = FIXTURES / "eval_labels.csv"
@@ -202,7 +202,6 @@ def test_the_rule_recorded_is_the_filter_s_own_rule_string(gold, config) -> None
     """The harness must report what the drop log would, not a paraphrase."""
     by_title = {v.job.title: v for v in replay(gold, config)}
     assert by_title["Programme Officer"].rule == RULE_LOC_UNLISTED_CITY
-    assert by_title["Office Coordinator"].rule == RULE_LOC_EMPTY
     assert by_title["Graphic Designer"].rule == "title_keyword: 'design' (prefix)"
     assert by_title["Head of Operations"].rule == "seniority: 'Head of' (word)"
     assert by_title["Danish speaking Customer Agent"].rule == "language_speaker: 'danish'"
@@ -272,22 +271,25 @@ def test_regression_pins_current_ladder(gold, config) -> None:
         result.confusion.false_positives,
         result.confusion.false_negatives,
         result.confusion.true_negatives,
-    ) == (4, 1, 3, 6)
-    assert result.confusion.precision == pytest.approx(0.8)
+    ) == (4, 2, 3, 5)
+    assert result.confusion.precision == pytest.approx(0.6666666666666666)
     assert result.confusion.recall == pytest.approx(0.5714285714285714)
-    assert result.confusion.fbeta(2.0) == pytest.approx(0.6060606060606061)
+    assert result.confusion.fbeta(2.0) == pytest.approx(0.588235294117647)
     # One of those four true positives is provisional, not won: 'Field Officer'
     # is deferred to Layer 2, which this harness cannot replay and which fails
     # closed. See test_an_unresolvable_location_is_kept_but_flagged_for_layer_two.
     assert len(result.pending_location_wanted) == 1
 
     # (layer, reached, dropped, false negatives it caused)
+    # WP8f: 'Office Coordinator' (an empty location field, label 'discard') no
+    # longer drops at the rules layer — it is admitted outright, one fewer
+    # rules-layer drop and one more job reaching every layer after it.
     assert [(r.layer, r.reached, r.dropped, r.dropped_wanted) for r in result.layers] == [
-        (LAYER_RULES, 14, 3, 1),
-        (LAYER_TITLE_KEYWORD, 11, 2, 1),
-        (LAYER_SENIORITY, 9, 2, 1),
-        (LAYER_NON_ENGLISH, 7, 1, 0),
-        (LAYER_LANGUAGE, 6, 1, 0),
+        (LAYER_RULES, 14, 2, 1),
+        (LAYER_TITLE_KEYWORD, 12, 2, 1),
+        (LAYER_SENIORITY, 10, 2, 1),
+        (LAYER_NON_ENGLISH, 8, 1, 0),
+        (LAYER_LANGUAGE, 7, 1, 0),
     ]
 
     assert [(v.job.title, v.layer, v.rule) for v in result.false_negatives] == [

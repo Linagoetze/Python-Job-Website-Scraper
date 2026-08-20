@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
+    _LOCATION_EMPTY_ADMITTED_REASON,
     _UNRESOLVED_PENDING_REASON,
     apply_language_filter,
     apply_non_english_text_filter,
@@ -237,17 +238,19 @@ class TestMatchesRules:
             ok, _ = _unresolvable(_job(location=named))
             assert not ok, named
 
-    def test_empty_location_is_still_its_own_case(self):
-        # An extractor gap (WP8e) must not be laundered into "unresolvable":
-        # there is nothing on the page to resolve it against.
+    def test_empty_location_is_admitted_not_deferred(self):
+        # An extractor gap (WP8e) must not be laundered into "unresolvable"
+        # (WP8d) — there is nothing on the page to resolve it against, so
+        # WP8f settles it here, permanently, rather than deferring to Layer 2.
         ok, reasons = matches_rules(
             _job(location="", raw_snippet="Analyst"),
             _UNRESOLVABLE,
             None,
             non_place_pattern=_NON_PLACE_PATTERN,
         )
-        assert not ok
-        assert reasons == ["locations: no location given"]
+        assert ok
+        assert reasons == [_LOCATION_EMPTY_ADMITTED_REASON]
+        assert _UNRESOLVED_PENDING_REASON not in reasons
 
     def test_listed_city_never_becomes_pending(self):
         ok, reasons = _unresolvable(_job(location="Malmö, Sweden"))

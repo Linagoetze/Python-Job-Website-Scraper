@@ -34,8 +34,8 @@ from job_scraper.drops import (
     rule_counts,
 )
 from job_scraper.filtering import (
+    _LOCATION_EMPTY_ADMITTED_REASON,
     RULE_LOC_CONDITIONAL_UNGATED,
-    RULE_LOC_EMPTY,
     RULE_LOC_REMOTE_OVERRIDDEN,
     RULE_LOC_UNLISTED_CITY,
     apply_non_english_text_filter,
@@ -167,7 +167,8 @@ def _rules_by_slug(rows: list[dict[str, Any]]) -> dict[str, str]:
 
 class TestLocationDropRules:
     """7,378 of one real run's 8,154 exclusions happened here, under a single
-    undifferentiated reason. These are the four cases worth telling apart."""
+    undifferentiated reason. These are the cases worth telling apart — three
+    that still reject, and (WP8f) an empty field, which no longer does."""
 
     _RULES_WITH_GATE = {
         "locations": ["Berlin"],
@@ -182,8 +183,14 @@ class TestLocationDropRules:
         assert not ok
         return reasons[0]
 
-    def test_missing_location_field(self) -> None:
-        assert self._reason("", self._RULES_WITH_GATE) == RULE_LOC_EMPTY
+    def test_missing_location_field_is_admitted_not_rejected(self) -> None:
+        # WP8f: an empty field is not a place that failed to match — it is
+        # settled outright at Layer 0, permanently, with its own reason.
+        job = _job("Analyst", location="", slug="x", snippet="Analyst")
+        hybrid_pattern = build_hybrid_pattern(self._RULES_WITH_GATE)
+        ok, reasons = matches_rules(job, self._RULES_WITH_GATE, hybrid_pattern)
+        assert ok
+        assert reasons == [_LOCATION_EMPTY_ADMITTED_REASON]
 
     def test_city_not_on_the_list(self) -> None:
         assert self._reason("Lisbon", self._RULES_WITH_GATE) == RULE_LOC_UNLISTED_CITY
@@ -220,7 +227,8 @@ def test_every_layer_records_its_exclusions(env: Path) -> None:
     for row in rows:
         by_layer[str(row["layer"])] = by_layer.get(str(row["layer"]), 0) + 1
 
-    assert by_layer[LAYER_RULES] == 3  # the three location cases
+    # Two location cases: 'no-location' (WP8f) is now admitted, not dropped.
+    assert by_layer[LAYER_RULES] == 2
     assert by_layer[LAYER_TITLE_KEYWORD] == 1
     assert by_layer[LAYER_SENIORITY] == 1
     assert by_layer[LAYER_LANGUAGE] == 1
@@ -237,7 +245,9 @@ def test_each_rule_names_the_specific_thing_that_fired(env: Path) -> None:
     rules = _rules_by_slug(_logged(env))
 
     assert rules["unlisted-city"] == RULE_LOC_UNLISTED_CITY
-    assert rules["no-location"] == RULE_LOC_EMPTY
+    # 'no-location' is no longer in this table at all — WP8f admits it, so it
+    # is never dropped and never logged.
+    assert "no-location" not in rules
     assert rules["remote-overridden"] == RULE_LOC_REMOTE_OVERRIDDEN
     # The keyword and its match type, not just "a title keyword matched".
     assert rules["keyword"] == "title_keyword: 'marketing' (word)"
@@ -278,8 +288,10 @@ def test_logging_costs_no_extra_http_request(env: Path, monkeypatch: pytest.Monk
     summary = _run(env)
 
     assert len(fetched) == summary.jobs_new_checked + summary.jobs_stored_rechecked
-    # None of the jobs dropped before Layer 2 was opened.
-    dropped_early = {"unlisted-city", "no-location", "remote-overridden", "keyword",
+    # None of the jobs dropped before Layer 2 was opened. 'no-location' is not
+    # in this set: WP8f admits it at Layer 0, so it does reach Layer 2, on the
+    # same footing as any other newly-seen job with no prior verdict on it.
+    dropped_early = {"unlisted-city", "remote-overridden", "keyword",
                      "seniority", "lang", "blocked"}
     assert not any(url.rsplit("/", 1)[-1] in dropped_early for url in fetched)
 
@@ -372,7 +384,9 @@ def test_filters_narrow_both_the_listing_and_the_counts(env: Path) -> None:
         detail = store.exclusions(run_id, layer="2-detail")
         elsewhere = store.exclusions(run_id, source="nothing-like-this")
 
-    assert len(located) == 3
+    # Two, since WP8f: 'no-location' is admitted, not dropped, so it no longer
+    # contributes a "locations: ..." row here.
+    assert len(located) == 2
     assert all("locations" in r["rule"] for r in located)
     assert len(detail) == 3
     assert elsewhere == []
@@ -425,7 +439,8 @@ def test_cli_exports_csv(env: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     lines = out_path.read_text(encoding="utf-8").splitlines()
     assert lines[0].startswith("run_id,dedupe_key,title,company,source_name,location,layer,rule")
-    assert len(lines) == 4  # header + the three Layer 0 drops
+    # header + the two Layer 0 drops (WP8f: 'no-location' is admitted, not one)
+    assert len(lines) == 3
 
 
 def test_cli_without_a_run_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

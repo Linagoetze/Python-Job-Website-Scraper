@@ -49,6 +49,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8c | Offline evaluation harness | 2.5 hr | Opus 5 | `think hard` | done | `wp8c-eval-harness` |
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
+| 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -168,6 +169,21 @@ Record any decision a future session would otherwise have to re-derive.
   and neither may be persisted as `'rejected'`. One key on the job dict, not
   one per filter — a second flag is one `pipeline.py` forgets to check, and the
   cost of forgetting is a job permanently lost to a timeout.
+- **An empty location field is a fourth Layer 0 outcome, not the third one
+  wearing a different rule string (WP8f).** WP8d gave `matches_rules` a state
+  for "present, but names no place" (a placeholder like "2 Locations"),
+  deferred to Layer 2 because the description might name a real city. An
+  empty field is not that: there is no page text a Layer 2 fetch could read a
+  location off, because none was ever captured. So WP8f admits it outright at
+  Layer 0, permanently, under its own `_LOCATION_EMPTY_ADMITTED_REASON` —
+  deliberately *not* wired into `_HYBRID_PENDING_REASON`/
+  `_UNRESOLVED_PENDING_REASON`'s machinery, so it costs no detail fetch and
+  Layer 2 never goes looking for it. Consequence: `RULE_LOC_EMPTY` lost its
+  only call site (`_location_drop_rule` returned it exclusively for an empty
+  field, and `matches_rules` now intercepts every empty field before that
+  function is ever reached) and was deleted, per WP8a's rule that a drop-log
+  rule string going silent is a contract change to call out, not a private
+  implementation detail.
 - **WP8's original premise died with WP7, and its prompt was rewritten
   (2026-08-20).** As first written, WP8 opened "with LLM scoring in place" and
   justified every deletion with "subsumed by the scorer". The scorer is off —
@@ -2135,6 +2151,112 @@ this population needed it once the real bug was found.
 can't score this work regardless (it replays the old empty location value),
 and the refresh instruction below applies after a real run against the fixed
 extractors, which is the owner's step, not this session's.
+
+---
+
+## WP8f — Empty location passthrough
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8f only.
+
+An empty `location` field must stop rejecting a job on its own. WP8e confirmed
+real postings hit RULE_LOC_EMPTY for want of a location nobody — extractor or
+listing page — ever had.
+
+Branch wp8f-empty-location-passthrough. Commit, do not push. Update the plan
+file.
+```
+
+### Result
+
+`matches_rules` in `job_scraper/filtering.py` gained a fourth Layer 0 outcome.
+In the `locations or conditional_locations` branch, a new `elif not
+loc_field.strip()` case sits right before the final rejecting `else`: an empty
+field is admitted with its own reason, `_LOCATION_EMPTY_ADMITTED_REASON =
+"locations: no location given (admitted)"`. Unlike WP8d's two pending
+reasons, this one is not wired into `_resolve_hybrid`/
+`_resolve_unresolved_location`/`UNVERIFIED_KEY` in `experience_filter.py` —
+the job is settled here, permanently, and never carries a marker Layer 2
+would go looking for or costs a detail fetch it would not otherwise need.
+
+`_location_names_no_place` (WP8d's placeholder detector) and its position in
+the branch chain were not touched — it already refuses an empty field by
+design (`if not loc_field_cf.strip(): return False`), so the new branch and
+WP8d's stay disjoint exactly as the package asked: empty, placeholder, match,
+and non-matching place are four cases that can never overlap.
+
+**`RULE_LOC_EMPTY` is deleted.** `_location_drop_rule` returned it only when
+`loc_field` was empty, and the new branch now intercepts every empty case
+before `_location_drop_rule` is ever called from `matches_rules` — its only
+call site. The dead branch and the constant are both gone; `_location_drop_rule`'s
+docstring says so. Per WP8a's decision-log entry, a drop-log rule string going
+silent is a contract change, not a private implementation detail, so this is
+called out here rather than left implicit: any external tooling grouping on
+`RULE_LOC_EMPTY`'s string will no longer see it in the drop log or in future
+`eval.py` output.
+
+`pipeline.py` logs the volume alongside the existing `conditional_admits`/
+`unresolved_admits` debug lines: `"Layer 0 (rules): %d jobs admitted with no
+location given at all"`. Unlike the other two, this is explicitly not a
+Layer-2-cost warning — the comment says why.
+
+### Measured (WP8c harness, `data/curated/labels.csv`, 514 labelled jobs)
+
+Baseline = this session's starting commit (`394f8c5`); after = this change.
+No live scrape; both runs are `python -m job_scraper.eval` against the
+owner's real gold set and `job_scraper/config/`.
+
+| | before | after | Δ |
+|---|---|---|---|
+| review kept (true positives) | 32 | 41 | +9 |
+| review dropped (false negatives) | 42 | 33 | −9 |
+| discard kept (false positives) | 84 | 97 | +13 |
+| precision | 0.276 | 0.297 | +0.021 |
+| recall | 0.432 | 0.554 | +0.122 |
+| F2 | 0.388 | 0.472 | +0.084 |
+
+Nine previously-lost `review`-labelled jobs now survive Layer 0 outright
+(not deferred — WP8f settles them, it does not merely postpone them like
+WP8d's third state). The cost is thirteen more `discard`-labelled jobs also
+kept, i.e. more rows the owner scrolls past — the expected shape of loosening
+a rule that used to reject on sight, and the CLAUDE.md-endorsed trade (a false
+positive costs a line in a spreadsheet; a false negative costs a job the
+owner never learns exists).
+
+### Tests
+
+`tests/test_filtering.py`: `test_empty_location_is_admitted_not_deferred`
+(replacing the old rejection-pinning test) asserts an empty field passes with
+exactly `[_LOCATION_EMPTY_ADMITTED_REASON]` and does not also carry
+`_UNRESOLVED_PENDING_REASON`; the existing placeholder tests
+(`test_placeholder_location_count_is_pending_not_dropped`,
+`test_the_code_shapes_work_without_any_configured_terms`) were left as-is and
+confirm a placeholder field still takes WP8d's deferred path, unaffected.
+
+`tests/test_drop_log.py`: `TestLocationDropRules.test_missing_location_field_is_admitted_not_rejected`
+replaces the old drop-rule pin. The full-pipeline fixture's `no-location` job
+(empty field) now reaches Layer 2 like any newly-seen job instead of dying at
+Layer 0, so its downstream assertions were updated to match: the Layer-0 drop
+count, the per-rule table (`no-location` no longer appears in it at all), the
+`dropped_early` set in the no-extra-HTTP-request test, the location-substring
+filter count, and the CSV export row count.
+
+`tests/test_eval.py`: dropped the `RULE_LOC_EMPTY` import; `RULE_LOC_EMPTY` on
+the fixture's "Office Coordinator" job (empty location, labelled `discard`) is
+now kept rather than dropped, which shifts it from a true negative to a false
+positive. `test_regression_pins_current_ladder`'s confusion matrix, precision/
+recall/F2, and the per-layer `reached`/`dropped` counts were recomputed by
+hand against the new `replay()` output (not guessed) and re-pinned; the false
+negative listing itself is unchanged, since "Office Coordinator" was never a
+wanted job.
+
+Full suite: 359 passed (up from 356), `ruff check .` clean.
+
+Not touched, per scope: `_location_names_no_place`'s ordering and WP8d's two
+pending states, both as instructed; `eval.py` itself needed no code change —
+the new state naturally falls out as an ordinary "kept" verdict with neither
+pending flag set, which is exactly what a permanently-settled Layer 0 outcome
+should look like to the harness.
 
 ---
 
