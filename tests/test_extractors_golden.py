@@ -54,11 +54,17 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "dsv": {
+        # WP8g (2026-08-21): `department` was "7 Aug 2026" — the posting date,
+        # picked up by the positional heuristic as "the second text that is not
+        # the title". The classic layout labels this cell `span.jobFacility`
+        # ("Managerial", "Freight Forwarding"), so it is now read structurally
+        # like the tile layout's. `location` is unchanged: the heuristic already
+        # landed on it, and `span.jobLocation` holds the same string.
         "count": 10,
         "first_job": {
             "source_name": "dsv",
             "title": "Manager - Air Import",
-            "department": "7 Aug 2026",
+            "department": "Managerial",
             "location": "Chester, PA, US, 19013",
             "listing_url": "https://jobs.dsv.com/search/",
             "detail_url": (
@@ -67,7 +73,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "apply_url": (
                 "https://jobs.dsv.com/job/Chester-Manager-Air-Import-PA-19013/1402649033/"
             ),
-            "raw_snippet": "Manager - Air Import 7 Aug 2026 Chester, PA, US, 19013",
+            "raw_snippet": "Manager - Air Import Managerial Chester, PA, US, 19013",
         },
     },
     "iss": {

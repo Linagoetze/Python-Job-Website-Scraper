@@ -2608,12 +2608,13 @@ was already `tr` before the change (`find_parent(["li","tr","div"])` and
 `find_parent(["li","tr"])` agree here). Golden output is byte-identical,
 including `department: "7 Aug 2026"`.
 
-That date-as-department is a real pre-existing quirk, and it is **deliberately
-left alone**. Reading `span.jobFacility` would correct it to `"Managerial"`, but
-`department` is part of `filtering._haystack`, so changing it changes which
-keyword rules fire — and WP8's whole job is measuring what those keywords cost.
-Correcting it here would move WP8's baseline underneath it for a field this
-package was not sent to fix. Noted for WP8 or later, not done.
+That date-as-department was a real pre-existing quirk. It was first left alone
+on the grounds that `department` feeds `filtering._haystack` and WP8 measures
+keyword costs against it — **and that reasoning was wrong.** `eval.py`'s
+`MISSING_FIELDS` is `("raw_snippet", "department")`: the gold set has no
+department column at all, so the harness is blind to the field in both
+directions and correcting it cannot move WP8's baseline. Owner's call, same
+session: fix it now rather than open another package. See the fourth commit.
 
 *Novo Nordisk* and *Coloplast* have no fixture, so the argument has to be made
 rather than run — and it can be made from the gold set, which is evidence, not
@@ -2670,12 +2671,25 @@ states; DSV's department quirk, above; `niras.py`, below.
   `if fetch_text is fetch_rendered:` / `else:` branches are **byte-identical**,
   so the conditional decides nothing at all — both arms build
   `partial(fetch_rendered, wait_for_selector=_WAIT_SELECTOR)`. It is the last
-  source that cannot be fixture-captured. Fixing it is a two-line copy of what
-  `successfactors_html` just got, but it has no fixture, so the fix cannot be
-  verified in this package — capture first, then fix, in that order, exactly as
-  WP8g had to.
-- **DSV's `department` holds a posting date**, not a department. See step 3 for
-  why it was left, and why WP8 should decide it rather than a location package.
+  source that cannot be fixture-captured.
+
+  The owner asked to fold the fix in here too, and it was **not** done, because
+  it is not the same two-line change `successfactors_html` got. That module was
+  safe to convert because the caller already hands ISS a rendering fetcher.
+  `niras.extract` says "Always use Playwright" and its docstring says "Static
+  HTML contains only the filter shell" — so if `sources.yaml` has niras as
+  `strategy: static`, honouring the given fetcher stops it rendering, it parses
+  the shell, and it returns **zero jobs**: a silent empty list dressed as "no
+  vacancies", which is the failure this project ranks second only to losing
+  data. The identical branches read like exactly that discovery, half-made.
+
+  `sources.yaml` is gitignored and absent from the working tree, so the session
+  could not check. **This is blocked on one fact: niras's `strategy`.** If
+  `dynamic`, the conversion is inert and safe and the ISS two-stage applies
+  (convert, capture, pin). If `static`, the honest fix changes `sources.yaml`
+  *and* the extractor together, which is the owner's file to edit, and is a
+  deliberate change rather than a tidy-up. Either way the parse cannot be
+  validated until a fixture exists.
 
 ### After the session, before WP8
 

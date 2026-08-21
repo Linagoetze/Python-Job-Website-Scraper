@@ -34,18 +34,24 @@ from bs4 import BeautifulSoup
 _WAIT_SELECTOR = 'a[href^="/job/"]'
 
 # SuccessFactors ships two row layouts, and they need different reading.
+# Both label their cells, so both are read structurally; the positional
+# heuristic is only a last resort for a skin neither branch recognises.
 #
-# Classic table (DSV, and every static instance here): <tr> of <td>s, the
-# location in `span.jobLocation`. The positional "first text that is not the
-# title" heuristic below happens to land on it.
+# Classic table (DSV, and every static instance here): <tr> of <td>s, with
+# `span.jobLocation` in `td.colLocation` and `span.jobFacility` in
+# `td.colFacility`. The heuristic *happened* to land on the location here, but
+# it read the posting date as the job family.
 #
 # Modern tile (ISS): <li class="job-tile"> holding `div.section-field.<kind>`
 # blocks, each a `span.sr-only` naming the field followed by a div of value.
 # The heuristic cannot read this layout at all: the fields are ordered job
 # category first, so even ignoring the labels the "first text" is a department.
-# Read the labelled blocks instead, the way workday.py prefers its dedicated
-# locations element over its subtitle list.
+#
+# Reading the labels rather than guessing over them is what workday.py already
+# does when it prefers its dedicated locations element over its subtitle list.
 _TILE_FIELD_SELECTOR = "div.section-field"
+_CLASSIC_LOCATION_SELECTOR = "span.jobLocation"
+_CLASSIC_DEPARTMENT_SELECTOR = "span.jobFacility"
 # `location` is the single-site field, `multilocation` the multi-site one; ISS
 # uses the latter throughout. Order is preference, not precedence in markup.
 _TILE_LOCATION_KINDS = ("location", "multilocation")
@@ -86,6 +92,18 @@ def _visible_strings(container: Any) -> list[str]:
     return out
 
 
+def _classic_field(row: Any, selector: str) -> str | None:
+    """Read a classic-table cell, or None if this row has no such cell.
+
+    DSV renders each row three times (desktop/tablet/phone) and every copy
+    carries the same text, so the first match is as good as any.
+    """
+    element = row.select_one(selector)
+    if element is None:
+        return None
+    return " ".join(_visible_strings(element)).strip()
+
+
 def _tile_field(row: Any, kinds: tuple[str, ...]) -> str | None:
     """Read a labelled `section-field` block, or None if this row has no such field.
 
@@ -110,6 +128,37 @@ def _set_startrow(base_url: str, startrow: int) -> str:
     # preserve other params (q, sortColumn, sortDirection …)
     new_query = urlencode({k: v[0] for k, v in params.items()})
     return urlunparse(parsed._replace(query=new_query))
+
+
+def _read_fields(container: Any, title: str) -> tuple[str, str]:
+    """Location and department for one posting, by whichever layout this row is.
+
+    Both labelled layouts are tried before the positional heuristic, because a
+    site that names its fields is telling us which is which and guessing over
+    the top of that is how the date ended up in `department`. The heuristic
+    survives only for a skin neither branch recognises.
+    """
+    for reader in (
+        lambda: (
+            _tile_field(container, _TILE_LOCATION_KINDS),
+            _tile_field(container, _TILE_DEPARTMENT_KINDS),
+        ),
+        lambda: (
+            _classic_field(container, _CLASSIC_LOCATION_SELECTOR),
+            _classic_field(container, _CLASSIC_DEPARTMENT_SELECTOR),
+        ),
+    ):
+        field_location, field_department = reader()
+        # One labelled field is enough to identify the layout. The other may be
+        # legitimately absent, and "" is an honest answer WP8f admits at Layer 0.
+        if field_location is not None or field_department is not None:
+            return field_location or "", field_department or ""
+
+    texts = [t for t in _visible_strings(container) if t != title]
+    # Heuristic: first non-title text is usually location or job family
+    location = texts[0] if texts else ""
+    department = texts[1] if len(texts) >= 2 else ""
+    return location, department
 
 
 def _parse_page(
@@ -141,18 +190,7 @@ def _parse_page(
         department = ""
         container = a.find_parent(["li", "tr"]) or a.find_parent("div")
         if container:
-            field_location = _tile_field(container, _TILE_LOCATION_KINDS)
-            field_department = _tile_field(container, _TILE_DEPARTMENT_KINDS)
-            if field_location is not None or field_department is not None:
-                location = field_location or ""
-                department = field_department or ""
-            else:
-                texts = [t for t in _visible_strings(container) if t != title]
-                # Heuristic: first non-title text is usually location or job family
-                if texts:
-                    location = texts[0]
-                if len(texts) >= 2:
-                    department = texts[1]
+            location, department = _read_fields(container, title)
 
         raw_snippet = " ".join(x for x in [title, department, location] if x)
         out.append(
