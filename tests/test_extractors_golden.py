@@ -352,6 +352,35 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "niras": {
+        # WP8g follow-on (2026-08-21): captured once the fetcher bypass was
+        # fixed, and it immediately showed a second bug. `title` had been "the
+        # first child's text", but the anchor's only element child is the
+        # wrapping `div.box-content`, so every title arrived with the whole
+        # card appended — "… Country: Tunisia Employment: Temporary
+        # Commencement: 02/09/2024 Position length: 300 Deadline: Sep 1, 2026".
+        # Now read from the labelled `p.headline`.
+        #
+        # Two jobs is correct, not a truncated capture: no filter input is
+        # checked and the page's own counter reads "Vacant positions: 2".
+        "count": 2,
+        "first_job": {
+            "source_name": "niras",
+            "title": "7.004 Expert Communication institutionelle",
+            "department": "",
+            "location": "Tunisia",
+            "listing_url": "https://www.niras.com/jobs/vacant-positions/",
+            "detail_url": (
+                "https://www.niras.com/jobs/vacant-positions/"
+                "cvtp-8491-7004-expert-communication-institutionelle/"
+            ),
+            "apply_url": (
+                "https://www.niras.com/jobs/vacant-positions/"
+                "cvtp-8491-7004-expert-communication-institutionelle/"
+            ),
+            "raw_snippet": "7.004 Expert Communication institutionelle Tunisia",
+        },
+    },
     "path": {
         # Not a bug: workday.py's location selectors both work here (the busuu
         # golden above pins the same code succeeding). 9 of these 20 rows carry

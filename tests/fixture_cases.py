@@ -35,6 +35,7 @@ from job_scraper.extractors import (  # noqa: E402
     greenhouse,
     impactpool,
     jpal,
+    niras,
     successfactors_html,
     teamtailor,
     workday,
@@ -139,6 +140,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "jpal.html",
         "https://www.povertyactionlab.org/careers",
         lambda url, fetch: jpal.extract(url, fetch, source_name="jpal"),
+    ),
+    "niras": (
+        "niras.html",
+        "https://www.niras.com/jobs/vacant-positions/",
+        lambda url, fetch: niras.extract(url, fetch, source_name="niras"),
     ),
     "path": (
         "path.html",

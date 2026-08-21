@@ -50,7 +50,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
-| 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed, `iss.html` captured, all 20 rows now give a real place; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
+| 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -2679,33 +2679,57 @@ states; DSV's department quirk, above; `niras.py`, below.
 
 ### Folded in, and what is left
 
-- **`niras.py`'s bypass is fixed too, and it is stage 1 of 2** (owner's call,
-  same session). Its `if fetch_text is fetch_rendered:` / `else:` branches were
-  **byte-identical** — both built `partial(fetch_rendered, …)` — so the
-  conditional decided nothing and the capture recorder never fired.
+- **`niras.py`'s bypass is fixed, the fixture is captured, and it hid a second
+  bug — exactly the shape ISS had** (owner's call, same session). Its
+  `if fetch_text is fetch_rendered:` / `else:` branches were **byte-identical**
+  — both built `partial(fetch_rendered, …)` — so the conditional decided
+  nothing and the capture recorder never fired.
 
-  This was held back until the owner confirmed one fact, because it is not
-  unconditionally safe: `niras.extract` said "Always use Playwright" and its
-  docstring says the static HTML is only the filter shell, so honouring the
-  given fetcher would have returned **zero jobs** — a silent empty list dressed
-  as "no vacancies" — had the caller been handing it a plain one. Confirmed
-  2026-08-21: `sources.yaml` has `niras` as `strategy: dynamic`, so the caller
-  already passes a rendering fetcher and the conversion is inert at runtime.
-  Verified both directions: a rendering fetcher still gets the selector wait and
-  the recorder now fires with `?pageSize=25&page=1`; a plain fetcher is now used
-  as given rather than silently replaced.
+  This was held back until the owner confirmed one fact, because unlike
+  `successfactors_html` it was not unconditionally safe: `niras.extract` said
+  "Always use Playwright" and its docstring says the static HTML is only the
+  filter shell, so honouring a plain fetcher would have parsed the shell and
+  returned **zero jobs** — a silent empty list dressed as "no vacancies".
+  Confirmed 2026-08-21: `sources.yaml` has `niras` as `strategy: dynamic`, so
+  the caller already passes a rendering fetcher and the conversion is inert at
+  runtime. Verified both directions: a rendering fetcher still gets the selector
+  wait and the recorder now fires; a plain fetcher is now used as given rather
+  than silently replaced.
 
-  **Stage 2 is the owner's:** `python scripts/capture_fixtures.py niras`, then
-  wire `niras` into `FIXTURE_CASES` and pin a golden. Until that fixture exists
-  niras's *parsing* is still unvalidated — the bypass is fixed, the extractor is
-  not audited. Note its `<generic>`-tag parsing and `Country:`-prefixed fields
-  are unlike anything else here and are the obvious place for a second bug.
+  **The capture then showed the second bug immediately.** `title` was "the first
+  child's text", but the anchor's only element child is the wrapping
+  `div.box-content`, so every title arrived with the entire card appended:
+
+  ```
+  7.004 Expert Communication institutionelle Country: Tunisia Employment:
+  Temporary Commencement: 02/09/2024 Position length: 300 Deadline: Sep 1, 2026
+  ```
+
+  Same root cause as ISS, and the same fix: the card labels its title
+  `p.headline`, so read the label instead of guessing positionally. Both rows
+  were affected. The measured filtering cost today is **nil** — the injected
+  metadata happens to match no exclude keyword — but `title` is what the store
+  keeps and the spreadsheet shows, and the pollution is latent for any future
+  keyword matching `Temporary`, a date, or `Position length`. The module
+  docstring's markup sketch was wrong too (it showed `<generic>` children that
+  do not exist) and now matches the real card.
+
+  Wired into `FIXTURE_CASES` with a golden. **Two jobs is correct, not a
+  truncated capture**: no filter input is checked and the page's own counter
+  reads "Vacant positions: 2", so the extractor found everything there is.
 
   With this, **no extractor in the project fetches through a private callable**.
   Verified rather than assumed: no module under `job_scraper/extractors/` still
-  imports or calls `fetch_rendered`; the three that mention it
-  (`workday`, `successfactors_html`, `niras`) do so only in the comment
-  explaining why they do not. Every source is now capturable.
+  imports or calls `fetch_rendered`; the three that mention it (`workday`,
+  `successfactors_html`, `niras`) do so only in the comment explaining why they
+  do not. Every source is now capturable, and both sources that were never
+  capturable turned out to be carrying a data bug behind the bypass — which is
+  the argument for capturing the rest rather than waiting for symptoms.
+
+- **Noted, not fixed: `tests/fixtures/niras.html` is 1.2 MB**, roughly a third
+  of the whole fixture directory (3.2 MB) and twice the next largest. It is a
+  heavy corporate page and the sanitiser has already stripped its scripts. Not
+  a problem today; worth a thought if the directory keeps growing.
 
 ### After the session, before WP8
 

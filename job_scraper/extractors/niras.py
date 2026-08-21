@@ -4,13 +4,21 @@ The listing page renders job cards client-side. Static HTML contains only
 the filter shell, so this source is `strategy: dynamic` in sources.yaml and
 the caller hands it a rendering fetcher; this module uses what it is given.
 
-After JS execution each job appears as:
+After JS execution each job appears as a single labelled card:
     <a href="/jobs/vacant-positions/cvtp-NNNN-slug/">
-      <generic>Title</generic>
-      <generic>Country: …</generic>
-      <generic>Employment: …</generic>
-      <generic>Deadline: …</generic>
+      <div class="box-content">
+        <p class="headline">Title</p>
+        <p class="list-tags">Country: <span>…</span></p>
+        <p class="list-tags">Employment: <span>…</span></p>
+        <p class="list-tags">Commencement: <span>…</span></p>
+        <p class="list-tags">Position length: <span>…</span></p>
+        <p class="list-tags">Deadline: <span>…</span></p>
+      </div>
     </a>
+
+Note the single wrapping <div>: the anchor has exactly one element child, so
+"the first child's text" is the entire card, metadata included. Read the
+labelled `p.headline` instead.
 
 Pagination: ?pageSize=25&page=N — loop until a page returns no job links.
 """
@@ -25,6 +33,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 _JOB_PATH = "/jobs/vacant-positions/cvtp"
+_TITLE_SELECTOR = "p.headline"
 _PAGE_SIZE = 25
 _WAIT_SELECTOR = f'a[href*="{_JOB_PATH}"]'
 
@@ -40,13 +49,20 @@ def _parse_page(html: str, listing_url: str, source_name: str) -> list[dict[str,
     for a in soup.find_all("a", href=lambda h: h and _JOB_PATH in h):
         href = str(a["href"]).strip()
         detail_url = urljoin(listing_url, href)
-        # Job cards wrap text in <generic> tags; grab the first non-empty child text
-        children_text = [
-            c.get_text(" ", strip=True)
-            for c in a.children
-            if hasattr(c, "get_text") and c.get_text(strip=True)
-        ]
-        title = children_text[0] if children_text else a.get_text(" ", strip=True)
+        # The card labels its title `p.headline`. Prefer that over any
+        # positional guess: the anchor's only element child is the wrapping
+        # div, so "the first child's text" is title *and* every metadata line
+        # concatenated ("… Employment: Temporary Deadline: Sep 1, 2026").
+        headline = a.select_one(_TITLE_SELECTOR)
+        if headline is not None:
+            title = headline.get_text(" ", strip=True)
+        else:
+            children_text = [
+                c.get_text(" ", strip=True)
+                for c in a.children
+                if hasattr(c, "get_text") and c.get_text(strip=True)
+            ]
+            title = children_text[0] if children_text else a.get_text(" ", strip=True)
         if not title:
             continue
 
