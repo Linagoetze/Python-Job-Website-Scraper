@@ -97,6 +97,28 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
             base_search_url="https://jobs.issworld.com/search/",
         ),
     ),
+    "novo_nordisk": (
+        "novo_nordisk.html",
+        "https://careers.novonordisk.com/search",
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="novo_nordisk",
+            page_step=100,
+            base_search_url="https://careers.novonordisk.com/search",
+        ),
+    ),
+    "coloplast": (
+        "coloplast.html",
+        "https://careers.coloplast.com/search/",
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="coloplast",
+            page_step=25,
+            base_search_url="https://careers.coloplast.com/search/",
+        ),
+    ),
     "impactpool": (
         "impactpool.html",
         "https://www.impactpool.org/search",

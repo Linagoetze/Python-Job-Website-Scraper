@@ -253,6 +253,20 @@ Record any decision a future session would otherwise have to re-derive.
   underneath it for something this package was not sent to fix. The general form:
   when a field feeds the harness, improving it is a measurement change, and it
   belongs to the package doing the measuring.
+- **Reasoning identifies the layout; only a fixture shows the data (WP8g,
+  2026-08-21).** Four SuccessFactors sources, four fixtures captured in this
+  package, and the score is stark: the layout was predicted correctly every
+  time, and the *data* was wrong in three of four. ISS returned a label instead
+  of a location; NIRAS returned the whole card instead of a title; Coloplast
+  dropped 6 of 25 postings silently and blanked every department. Only
+  novo_nordisk — the one predicted clean — was clean. Two of those bugs were
+  invisible until the fetcher bypass was fixed, and the third was invisible
+  until someone looked at the markup rather than at the gold set. The gold set
+  can prove a source is *healthy enough to produce plausible strings*; it cannot
+  show what the page held that never reached it. Consequence: treat "this source
+  has no fixture" as an open question about correctness, not as a low-priority
+  chore — and never let a paragraph of reasoning stand in for a capture when a
+  capture is one command away.
 - **Before honouring a fetcher, check what the caller actually passes (WP8g,
   2026-08-21).** Converting an extractor from "always render for myself" to
   "use what I am given" is only inert if the caller hands it a rendering
@@ -2647,6 +2661,13 @@ inert:
 If either ever migrates to the tile layout, they now land on the structural
 branch and keep working, which is the point of not special-casing ISS.
 
+**Superseded — read the follow-on section below.** The layout half of this
+argument held for both sources. The "both changes are inert" half did not: it
+predates the classic structural read added later in the session, and coloplast
+turned out to differ on every row, for two reasons the reasoning could not have
+reached. The prediction is left here rather than edited away, because the gap
+between it and the capture is the most useful thing this package produced.
+
 **Step 4 — the fixture is wired in.** `iss` added to `FIXTURE_CASES` in
 `tests/fixture_cases.py` with `page_step=20` and
 `base_search_url="https://jobs.issworld.com/search/"`, so the capture-script
@@ -2783,21 +2804,45 @@ the fifth needs the network and is the owner's.
   output is the golden files**, and that is where every claim in this package
   was verified.
 
-- **Still open, and it needs the network: `novo_nordisk` and `coloplast` are
-  reasoned about, not tested.** The argument in step 3 is inference from the
-  gold set — sound, but it is not a fixture. They are the last two
-  SuccessFactors sources without one, and both now run code this package
-  changed. Two commands close it:
+- **`novo_nordisk` and `coloplast` are now captured, and the inference about
+  them was half wrong.** Both are the classic table layout on `tr.data-row`,
+  with no `section-field` and no `sr-only`, exactly as argued. But the argument
+  that the package was *inert* for them was written before the classic
+  structural read was added at the owner's request, and it did not survive:
 
-  ```
-  python scripts/capture_fixtures.py novo_nordisk
-  python scripts/capture_fixtures.py coloplast
-  ```
+  - **novo_nordisk: inert, confirmed.** All 100 rows byte-identical to `main`.
+  - **coloplast: all 19 rows changed**, and the capture then exposed two bugs
+    that no amount of reasoning would have found.
 
-  Then wire each into `FIXTURE_CASES` and pin a golden — note that
-  `test_every_fixture_has_a_golden` means the two must land together, so this
-  cannot be pre-staged. Given that both sources this package *did* capture were
-  each hiding a data bug, the expected value of doing it is not low.
+  **Bug 1 — silent job loss, the project's worst failure mode.** Coloplast hosts
+  sub-brands, and their postings link as `/Kerecis/job/…` and `/Atos/job/…`.
+  `_parse_page` matched only hrefs *starting* `/job/`, so **6 of 25 rows were
+  dropped with no error and no empty field** — the page simply appeared to have
+  19 jobs. The href match now allows one optional leading segment
+  (`^(?:/[^/]+)?/job/`): deliberately one, so it admits a brand prefix without
+  matching arbitrary deep paths. Verified across all four fixtures — it recovers
+  exactly those 6 and changes nothing for DSV, Novo Nordisk or ISS. A knock-on:
+  the count rising 19 → 25 also un-breaks pagination, which was stopping early
+  because `len(jobs) < page_step` was true only because of the dropped rows.
+
+  **Bug 2 — the department column has a third class name.** DSV and Novo Nordisk
+  label it `span.jobFacility` under a "Category" heading; Coloplast uses
+  `span.jobDepartment` under "Job Family". Reading only `jobFacility` blanked
+  every Coloplast row. The selector now accepts both. Two of the 25 rows are
+  still blank, and that is honest — their markup is literally
+  `<span class="jobDepartment"></span>`.
+
+  Both are pinned: goldens for both sources, plus
+  `test_coloplast_keeps_sub_brand_postings`, which fails if the href match ever
+  narrows back. Checked that it does fail on the old pattern rather than
+  assuming.
+
+  **The lesson, stated plainly because this package keeps re-learning it:**
+  every one of the four sources that got a fixture in this package was carrying
+  a bug that inference had not found — ISS's locations, NIRAS's titles,
+  Coloplast's dropped rows and blank departments. The one source predicted to be
+  clean (novo_nordisk) was clean. Reasoning correctly identified the *layout*
+  every time and missed the *data* every time. Capture the fixture.
 
 ### After the session, before WP8
 

@@ -24,6 +24,7 @@ Known instances:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from functools import partial
 from typing import Any
@@ -31,7 +32,15 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 
-_WAIT_SELECTOR = 'a[href^="/job/"]'
+_WAIT_SELECTOR = 'a[href*="/job/"]'
+
+# Job links are usually rooted at /job/, but an instance hosting sub-brands
+# prefixes them with the brand: Coloplast serves Kerecis and Atos postings as
+# /Kerecis/job/… and /Atos/job/…. Matching only "starts with /job/" dropped
+# those silently — 6 of 25 rows on the captured page — so allow one optional
+# leading segment. Deliberately only one: it admits the brand prefix without
+# matching arbitrary deep paths that merely contain the word.
+_JOB_HREF = re.compile(r"^(?:/[^/]+)?/job/")
 
 # SuccessFactors ships two row layouts, and they need different reading.
 # Both label their cells, so both are read structurally; the positional
@@ -51,7 +60,11 @@ _WAIT_SELECTOR = 'a[href^="/job/"]'
 # does when it prefers its dedicated locations element over its subtitle list.
 _TILE_FIELD_SELECTOR = "div.section-field"
 _CLASSIC_LOCATION_SELECTOR = "span.jobLocation"
-_CLASSIC_DEPARTMENT_SELECTOR = "span.jobFacility"
+# The same column has two class names across instances — DSV and Novo Nordisk
+# label it `jobFacility` under a "Category" heading, Coloplast `jobDepartment`
+# under "Job Family". Both are the job family, so both are accepted; matching
+# only one silently blanks the other, which is how Coloplast was found.
+_CLASSIC_DEPARTMENT_SELECTOR = "span.jobFacility, span.jobDepartment"
 # `location` is the single-site field, `multilocation` the multi-site one; ISS
 # uses the latter throughout. Order is preference, not precedence in markup.
 _TILE_LOCATION_KINDS = ("location", "multilocation")
@@ -173,7 +186,7 @@ def _parse_page(
     parsed = urlparse(base_search_url)
     host_root = f"{parsed.scheme}://{parsed.netloc}"
 
-    for a in soup.find_all("a", href=lambda h: h and h.startswith("/job/")):
+    for a in soup.find_all("a", href=lambda h: h and _JOB_HREF.match(h.strip())):
         href = str(a["href"]).strip()
         detail_url = urljoin(host_root, href)
 
