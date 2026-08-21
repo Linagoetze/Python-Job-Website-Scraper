@@ -50,7 +50,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
-| 8g | ISS location extraction | 1.5 hr | Sonnet 5 | `think` | not started — 33 ISS rows read `"Title"` as their location, 9 of them wanted | `wp8g-iss-location` |
+| 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | not started — 33 ISS rows read `"Title"` as their location, 9 of them wanted; fixture capture blocked until the fetcher bypass is fixed | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -196,6 +196,18 @@ Record any decision a future session would otherwise have to re-derive.
   labelled `review`, so the leftover case costs as much as WP8f's whole gain.
   Consequence for the queue: WP8g goes **before** WP8, and the `location`
   column refresh below stops being optional — see the next entry.
+- **An extractor that fetches for itself cannot be fixture-captured (WP8g).**
+  The 2026-08-21 capture attempt failed with "extractor made no request".
+  `capture_fixtures` hands the extractor a recording fetcher and keeps the first
+  URL it asks for, so the contract is that an extractor uses the callable it is
+  given. `successfactors_html` (and `niras`) break it: they build their own
+  `fetch_rendered` and the recorder never fires. `workday` honours it, tests
+  capability via `is_rendering_fetcher` rather than identity, and is the only
+  dynamic extractor with fixtures (`busuu`, `path`) — which is the evidence, not
+  a coincidence. Consequence: ISS's location bug was never catchable by a golden
+  test, because ISS was never capturable. Unblocking that is WP8g step 0, and
+  the general lesson is that `strategy: dynamic` belongs to the caller, not to
+  the extractor.
 - **The labels refresh is a prerequisite for WP8, not housekeeping (WP8g).**
   The rule three entries up still holds: `eval.py` replays `labels.csv`'s
   stored `location`, so a fixed extractor scores as no improvement until the
@@ -2322,31 +2334,80 @@ is an ISS-specific markup difference, not a flaw in the shared extractor's
 design, and the fix must not regress them. `tests/fixtures/dsv.html` and its
 golden test are the guard.
 
-### Before the session: capture the fixture
+### The fixture cannot be captured yet, and that is step 0
 
-The owner runs this once, first. It is the only step that touches the network,
-and the package rules forbid the session doing it:
+The owner ran the capture on 2026-08-21 and it failed:
+
+```
+iss: FAILED (extractor made no request)
+```
+
+Not a network problem. `successfactors_html.extract` takes a `fetch_text`
+callable and then, when `dynamic=True`, **throws it away** and builds its own
+`partial(fetch_rendered, wait_for_selector=...)` instead. `capture_fixtures`
+works by handing the extractor a recording fetcher and keeping the first URL it
+asks for; an extractor that fetches through its own private callable records
+nothing, so `capture_one` reports that no request was made.
+
+`workday.py` already does this correctly, and its comment names this exact
+failure mode — test the fetcher's *capability* with `is_rendering_fetcher()`
+and wrap the callable you were given, "rather than substituting fetch_rendered:
+the caller's wrapper may be doing something (the fixture capture script records
+the URL through it)". `busuu` and `path` are the two dynamic sources that do
+have fixtures, and both are Workday. That is the pattern to copy.
+
+So ISS's location bug was never capturable, which is why no fixture existed to
+catch it. Two bugs, one behind the other.
+
+`niras.py` has the same bypass, and worse: its `if fetch_text is fetch_rendered`
+branches are byte-identical, so the conditional decides nothing. `niras` and
+`iss` are the only two sources this affects — every other dynamic source uses an
+extractor that honours the fetcher it is given. Note it, do not fix it here: it
+has no fixture either, so a fix cannot be verified in this package.
+
+### The owner's command, once step 0 lands
 
 ```
 python scripts/capture_fixtures.py iss
 ```
 
-Writes `tests/fixtures/iss.html` (sanitised, via Playwright since `iss` is
+Writes `tests/fixtures/iss.html` (sanitised, through Playwright since `iss` is
 `strategy: dynamic` in `sources.yaml`) and prints the byte size and the number
-of jobs parsed. Check both before trusting it: a cookie wall or an unrendered
-page is a successful HTTP response and a much smaller file. A capture that
-reports 0 jobs, or one whose rows do not show the `"Title"` bug, changes the
-package — say so rather than proceeding.
+of jobs parsed. Check both: a cookie wall or an unrendered page is a successful
+HTTP response and a much smaller file. A capture reporting 0 jobs, or rows that
+do not show the `"Title"` bug, changes the package — say so rather than
+proceeding.
+
+This is the only step that touches the network, and the package rules forbid
+the session running it. Expect to stop and ask for it mid-package.
 
 ```
 think
 
 Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8g only.
 
+Two bugs, one behind the other. Read the WP8g section in the plan file first.
+
 The ISS extractor puts the literal word "Title" in every posting's location
 field. All 33 ISS rows in the gold set do this, all 33 are dropped as "city
-not on the list", and 9 of them are jobs the owner wanted. The fixture is
-already captured at tests/fixtures/iss.html — do not fetch anything.
+not on the list", and 9 of them are jobs the owner wanted.
+
+There is no fixture yet, because the second bug prevents making one.
+
+0. UNBLOCK THE CAPTURE FIRST. successfactors_html.extract discards the
+   fetch_text it is handed when dynamic=True and calls fetch_rendered itself,
+   so scripts/capture_fixtures.py records nothing and reports "extractor made
+   no request". Fix it the way workday.py already does: test capability with
+   is_rendering_fetcher() and wrap the callable you were given. Read workday's
+   comment before you write it — it describes this exact failure.
+
+   The `dynamic` registry flag and sources.yaml's `strategy: dynamic` now say
+   the same thing twice. Decide whether the flag still earns its place and say
+   which you chose; do not quietly leave both if only one is load-bearing.
+
+   Verify: the dsv golden test still passes (dsv is static and shares this
+   code path), then STOP and ask the owner to run
+   `python scripts/capture_fixtures.py iss`. Do not fetch it yourself.
 
 1. CONFIRM THE CAUSE against the fixture before changing a line. Read the raw
    markup around a job link and establish what the container actually holds
@@ -2379,9 +2440,9 @@ already captured at tests/fixtures/iss.html — do not fetch anything.
    it to show *no regression* is fine; quoting a recall improvement is wrong.
    Say in the plan that the 9 jobs are the expected gain once refreshed.
 
-Do not touch filtering.py, the location rules, or WP8d/WP8f's states. If the
-fixture shows a second unrelated extractor bug, note it at the end rather than
-fixing it.
+Do not touch filtering.py, the location rules, or WP8d/WP8f's states. Do not
+fix niras.py's identical bypass — note it. If the fixture shows a further
+unrelated extractor bug, note that at the end too rather than fixing it.
 
 Branch wp8g-iss-location. Commit, do not push. Update the plan file.
 ```
