@@ -15,6 +15,14 @@ langdetect>=1.0.9
 # here; skip this line yourself if you never intend to turn scoring on.
 anthropic>=0.100.0
 
+# Imported directly by tests/test_scoring.py, which builds an httpx.Response to
+# construct an anthropic error for a mocked client. Listed explicitly since
+# 2026-08-21: it used to arrive as a dependency of anthropic, and anthropic
+# 1.0.0 switched its HTTP client to httpx2, so the free ride ended and CI went
+# red on every branch at once. A direct import belongs in this file regardless
+# of what happens to be pulling it in that week.
+httpx>=0.28.0
+
 # Tests and linting. Configured in pyproject.toml; CI runs both.
 pytest>=8.0.0
 ruff>=0.16.0
