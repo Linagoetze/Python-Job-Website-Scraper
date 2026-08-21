@@ -21,6 +21,7 @@ the change matches what the site now serves, and paste the new values in.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 
@@ -54,11 +55,17 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "dsv": {
+        # WP8g (2026-08-21): `department` was "7 Aug 2026" — the posting date,
+        # picked up by the positional heuristic as "the second text that is not
+        # the title". The classic layout labels this cell `span.jobFacility`
+        # ("Managerial", "Freight Forwarding"), so it is now read structurally
+        # like the tile layout's. `location` is unchanged: the heuristic already
+        # landed on it, and `span.jobLocation` holds the same string.
         "count": 10,
         "first_job": {
             "source_name": "dsv",
             "title": "Manager - Air Import",
-            "department": "7 Aug 2026",
+            "department": "Managerial",
             "location": "Chester, PA, US, 19013",
             "listing_url": "https://jobs.dsv.com/search/",
             "detail_url": (
@@ -67,7 +74,101 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "apply_url": (
                 "https://jobs.dsv.com/job/Chester-Manager-Air-Import-PA-19013/1402649033/"
             ),
-            "raw_snippet": "Manager - Air Import 7 Aug 2026 Chester, PA, US, 19013",
+            "raw_snippet": "Manager - Air Import Managerial Chester, PA, US, 19013",
+        },
+    },
+    "iss": {
+        # WP8g (2026-08-21): the source that put the literal word "Title" in all
+        # 33 of its gold-set locations. ISS serves the modern SuccessFactors
+        # tile layout, where `span.sr-only` labels each field — and the label
+        # for the title block sits inside the title's own container, so the old
+        # "first text that is not the title" heuristic read the label as data.
+        # Now read from the labelled `section-field` blocks; all 20 rows carry a
+        # real place. See test_iss_location_is_never_the_field_label below.
+        "count": 20,
+        "first_job": {
+            "source_name": "iss",
+            "title": (
+                "ISS søger en handyman til praktiske ejendomsservice opgaver "
+                "hos vores kunde i København K"
+            ),
+            "department": "Property Services",
+            "location": "København K, DK, 1402",
+            "listing_url": "https://jobs.issworld.com/search/",
+            "detail_url": (
+                "https://jobs.issworld.com/job/K%C3%B8benhavn-K-ISS-s%C3%B8ger-en-handyman"
+                "-til-praktiske-ejendomsservice-opgaver-hos-vores-kunde-i-K%C3%B8benhavn-K"
+                "-1402/1364641957/"
+            ),
+            "apply_url": (
+                "https://jobs.issworld.com/job/K%C3%B8benhavn-K-ISS-s%C3%B8ger-en-handyman"
+                "-til-praktiske-ejendomsservice-opgaver-hos-vores-kunde-i-K%C3%B8benhavn-K"
+                "-1402/1364641957/"
+            ),
+            "raw_snippet": (
+                "ISS søger en handyman til praktiske ejendomsservice opgaver "
+                "hos vores kunde i København K Property Services "
+                "København K, DK, 1402"
+            ),
+        },
+    },
+    "novo_nordisk": {
+        # WP8g follow-on (2026-08-21): captured to replace the inference that
+        # this source was unaffected by the package. It was — all 100 rows are
+        # byte-identical to what main produced. Classic table layout.
+        "count": 100,
+        "first_job": {
+            "source_name": "novo_nordisk",
+            "title": "Project Engineer (Biotech Focus)",
+            "department": "Engineering & Technical",
+            "location": "West Lebanon, NH, US",
+            "listing_url": "https://careers.novonordisk.com/search",
+            "detail_url": (
+                "https://careers.novonordisk.com/job/West-Lebanon-Project-Engineer-"
+                "%28Biotech-Focus%29-NH-03784/1418437333/"
+            ),
+            "apply_url": (
+                "https://careers.novonordisk.com/job/West-Lebanon-Project-Engineer-"
+                "%28Biotech-Focus%29-NH-03784/1418437333/"
+            ),
+            "raw_snippet": (
+                "Project Engineer (Biotech Focus) Engineering & Technical "
+                "West Lebanon, NH, US"
+            ),
+        },
+    },
+    "coloplast": {
+        # WP8g follow-on (2026-08-21): the capture that disproved the package's
+        # own reasoning. Two bugs, both invisible without a fixture.
+        #
+        # 1. Sub-brand postings were dropped. Coloplast hosts Kerecis and Atos,
+        #    whose links are /Kerecis/job/… and /Atos/job/…, and the extractor
+        #    matched only hrefs *starting* "/job/". 6 of 25 rows were lost
+        #    silently — including this first_job. The count is 25, not 19.
+        # 2. `department` is `span.jobDepartment` here, not the `span.jobFacility`
+        #    DSV and Novo Nordisk use, so reading only jobFacility blanked all 19
+        #    surviving rows.
+        #
+        # Two of the 25 rows still have an empty department. That is honest: the
+        # markup is literally <span class="jobDepartment"></span> for those.
+        "count": 25,
+        "first_job": {
+            "source_name": "coloplast",
+            "title": "Regenerative Surgical Specialist - Western CT",
+            "department": "Sales",
+            "location": "Stamford, CT, US",
+            "listing_url": "https://careers.coloplast.com/search/",
+            "detail_url": (
+                "https://careers.coloplast.com/Kerecis/job/Stamford-Regenerative-"
+                "Surgical-Specialist-Western-CT-CT-06901/1418450133/"
+            ),
+            "apply_url": (
+                "https://careers.coloplast.com/Kerecis/job/Stamford-Regenerative-"
+                "Surgical-Specialist-Western-CT-CT-06901/1418450133/"
+            ),
+            "raw_snippet": (
+                "Regenerative Surgical Specialist - Western CT Sales Stamford, CT, US"
+            ),
         },
     },
     "givewell": {
@@ -311,6 +412,35 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "niras": {
+        # WP8g follow-on (2026-08-21): captured once the fetcher bypass was
+        # fixed, and it immediately showed a second bug. `title` had been "the
+        # first child's text", but the anchor's only element child is the
+        # wrapping `div.box-content`, so every title arrived with the whole
+        # card appended — "… Country: Tunisia Employment: Temporary
+        # Commencement: 02/09/2024 Position length: 300 Deadline: Sep 1, 2026".
+        # Now read from the labelled `p.headline`.
+        #
+        # Two jobs is correct, not a truncated capture: no filter input is
+        # checked and the page's own counter reads "Vacant positions: 2".
+        "count": 2,
+        "first_job": {
+            "source_name": "niras",
+            "title": "7.004 Expert Communication institutionelle",
+            "department": "",
+            "location": "Tunisia",
+            "listing_url": "https://www.niras.com/jobs/vacant-positions/",
+            "detail_url": (
+                "https://www.niras.com/jobs/vacant-positions/"
+                "cvtp-8491-7004-expert-communication-institutionelle/"
+            ),
+            "apply_url": (
+                "https://www.niras.com/jobs/vacant-positions/"
+                "cvtp-8491-7004-expert-communication-institutionelle/"
+            ),
+            "raw_snippet": "7.004 Expert Communication institutionelle Tunisia",
+        },
+    },
     "path": {
         # Not a bug: workday.py's location selectors both work here (the busuu
         # golden above pins the same code succeeding). 9 of these 20 rows carry
@@ -362,3 +492,59 @@ def test_extractor_output_matches_golden(name: str) -> None:
         "Either a selector drifted or the fixture was refreshed."
     )
     assert jobs[0] == expected["first_job"]
+
+
+def test_coloplast_keeps_sub_brand_postings() -> None:
+    """Pin the data loss found when this source was first captured.
+
+    Coloplast hosts Kerecis and Atos vacancies, whose links carry a brand
+    segment (/Kerecis/job/…). The extractor matched only hrefs starting "/job/",
+    so those rows vanished — no error, no empty field, just six fewer jobs than
+    the page had. Silent loss is the failure this project ranks worst, and it
+    survived precisely because the source had no fixture.
+
+    Checks the brand-prefixed rows are present and fully parsed, so a future
+    narrowing of the href match fails here rather than in a quietly shorter run.
+    """
+    filename = FIXTURE_CASES["coloplast"][0]
+    if not (FIXTURES_DIR / filename).exists():
+        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py coloplast")
+
+    jobs = parse_fixture("coloplast")
+    branded = [
+        job
+        for job in jobs
+        if urlparse(job["detail_url"]).path.startswith("/")
+        and not urlparse(job["detail_url"]).path.startswith("/job/")
+    ]
+    assert branded, (
+        "no sub-brand postings parsed; the href match has narrowed back to "
+        '"starts with /job/" and Kerecis/Atos rows are being dropped'
+    )
+    for job in branded:
+        assert job["title"], f"sub-brand posting parsed without a title: {job['detail_url']}"
+        assert job["location"], f"sub-brand posting parsed without a location: {job['title']!r}"
+
+
+def test_iss_location_is_never_the_field_label() -> None:
+    """Pin WP8g's bug: a screen-reader label must never reach the location field.
+
+    The golden above would catch this on row 1 alone. This one is deliberately
+    separate and checks every row, because the failure was uniform — all 33 ISS
+    rows in the 2026-08-18 gold set carried "Title" — and a heuristic that
+    regressed for rows 2..n while row 1 stayed correct would slip past a
+    first-job assertion. Layer 0 reads `location` as a city name, so a label
+    landing here costs the source every posting it has.
+    """
+    filename = FIXTURE_CASES["iss"][0]
+    if not (FIXTURES_DIR / filename).exists():
+        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py iss")
+
+    jobs = parse_fixture("iss")
+    assert jobs, "iss fixture parsed to zero jobs"
+
+    offenders = [j for j in jobs if j["location"].strip().casefold() == "title"]
+    assert not offenders, (
+        f"{len(offenders)} of {len(jobs)} ISS rows have the column label 'Title' "
+        "as their location; the sr-only guard in successfactors_html has regressed"
+    )

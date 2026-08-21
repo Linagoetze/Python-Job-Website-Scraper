@@ -50,7 +50,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8d | Unresolvable locations | 2.5 hr | Opus 5 | `think hard` | done | `wp8d-unresolvable-locations` |
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
-| 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | not started — 33 ISS rows read `"Title"` as their location, 9 of them wanted; fixture capture blocked until the fetcher bypass is fixed | `wp8g-iss-location` |
+| 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -222,6 +222,63 @@ Record any decision a future session would otherwise have to re-derive.
   test, because ISS was never capturable. Unblocking that is WP8g step 0, and
   the general lesson is that `strategy: dynamic` belongs to the caller, not to
   the extractor.
+- **The `"Title"` was an accessibility label, not a table header (WP8g,
+  2026-08-21).** The package was written guessing a header row, and the fixture
+  disproved it. SuccessFactors ships two row layouts: the classic table (DSV and
+  every static instance here) and the modern tile (ISS), and the tile layout
+  introduces each field with a `span.sr-only` naming it. The title's label sits
+  inside the title's own container, which is where `find_parent([… , "div"])`
+  stopped — so the location was not merely mis-picked, it was never in the
+  container being searched. That is why the minimal repair does not exist:
+  strip the label and the location is empty; widen the container as well and it
+  is `"Property Services"`, because the tile layout puts job category first. A
+  positional "first text that is not the title" heuristic cannot read a
+  label-per-field layout at all. Consequence for the next extractor bug of this
+  shape: check what the container actually *contains* before assuming the
+  heuristic picked the wrong item out of it, and prefer whatever the markup
+  labels over whatever comes first — `workday.py` had already learnt this for
+  its own two layouts.
+- **A screen-reader label is never data, for any source (WP8g).** The `sr-only`
+  strip went into the shared fallback rather than the ISS branch, on the
+  principle that a field label is not a location for DSV either — it merely does
+  not appear in DSV's markup today. Cost of doing it generally: nothing
+  measurable (DSV's job rows contain zero `sr-only` elements). Cost of doing it
+  as an ISS special case: the next SuccessFactors site to ship the tile layout
+  repeats all 33 lost rows before anyone notices.
+- **Fixing a location bug does not license fixing the department beside it
+  (WP8g).** DSV's `department` holds a posting date; `span.jobFacility` is right
+  there and would correct it. It was left alone, because `department` is part of
+  `filtering._haystack` and WP8 is about to measure what each keyword costs
+  against exactly that text. Correcting the field now would shift WP8's baseline
+  underneath it for something this package was not sent to fix. The general form:
+  when a field feeds the harness, improving it is a measurement change, and it
+  belongs to the package doing the measuring.
+- **Reasoning identifies the layout; only a fixture shows the data (WP8g,
+  2026-08-21).** Four SuccessFactors sources, four fixtures captured in this
+  package, and the score is stark: the layout was predicted correctly every
+  time, and the *data* was wrong in three of four. ISS returned a label instead
+  of a location; NIRAS returned the whole card instead of a title; Coloplast
+  dropped 6 of 25 postings silently and blanked every department. Only
+  novo_nordisk — the one predicted clean — was clean. Two of those bugs were
+  invisible until the fetcher bypass was fixed, and the third was invisible
+  until someone looked at the markup rather than at the gold set. The gold set
+  can prove a source is *healthy enough to produce plausible strings*; it cannot
+  show what the page held that never reached it. Consequence: treat "this source
+  has no fixture" as an open question about correctness, not as a low-priority
+  chore — and never let a paragraph of reasoning stand in for a capture when a
+  capture is one command away.
+- **Before honouring a fetcher, check what the caller actually passes (WP8g,
+  2026-08-21).** Converting an extractor from "always render for myself" to
+  "use what I am given" is only inert if the caller hands it a rendering
+  fetcher. `successfactors_html` and `niras` both looked like the same two-line
+  change; only `niras` carried the risk, because its comment said "Always use
+  Playwright" and its docstring said the static HTML is just a filter shell. Had
+  `sources.yaml` listed it `static`, the tidy-up would have turned a working
+  source into zero jobs reported as "no vacancies" — priority 2's exact failure,
+  on a source with no fixture to catch it. It is `dynamic`, so the change was
+  safe, but the check is the point: the `strategy` entry is the precondition,
+  not a detail. Both directions are now covered by construction — a plain
+  fetcher is used as given rather than silently upgraded.
 - **The labels refresh is a prerequisite for WP8, not housekeeping (WP8g).**
   The rule three entries up still holds: `eval.py` replays `labels.csv`'s
   stored `location`, so a fixed extractor scores as no improvement until the
@@ -2327,7 +2384,7 @@ same recall this project bought with the whole of WP8f, sitting in one source.
 `"Title"` is a table column heading, so the reading is that the extractor is
 picking up a header cell as if it were data.
 
-### The likely mechanism — verify it, do not trust it
+### The mechanism — confirmed against the fixture, and not what was guessed
 
 `successfactors_html._parse_listing` guesses the location as "the first text in
 the nearest `li`/`tr`/`div` ancestor that is not the title"
@@ -2341,6 +2398,54 @@ existed for ISS when this package was written and the live site was not
 fetched**, so the first job of the package is to confirm the mechanism against
 the captured HTML rather than assume it.
 
+**Confirmed 2026-08-21, and the guess above was wrong in a way that mattered.**
+`"Title"` is not a table column heading. ISS serves the *modern SuccessFactors
+tile layout*, and the string comes from an accessibility label:
+
+```html
+<li class="job-tile ...">           <!-- the real row -->
+ <div class="job-tile-cell"><div class="row job job-row">
+  <div class="col-md-12 sub-section ...">
+   <div class="oneline"><div class="tiletitle">
+     <span class="sr-only">Title</span>          <!-- texts[0] -->
+     <span class="section-title title" role="heading"><a href="/job/...">…</a></span>
+   </div></div>
+   <div class="oneline">
+     <div class="section-field department ...">
+       <span class="section-label sr-only">Job Category</span>
+       <div id="…-department-value">Property Services</div>
+     </div>
+     <div class="section-field multilocation ...">
+       <span class="section-label sr-only">Other Locations</span>
+       <div id="…-multilocation-value">København K, DK, 1402</div>
+     </div>
+     …country, date…
+```
+
+Two things follow, and the second is the one the guess missed:
+
+1. Every field is introduced by a `span.sr-only` naming it, for screen readers.
+   The title's label sits *inside the title's own container*, so it is the first
+   text that is not the title.
+2. `a.find_parent(["li", "tr", "div"])` stopped at `div.tiletitle`, which holds
+   the title and that label **and nothing else**. The real location was never in
+   scope — it is two `div.oneline` siblings further up. So this was never a case
+   of the heuristic picking the wrong candidate from a container; it was the
+   heuristic reading a container that had no location in it.
+
+That second point rules out the obvious minimal repair. Stripping `sr-only` and
+leaving the container alone gives an empty location; stripping `sr-only` and
+widening the container to `li.job-tile` gives `"Property Services"`, because the
+tile layout orders job category before location. **The positional heuristic
+cannot read this layout under any correction**, which is what forced a
+structural fix rather than a patch.
+
+Counts from `tests/fixtures/iss.html` (348,899 bytes, 20 jobs, one page):
+20 tiles, each rendered three times (desktop/tablet/phone) for 60
+`section-field` blocks per kind — `department`, `multilocation`, `country`,
+`date`, present on every tile, no exceptions and no empties. Dedupe by
+`detail_url` already collapses the three renderings.
+
 The other three SuccessFactors sources are healthy on the same code path — DSV,
 Novo Nordisk and Coloplast all produce real locations in the gold set
 (`"Landskrona, Skane, SE, 261 51"`, `"Kalundborg, Region Zealand, DK"`). So this
@@ -2348,13 +2453,24 @@ is an ISS-specific markup difference, not a flaw in the shared extractor's
 design, and the fix must not regress them. `tests/fixtures/dsv.html` and its
 golden test are the guard.
 
-### The fixture cannot be captured yet, and that is step 0
+### The fixture could not be captured, and that was step 0 — now resolved
 
 The owner ran the capture on 2026-08-21 and it failed:
 
 ```
 iss: FAILED (extractor made no request)
 ```
+
+**Fixed in `8f63bd8`; the owner re-ran it the same day and it succeeded:**
+
+```
+iss: saved tests/fixtures/iss.html (348,899 bytes, 20 jobs) from https://jobs.issworld.com/search/?startrow=0
+```
+
+Both checks pass: 348 KB is a fully rendered page rather than a cookie wall, and
+20 jobs is exactly `page_step`, so the AJAX list had loaded before the capture
+read it. The `startrow=0` in the recorded URL is the proof the recorder saw the
+extractor's own request rather than the bare listing URL.
 
 Not a network problem. `successfactors_html.extract` takes a `fetch_text`
 callable and then, when `dynamic=True`, **throws it away** and builds its own
@@ -2460,6 +2576,273 @@ unrelated extractor bug, note that at the end too rather than fixing it.
 
 Branch wp8g-iss-location. Commit, do not push. Update the plan file.
 ```
+
+### Result — done 2026-08-21, branch `wp8g-iss-location`
+
+Two commits, both local, not pushed.
+
+**Step 0 — the capture unblocked (`8f63bd8`).** `successfactors_html.extract`
+now tests `is_rendering_fetcher(fetch_text)` and wraps *the callable it was
+handed* with the selector wait, instead of building its own
+`partial(fetch_rendered, …)`. Copied from `workday.py`, comment and all.
+
+**The `dynamic` flag is gone; `sources.yaml`'s `strategy` is what remains.**
+Asked to decide which of the two duplicated facts earns its place, and the
+answer is not symmetric: `pipeline.py` and `scripts/capture_fixtures.py` both
+choose the fetcher from `strategy` *before* the extractor is called, so
+`strategy` is load-bearing whether or not the flag exists. The registry flag
+only ever let the extractor overrule that choice after the fact, and overruling
+it **was** the bug. So the parameter is deleted from `extract`, the `dynamic=True`
+line is deleted from the `iss` registry entry, and the module docstring now says
+plainly that the fetcher is the caller's business. Nothing else passed it.
+
+**Step 1 — the cause, and the plan file was wrong.** See the confirmed
+mechanism above: a `span.sr-only` accessibility label, not a table header, plus
+a container that never contained the location. Recorded rather than quietly
+fixed, because the wrong guess would otherwise have justified a much smaller
+change that does not work.
+
+**Step 2 — the fix (`f4afd89`), structural and not keyed on `source_name`.**
+`successfactors_html.py` now:
+
+- walks up to the row holding the whole posting (`li`/`tr`) rather than the
+  innermost `div` that happens to wrap the link;
+- prefers the labelled `div.section-field.<kind>` blocks when the row has them
+  (`location`/`multilocation`, `department`), falling back to the positional
+  heuristic when it does not — the same shape as `workday.py`'s "prefer the
+  dedicated locations element, fall back to subtitle" for its own two layouts;
+- strips screen-reader-only text from the positional fallback as well.
+
+That last one is the general guard the package asked for: a field label is not a
+location for DSV either, it just does not appear in DSV's markup today. `_tile_field`
+returns `None` for "this layout does not label its fields" and `""` for "the field
+is here and genuinely empty" — WP8f admits the empty case at Layer 0, so the
+distinction has to survive as far as the caller.
+
+Result on the fixture: **20 of 20 ISS rows carry a real place**, none empty —
+`København K, DK, 1402`, `Porto, PT, 4000-457`, `Warszawa, PL, 00-841`, the same
+`City, CC, postcode` shape DSV and Novo Nordisk produce. Departments come out as
+real job categories (`Cleaning`, `Finance`, `IT`) rather than blank.
+
+**Step 3 — the other three SuccessFactors sources.**
+
+*DSV* has the fixture and the golden test. Its rows are the classic table
+layout: `tr.data-row` → `td.colLocation` → `span.jobLocation`. Measured on
+`tests/fixtures/dsv.html`: **0 `section-field` and 0 `sr-only` elements inside
+its 10 job rows**, so it takes the unchanged fallback branch, and its container
+was already `tr` before the change (`find_parent(["li","tr","div"])` and
+`find_parent(["li","tr"])` agree here). Golden output is byte-identical,
+including `department: "7 Aug 2026"`.
+
+That date-as-department was a real pre-existing quirk. It was first left alone
+on the grounds that `department` feeds `filtering._haystack` and WP8 measures
+keyword costs against it — **and that reasoning was wrong.** `eval.py`'s
+`MISSING_FIELDS` is `("raw_snippet", "department")`: the gold set has no
+department column at all, so the harness is blind to the field in both
+directions and correcting it cannot move WP8's baseline. Owner's call, same
+session: fix it now rather than open another package. See the fourth commit.
+
+*Novo Nordisk* and *Coloplast* have no fixture, so the argument has to be made
+rather than run — and it can be made from the gold set, which is evidence, not
+assumption. Both produce correct locations today (`Kalundborg, Region Zealand,
+DK`), and today's code is the positional heuristic. That output is only possible
+on the classic layout: on the tile layout the same heuristic returns the sr-only
+label, which is precisely the ISS symptom, and neither source shows it. So both
+are on DSV's branch. For them the change is therefore exactly two things, both
+inert:
+
+- the container walk, which only differs when the nearest `div` is *tighter*
+  than the nearest `li`/`tr`; on a table layout the nearest `div` ancestor of
+  the link is already the row or above it, so the walk lands in the same place;
+- the `sr-only` strip, which can only remove text that a screen-reader label
+  contributed — and if either page had such a label in its rows it would already
+  be reporting `"Title"`-style junk as the location. Neither does.
+
+If either ever migrates to the tile layout, they now land on the structural
+branch and keep working, which is the point of not special-casing ISS.
+
+**Superseded — read the follow-on section below.** The layout half of this
+argument held for both sources. The "both changes are inert" half did not: it
+predates the classic structural read added later in the session, and coloplast
+turned out to differ on every row, for two reasons the reasoning could not have
+reached. The prediction is left here rather than edited away, because the gap
+between it and the capture is the most useful thing this package produced.
+
+**Step 4 — the fixture is wired in.** `iss` added to `FIXTURE_CASES` in
+`tests/fixture_cases.py` with `page_step=20` and
+`base_search_url="https://jobs.issworld.com/search/"`, so the capture-script
+tests, the golden-file tests and the CSV round-trip test all pick it up. An
+`iss` golden entry was required by `test_every_fixture_has_a_golden`, which is
+the mechanism working as designed.
+
+Plus `test_iss_location_is_never_the_field_label`, pinning this specific bug
+across **every** row rather than the golden's first job only: the failure was
+uniform across all 33 gold-set rows, and a heuristic that regressed for rows
+2..n while row 1 stayed correct would slip past a first-job assertion. Checked
+that the pin can actually fail — run against `main`'s extractor it reports
+"20 of 20 ISS rows have the column label 'Title' as their location".
+
+**Step 5 — eval shows no change, as predicted, and that is the correct
+outcome.** Before and after are identical: precision 0.297, recall 0.554, F2
+0.472. Per the decisions-log entry, `eval.py` replays `labels.csv`'s stored
+`location` column, so a fixed extractor cannot score differently until that
+column is refreshed. This was run to demonstrate **no regression** and nothing
+more. **The expected gain is the 9 ISS jobs labelled `review`, and it will
+appear only after the owner's run and the labels refresh below.** Any recall
+number quoted for WP8g before that refresh is measuring the old strings.
+
+Full suite: 365 passed (up from 359 — the new pin, the `iss` golden, and four
+parametrised fixture tests that now include `iss`). `ruff check .` clean,
+`python -m job_scraper.run --help` works.
+
+Not touched, per scope: `filtering.py`, the location rules, and WP8d/WP8f's
+states; DSV's department quirk, above; `niras.py`, below.
+
+### Folded in, and what is left
+
+- **`niras.py`'s bypass is fixed, the fixture is captured, and it hid a second
+  bug — exactly the shape ISS had** (owner's call, same session). Its
+  `if fetch_text is fetch_rendered:` / `else:` branches were **byte-identical**
+  — both built `partial(fetch_rendered, …)` — so the conditional decided
+  nothing and the capture recorder never fired.
+
+  This was held back until the owner confirmed one fact, because unlike
+  `successfactors_html` it was not unconditionally safe: `niras.extract` said
+  "Always use Playwright" and its docstring says the static HTML is only the
+  filter shell, so honouring a plain fetcher would have parsed the shell and
+  returned **zero jobs** — a silent empty list dressed as "no vacancies".
+  Confirmed 2026-08-21: `sources.yaml` has `niras` as `strategy: dynamic`, so
+  the caller already passes a rendering fetcher and the conversion is inert at
+  runtime. Verified both directions: a rendering fetcher still gets the selector
+  wait and the recorder now fires; a plain fetcher is now used as given rather
+  than silently replaced.
+
+  **The capture then showed the second bug immediately.** `title` was "the first
+  child's text", but the anchor's only element child is the wrapping
+  `div.box-content`, so every title arrived with the entire card appended:
+
+  ```
+  7.004 Expert Communication institutionelle Country: Tunisia Employment:
+  Temporary Commencement: 02/09/2024 Position length: 300 Deadline: Sep 1, 2026
+  ```
+
+  Same root cause as ISS, and the same fix: the card labels its title
+  `p.headline`, so read the label instead of guessing positionally. Both rows
+  were affected. The measured filtering cost today is **nil** — the injected
+  metadata happens to match no exclude keyword — but `title` is what the store
+  keeps and the spreadsheet shows, and the pollution is latent for any future
+  keyword matching `Temporary`, a date, or `Position length`. The module
+  docstring's markup sketch was wrong too (it showed `<generic>` children that
+  do not exist) and now matches the real card.
+
+  Wired into `FIXTURE_CASES` with a golden. **Two jobs is correct, not a
+  truncated capture**: no filter input is checked and the page's own counter
+  reads "Vacant positions: 2", so the extractor found everything there is.
+
+  With this, **no extractor in the project fetches through a private callable**.
+  Verified rather than assumed: no module under `job_scraper/extractors/` still
+  imports or calls `fetch_rendered`; the three that mention it (`workday`,
+  `successfactors_html`, `niras`) do so only in the comment explaining why they
+  do not. Every source is now capturable, and both sources that were never
+  capturable turned out to be carrying a data bug behind the bypass — which is
+  the argument for capturing the rest rather than waiting for symptoms.
+
+- **`tests/fixtures/niras.html` is 1.2 MB, and it should stay that way.**
+  Investigated rather than left as a nag: **88% of the file is 19 inline
+  `<svg>` elements** (1.10 MB of 1.25 MB); styles are 2%, scripts already
+  stripped. Adding `<svg>` to `sanitise_html` would cut it to roughly 150 KB,
+  costs nothing today (no extractor selects `svg`, no test pins one, and no
+  `<svg>` inside a job link in *any* of the 13 fixtures that have one is
+  text-bearing) — **and it is still the wrong trade.**
+
+  The reason is the sanitiser's own doctrine. It strips analytics scripts
+  because nothing parses them, but deliberately keeps scripts carrying job data,
+  so that a fixture stays a faithful record of what the extractor sees. `<svg>`
+  is in the second category, not the first: it contributes to `get_text()`, and
+  several extractors read exactly that. An SVG bearing a `<title>` or `<text>`
+  node — none do today, nothing stops one tomorrow — would then parse one way
+  live and another from the fixture, which is the one failure a fixture exists
+  to prevent. 3.2 MB across the whole directory is not worth that.
+
+  Revisit only if the directory becomes a real problem, and if so strip `<svg>`
+  at capture time for *all* sources at once, so no fixture is quietly different
+  from its neighbours.
+
+### Loose ends closed afterwards (2026-08-21)
+
+Asked to finish what the session had left open. Four of the five are now closed;
+the fifth needs the network and is the owner's.
+
+- **`ruff` ambiguity resolved.** CI runs bare `ruff check .` after
+  `pip install -r requirements.txt`, which floats on `ruff>=0.16.0`; the
+  session's `.venv/bin/ruff` is 0.16.1 on Python 3.13.12. Same tool, same
+  config, so the clean result stands. The residual risk is the floating pin
+  itself, and it is the known one: per the `httpx` entry above, a `.venv` that
+  predates a release does not reproduce CI, so green locally is not green in CI.
+  Nothing specific to this package.
+
+- **NIRAS's parsing is now audited, not just its title.** Three tests in
+  `tests/test_niras_extractor.py`, all derived from the captured fixture rather
+  than hand-written markup — the extractor's docstring had the page's shape
+  wrong once already, so a test written from the same assumption would have
+  agreed with the bug. They cover: every row's title being the headline rather
+  than the card body (the golden only sees row 1); a card with its `Country:`
+  line deleted from the real markup, which must give an honest `""` and not the
+  neighbouring metadata; and the card's field list being exactly
+  Country/Employment/Commencement/Position length/Deadline. That last one
+  settles `department`: **the card has no department field, so `""` is the
+  correct answer rather than a gap**, and a card that gains one becomes a
+  visible failure instead of a silently blank column. Both bug pins were checked
+  against the pre-fix extractor and both fail on it.
+
+- **The 1.2 MB fixture** — investigated and deliberately kept; see above.
+
+- **The eval caveat needs no fix, only stating plainly**, which it now is: the
+  harness replays the stored `location` and cannot see `raw_snippet` or
+  `department` at all, so identical numbers across this package were guaranteed
+  and prove only that the ladder still works. **What actually guards extractor
+  output is the golden files**, and that is where every claim in this package
+  was verified.
+
+- **`novo_nordisk` and `coloplast` are now captured, and the inference about
+  them was half wrong.** Both are the classic table layout on `tr.data-row`,
+  with no `section-field` and no `sr-only`, exactly as argued. But the argument
+  that the package was *inert* for them was written before the classic
+  structural read was added at the owner's request, and it did not survive:
+
+  - **novo_nordisk: inert, confirmed.** All 100 rows byte-identical to `main`.
+  - **coloplast: all 19 rows changed**, and the capture then exposed two bugs
+    that no amount of reasoning would have found.
+
+  **Bug 1 — silent job loss, the project's worst failure mode.** Coloplast hosts
+  sub-brands, and their postings link as `/Kerecis/job/…` and `/Atos/job/…`.
+  `_parse_page` matched only hrefs *starting* `/job/`, so **6 of 25 rows were
+  dropped with no error and no empty field** — the page simply appeared to have
+  19 jobs. The href match now allows one optional leading segment
+  (`^(?:/[^/]+)?/job/`): deliberately one, so it admits a brand prefix without
+  matching arbitrary deep paths. Verified across all four fixtures — it recovers
+  exactly those 6 and changes nothing for DSV, Novo Nordisk or ISS. A knock-on:
+  the count rising 19 → 25 also un-breaks pagination, which was stopping early
+  because `len(jobs) < page_step` was true only because of the dropped rows.
+
+  **Bug 2 — the department column has a third class name.** DSV and Novo Nordisk
+  label it `span.jobFacility` under a "Category" heading; Coloplast uses
+  `span.jobDepartment` under "Job Family". Reading only `jobFacility` blanked
+  every Coloplast row. The selector now accepts both. Two of the 25 rows are
+  still blank, and that is honest — their markup is literally
+  `<span class="jobDepartment"></span>`.
+
+  Both are pinned: goldens for both sources, plus
+  `test_coloplast_keeps_sub_brand_postings`, which fails if the href match ever
+  narrows back. Checked that it does fail on the old pattern rather than
+  assuming.
+
+  **The lesson, stated plainly because this package keeps re-learning it:**
+  every one of the four sources that got a fixture in this package was carrying
+  a bug that inference had not found — ISS's locations, NIRAS's titles,
+  Coloplast's dropped rows and blank departments. The one source predicted to be
+  clean (novo_nordisk) was clean. Reasoning correctly identified the *layout*
+  every time and missed the *data* every time. Capture the fixture.
 
 ### After the session, before WP8
 

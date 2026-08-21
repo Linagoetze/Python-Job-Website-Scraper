@@ -35,6 +35,7 @@ from job_scraper.extractors import (  # noqa: E402
     greenhouse,
     impactpool,
     jpal,
+    niras,
     successfactors_html,
     teamtailor,
     workday,
@@ -85,6 +86,39 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
             base_search_url="https://jobs.dsv.com/search/",
         ),
     ),
+    "iss": (
+        "iss.html",
+        "https://jobs.issworld.com/search/",
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="iss",
+            page_step=20,
+            base_search_url="https://jobs.issworld.com/search/",
+        ),
+    ),
+    "novo_nordisk": (
+        "novo_nordisk.html",
+        "https://careers.novonordisk.com/search",
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="novo_nordisk",
+            page_step=100,
+            base_search_url="https://careers.novonordisk.com/search",
+        ),
+    ),
+    "coloplast": (
+        "coloplast.html",
+        "https://careers.coloplast.com/search/",
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="coloplast",
+            page_step=25,
+            base_search_url="https://careers.coloplast.com/search/",
+        ),
+    ),
     "impactpool": (
         "impactpool.html",
         "https://www.impactpool.org/search",
@@ -128,6 +162,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "jpal.html",
         "https://www.povertyactionlab.org/careers",
         lambda url, fetch: jpal.extract(url, fetch, source_name="jpal"),
+    ),
+    "niras": (
+        "niras.html",
+        "https://www.niras.com/jobs/vacant-positions/",
+        lambda url, fetch: niras.extract(url, fetch, source_name="niras"),
     ),
     "path": (
         "path.html",
