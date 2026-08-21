@@ -196,6 +196,20 @@ Record any decision a future session would otherwise have to re-derive.
   labelled `review`, so the leftover case costs as much as WP8f's whole gain.
   Consequence for the queue: WP8g goes **before** WP8, and the `location`
   column refresh below stops being optional — see the next entry.
+- **`httpx` is declared because the test imports it, not because anthropic
+  used to supply it (2026-08-21).** CI went red on every branch overnight, on a
+  docs-only commit. `anthropic` 1.0.0 released and switched its HTTP client to
+  `httpx2`; `requirements.txt` floats on `anthropic>=0.100.0`, so CI moved
+  0.125.0 -> 1.0.0 and `tests/test_scoring.py`'s direct `import httpx` stopped
+  resolving. Owner's decision: declare `httpx` rather than pin `anthropic<1.0.0`
+  — every API surface `scoring.py` touches still exists in 1.0.0 and the suite
+  passes against it, so pinning would freeze the SDK to hide a missing
+  declaration. Two things worth remembering: a local `.venv` that predates a
+  release will not reproduce this, so green locally is not green in CI; and
+  `test_scoring` still builds its mock error from an `httpx.Response` while the
+  SDK now speaks `httpx2` — it passes by duck-typing, and that mock is drifting
+  from what the SDK would really raise. Worth folding into the WP7 scoring code
+  the next time anything touches it.
 - **An extractor that fetches for itself cannot be fixture-captured (WP8g).**
   The 2026-08-21 capture attempt failed with "extractor made no request".
   `capture_fixtures` hands the extractor a recording fetcher and keeps the first
