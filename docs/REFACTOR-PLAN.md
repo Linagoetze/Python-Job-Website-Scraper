@@ -253,6 +253,18 @@ Record any decision a future session would otherwise have to re-derive.
   underneath it for something this package was not sent to fix. The general form:
   when a field feeds the harness, improving it is a measurement change, and it
   belongs to the package doing the measuring.
+- **Before honouring a fetcher, check what the caller actually passes (WP8g,
+  2026-08-21).** Converting an extractor from "always render for myself" to
+  "use what I am given" is only inert if the caller hands it a rendering
+  fetcher. `successfactors_html` and `niras` both looked like the same two-line
+  change; only `niras` carried the risk, because its comment said "Always use
+  Playwright" and its docstring said the static HTML is just a filter shell. Had
+  `sources.yaml` listed it `static`, the tidy-up would have turned a working
+  source into zero jobs reported as "no vacancies" — priority 2's exact failure,
+  on a source with no fixture to catch it. It is `dynamic`, so the change was
+  safe, but the check is the point: the `strategy` entry is the precondition,
+  not a detail. Both directions are now covered by construction — a plain
+  fetcher is used as given rather than silently upgraded.
 - **The labels refresh is a prerequisite for WP8, not housekeeping (WP8g).**
   The rule three entries up still holds: `eval.py` replays `labels.csv`'s
   stored `location`, so a fixed extractor scores as no improvement until the
@@ -2665,31 +2677,35 @@ parametrised fixture tests that now include `iss`). `ruff check .` clean,
 Not touched, per scope: `filtering.py`, the location rules, and WP8d/WP8f's
 states; DSV's department quirk, above; `niras.py`, below.
 
-### Noted, not fixed
+### Folded in, and what is left
 
-- **`niras.py` has the same fetcher bypass** (`niras.py:79-85`), and its
-  `if fetch_text is fetch_rendered:` / `else:` branches are **byte-identical**,
-  so the conditional decides nothing at all — both arms build
-  `partial(fetch_rendered, wait_for_selector=_WAIT_SELECTOR)`. It is the last
-  source that cannot be fixture-captured.
+- **`niras.py`'s bypass is fixed too, and it is stage 1 of 2** (owner's call,
+  same session). Its `if fetch_text is fetch_rendered:` / `else:` branches were
+  **byte-identical** — both built `partial(fetch_rendered, …)` — so the
+  conditional decided nothing and the capture recorder never fired.
 
-  The owner asked to fold the fix in here too, and it was **not** done, because
-  it is not the same two-line change `successfactors_html` got. That module was
-  safe to convert because the caller already hands ISS a rendering fetcher.
-  `niras.extract` says "Always use Playwright" and its docstring says "Static
-  HTML contains only the filter shell" — so if `sources.yaml` has niras as
-  `strategy: static`, honouring the given fetcher stops it rendering, it parses
-  the shell, and it returns **zero jobs**: a silent empty list dressed as "no
-  vacancies", which is the failure this project ranks second only to losing
-  data. The identical branches read like exactly that discovery, half-made.
+  This was held back until the owner confirmed one fact, because it is not
+  unconditionally safe: `niras.extract` said "Always use Playwright" and its
+  docstring says the static HTML is only the filter shell, so honouring the
+  given fetcher would have returned **zero jobs** — a silent empty list dressed
+  as "no vacancies" — had the caller been handing it a plain one. Confirmed
+  2026-08-21: `sources.yaml` has `niras` as `strategy: dynamic`, so the caller
+  already passes a rendering fetcher and the conversion is inert at runtime.
+  Verified both directions: a rendering fetcher still gets the selector wait and
+  the recorder now fires with `?pageSize=25&page=1`; a plain fetcher is now used
+  as given rather than silently replaced.
 
-  `sources.yaml` is gitignored and absent from the working tree, so the session
-  could not check. **This is blocked on one fact: niras's `strategy`.** If
-  `dynamic`, the conversion is inert and safe and the ISS two-stage applies
-  (convert, capture, pin). If `static`, the honest fix changes `sources.yaml`
-  *and* the extractor together, which is the owner's file to edit, and is a
-  deliberate change rather than a tidy-up. Either way the parse cannot be
-  validated until a fixture exists.
+  **Stage 2 is the owner's:** `python scripts/capture_fixtures.py niras`, then
+  wire `niras` into `FIXTURE_CASES` and pin a golden. Until that fixture exists
+  niras's *parsing* is still unvalidated — the bypass is fixed, the extractor is
+  not audited. Note its `<generic>`-tag parsing and `Country:`-prefixed fields
+  are unlike anything else here and are the obvious place for a second bug.
+
+  With this, **no extractor in the project fetches through a private callable**.
+  Verified rather than assumed: no module under `job_scraper/extractors/` still
+  imports or calls `fetch_rendered`; the three that mention it
+  (`workday`, `successfactors_html`, `niras`) do so only in the comment
+  explaining why they do not. Every source is now capturable.
 
 ### After the session, before WP8
 

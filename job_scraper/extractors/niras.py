@@ -1,7 +1,10 @@
-"""Extractor for NIRAS vacant positions (dynamic / Playwright-rendered).
+"""Extractor for NIRAS vacant positions (Playwright-rendered).
 
 The listing page renders job cards client-side. Static HTML contains only
-the filter shell. After JS execution each job appears as:
+the filter shell, so this source is `strategy: dynamic` in sources.yaml and
+the caller hands it a rendering fetcher; this module uses what it is given.
+
+After JS execution each job appears as:
     <a href="/jobs/vacant-positions/cvtp-NNNN-slug/">
       <generic>Title</generic>
       <generic>Country: …</generic>
@@ -76,13 +79,17 @@ def extract(
     fetch_text: Callable[[str], str],
     source_name: str = "niras",
 ) -> list[dict[str, Any]]:
-    from job_scraper.http import fetch_rendered  # avoid circular import
+    from job_scraper.http import is_rendering_fetcher  # avoid circular import
 
-    # Always use Playwright; upgrade with selector-based wait for reliability
-    if fetch_text is fetch_rendered:
-        fetch_fn = partial(fetch_rendered, wait_for_selector=_WAIT_SELECTOR)
-    else:
-        fetch_fn = partial(fetch_rendered, wait_for_selector=_WAIT_SELECTOR)
+    # This page needs JavaScript, but choosing the fetcher is the caller's job:
+    # niras is `strategy: dynamic` in sources.yaml, so what arrives here already
+    # renders. Test the capability and wrap the callable we were given rather
+    # than substituting fetch_rendered — the fixture capture script records the
+    # URL through its own wrapper, and an extractor that fetches through a
+    # private callable records nothing at all.
+    fetch_fn: Callable[..., str] = fetch_text
+    if is_rendering_fetcher(fetch_text):
+        fetch_fn = partial(fetch_text, wait_for_selector=_WAIT_SELECTOR)
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
