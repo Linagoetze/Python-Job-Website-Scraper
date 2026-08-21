@@ -2726,10 +2726,78 @@ states; DSV's department quirk, above; `niras.py`, below.
   capturable turned out to be carrying a data bug behind the bypass — which is
   the argument for capturing the rest rather than waiting for symptoms.
 
-- **Noted, not fixed: `tests/fixtures/niras.html` is 1.2 MB**, roughly a third
-  of the whole fixture directory (3.2 MB) and twice the next largest. It is a
-  heavy corporate page and the sanitiser has already stripped its scripts. Not
-  a problem today; worth a thought if the directory keeps growing.
+- **`tests/fixtures/niras.html` is 1.2 MB, and it should stay that way.**
+  Investigated rather than left as a nag: **88% of the file is 19 inline
+  `<svg>` elements** (1.10 MB of 1.25 MB); styles are 2%, scripts already
+  stripped. Adding `<svg>` to `sanitise_html` would cut it to roughly 150 KB,
+  costs nothing today (no extractor selects `svg`, no test pins one, and no
+  `<svg>` inside a job link in *any* of the 13 fixtures that have one is
+  text-bearing) — **and it is still the wrong trade.**
+
+  The reason is the sanitiser's own doctrine. It strips analytics scripts
+  because nothing parses them, but deliberately keeps scripts carrying job data,
+  so that a fixture stays a faithful record of what the extractor sees. `<svg>`
+  is in the second category, not the first: it contributes to `get_text()`, and
+  several extractors read exactly that. An SVG bearing a `<title>` or `<text>`
+  node — none do today, nothing stops one tomorrow — would then parse one way
+  live and another from the fixture, which is the one failure a fixture exists
+  to prevent. 3.2 MB across the whole directory is not worth that.
+
+  Revisit only if the directory becomes a real problem, and if so strip `<svg>`
+  at capture time for *all* sources at once, so no fixture is quietly different
+  from its neighbours.
+
+### Loose ends closed afterwards (2026-08-21)
+
+Asked to finish what the session had left open. Four of the five are now closed;
+the fifth needs the network and is the owner's.
+
+- **`ruff` ambiguity resolved.** CI runs bare `ruff check .` after
+  `pip install -r requirements.txt`, which floats on `ruff>=0.16.0`; the
+  session's `.venv/bin/ruff` is 0.16.1 on Python 3.13.12. Same tool, same
+  config, so the clean result stands. The residual risk is the floating pin
+  itself, and it is the known one: per the `httpx` entry above, a `.venv` that
+  predates a release does not reproduce CI, so green locally is not green in CI.
+  Nothing specific to this package.
+
+- **NIRAS's parsing is now audited, not just its title.** Three tests in
+  `tests/test_niras_extractor.py`, all derived from the captured fixture rather
+  than hand-written markup — the extractor's docstring had the page's shape
+  wrong once already, so a test written from the same assumption would have
+  agreed with the bug. They cover: every row's title being the headline rather
+  than the card body (the golden only sees row 1); a card with its `Country:`
+  line deleted from the real markup, which must give an honest `""` and not the
+  neighbouring metadata; and the card's field list being exactly
+  Country/Employment/Commencement/Position length/Deadline. That last one
+  settles `department`: **the card has no department field, so `""` is the
+  correct answer rather than a gap**, and a card that gains one becomes a
+  visible failure instead of a silently blank column. Both bug pins were checked
+  against the pre-fix extractor and both fail on it.
+
+- **The 1.2 MB fixture** — investigated and deliberately kept; see above.
+
+- **The eval caveat needs no fix, only stating plainly**, which it now is: the
+  harness replays the stored `location` and cannot see `raw_snippet` or
+  `department` at all, so identical numbers across this package were guaranteed
+  and prove only that the ladder still works. **What actually guards extractor
+  output is the golden files**, and that is where every claim in this package
+  was verified.
+
+- **Still open, and it needs the network: `novo_nordisk` and `coloplast` are
+  reasoned about, not tested.** The argument in step 3 is inference from the
+  gold set — sound, but it is not a fixture. They are the last two
+  SuccessFactors sources without one, and both now run code this package
+  changed. Two commands close it:
+
+  ```
+  python scripts/capture_fixtures.py novo_nordisk
+  python scripts/capture_fixtures.py coloplast
+  ```
+
+  Then wire each into `FIXTURE_CASES` and pin a golden — note that
+  `test_every_fixture_has_a_golden` means the two must land together, so this
+  cannot be pre-staged. Given that both sources this package *did* capture were
+  each hiding a data bug, the expected value of doing it is not low.
 
 ### After the session, before WP8
 
