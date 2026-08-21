@@ -70,6 +70,41 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Manager - Air Import 7 Aug 2026 Chester, PA, US, 19013",
         },
     },
+    "iss": {
+        # WP8g (2026-08-21): the source that put the literal word "Title" in all
+        # 33 of its gold-set locations. ISS serves the modern SuccessFactors
+        # tile layout, where `span.sr-only` labels each field — and the label
+        # for the title block sits inside the title's own container, so the old
+        # "first text that is not the title" heuristic read the label as data.
+        # Now read from the labelled `section-field` blocks; all 20 rows carry a
+        # real place. See test_iss_location_is_never_the_field_label below.
+        "count": 20,
+        "first_job": {
+            "source_name": "iss",
+            "title": (
+                "ISS søger en handyman til praktiske ejendomsservice opgaver "
+                "hos vores kunde i København K"
+            ),
+            "department": "Property Services",
+            "location": "København K, DK, 1402",
+            "listing_url": "https://jobs.issworld.com/search/",
+            "detail_url": (
+                "https://jobs.issworld.com/job/K%C3%B8benhavn-K-ISS-s%C3%B8ger-en-handyman"
+                "-til-praktiske-ejendomsservice-opgaver-hos-vores-kunde-i-K%C3%B8benhavn-K"
+                "-1402/1364641957/"
+            ),
+            "apply_url": (
+                "https://jobs.issworld.com/job/K%C3%B8benhavn-K-ISS-s%C3%B8ger-en-handyman"
+                "-til-praktiske-ejendomsservice-opgaver-hos-vores-kunde-i-K%C3%B8benhavn-K"
+                "-1402/1364641957/"
+            ),
+            "raw_snippet": (
+                "ISS søger en handyman til praktiske ejendomsservice opgaver "
+                "hos vores kunde i København K Property Services "
+                "København K, DK, 1402"
+            ),
+        },
+    },
     "givewell": {
         "count": 20,
         "first_job": {
@@ -362,3 +397,27 @@ def test_extractor_output_matches_golden(name: str) -> None:
         "Either a selector drifted or the fixture was refreshed."
     )
     assert jobs[0] == expected["first_job"]
+
+
+def test_iss_location_is_never_the_field_label() -> None:
+    """Pin WP8g's bug: a screen-reader label must never reach the location field.
+
+    The golden above would catch this on row 1 alone. This one is deliberately
+    separate and checks every row, because the failure was uniform — all 33 ISS
+    rows in the 2026-08-18 gold set carried "Title" — and a heuristic that
+    regressed for rows 2..n while row 1 stayed correct would slip past a
+    first-job assertion. Layer 0 reads `location` as a city name, so a label
+    landing here costs the source every posting it has.
+    """
+    filename = FIXTURE_CASES["iss"][0]
+    if not (FIXTURES_DIR / filename).exists():
+        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py iss")
+
+    jobs = parse_fixture("iss")
+    assert jobs, "iss fixture parsed to zero jobs"
+
+    offenders = [j for j in jobs if j["location"].strip().casefold() == "title"]
+    assert not offenders, (
+        f"{len(offenders)} of {len(jobs)} ISS rows have the column label 'Title' "
+        "as their location; the sr-only guard in successfactors_html has regressed"
+    )

@@ -85,6 +85,17 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
             base_search_url="https://jobs.dsv.com/search/",
         ),
     ),
+    "iss": (
+        "iss.html",
+        "https://jobs.issworld.com/search/",
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="iss",
+            page_step=20,
+            base_search_url="https://jobs.issworld.com/search/",
+        ),
+    ),
     "impactpool": (
         "impactpool.html",
         "https://www.impactpool.org/search",

@@ -33,6 +33,75 @@ from bs4 import BeautifulSoup
 
 _WAIT_SELECTOR = 'a[href^="/job/"]'
 
+# SuccessFactors ships two row layouts, and they need different reading.
+#
+# Classic table (DSV, and every static instance here): <tr> of <td>s, the
+# location in `span.jobLocation`. The positional "first text that is not the
+# title" heuristic below happens to land on it.
+#
+# Modern tile (ISS): <li class="job-tile"> holding `div.section-field.<kind>`
+# blocks, each a `span.sr-only` naming the field followed by a div of value.
+# The heuristic cannot read this layout at all: the fields are ordered job
+# category first, so even ignoring the labels the "first text" is a department.
+# Read the labelled blocks instead, the way workday.py prefers its dedicated
+# locations element over its subtitle list.
+_TILE_FIELD_SELECTOR = "div.section-field"
+# `location` is the single-site field, `multilocation` the multi-site one; ISS
+# uses the latter throughout. Order is preference, not precedence in markup.
+_TILE_LOCATION_KINDS = ("location", "multilocation")
+_TILE_DEPARTMENT_KINDS = ("department",)
+
+# Labels for screen readers are not data. This is why ISS put the word "Title"
+# in 33 locations: `span.sr-only` sits inside the title's own container, so it
+# was the first text that was not the title. Stripping it is a general guard,
+# not an ISS fix — a label is not a location for any of these sites.
+_SR_ONLY_CLASS = "sr-only"
+
+
+def _is_screen_reader_only(text: Any, container: Any) -> bool:
+    """True if *text* sits inside an sr-only element at or below *container*."""
+    node = text.parent
+    while node is not None:
+        if _SR_ONLY_CLASS in (node.get("class") or ()):
+            return True
+        if node is container:
+            return False
+        node = node.parent
+    return False
+
+
+def _visible_strings(container: Any) -> list[str]:
+    """Text in *container*, skipping anything addressed only to screen readers.
+
+    Built from `find_all(string=True)` rather than `stripped_strings`, because
+    the latter yields bare `str` with no way back up to the element that holds
+    it, and the sr-only test needs the ancestors.
+    """
+    out: list[str] = []
+    for text in container.find_all(string=True):
+        stripped = text.strip()
+        if not stripped or _is_screen_reader_only(text, container):
+            continue
+        out.append(stripped)
+    return out
+
+
+def _tile_field(row: Any, kinds: tuple[str, ...]) -> str | None:
+    """Read a labelled `section-field` block, or None if this row has no such field.
+
+    None and "" mean different things to the caller: None is "this layout does
+    not label its fields, fall back to the heuristic", "" is "the field is here
+    and genuinely empty", which WP8f admits at Layer 0 rather than guessing.
+    """
+    for field in row.select(_TILE_FIELD_SELECTOR):
+        classes = field.get("class") or ()
+        if not any(kind in classes for kind in kinds):
+            continue
+        # The value sits in a sibling div of the sr-only label; taking the
+        # field's visible text covers both that and any layout that inlines it.
+        return " ".join(_visible_strings(field)).strip()
+    return None
+
 
 def _set_startrow(base_url: str, startrow: int) -> str:
     parsed = urlparse(base_url)
@@ -63,23 +132,27 @@ def _parse_page(
         if not title:
             continue
 
-        # Location and metadata sit in sibling/parent elements.
-        # SuccessFactors wraps each row in a <li> or <tr>; look for the
-        # nearest container that has location-like text.
+        # Walk up to the row that holds the whole posting, not the innermost
+        # box that happens to wrap the link. On the tile layout the nearest
+        # <div> is `div.tiletitle`, which contains the title and its sr-only
+        # label and nothing else — the location is two siblings away and was
+        # never in scope.
         location = ""
         department = ""
-        container = a.find_parent(["li", "tr", "div"])
+        container = a.find_parent(["li", "tr"]) or a.find_parent("div")
         if container:
-            texts = [
-                t.strip()
-                for t in container.stripped_strings
-                if t.strip() and t.strip() != title
-            ]
-            # Heuristic: first non-title text is usually location or job family
-            if texts:
-                location = texts[0]
-            if len(texts) >= 2:
-                department = texts[1]
+            field_location = _tile_field(container, _TILE_LOCATION_KINDS)
+            field_department = _tile_field(container, _TILE_DEPARTMENT_KINDS)
+            if field_location is not None or field_department is not None:
+                location = field_location or ""
+                department = field_department or ""
+            else:
+                texts = [t for t in _visible_strings(container) if t != title]
+                # Heuristic: first non-title text is usually location or job family
+                if texts:
+                    location = texts[0]
+                if len(texts) >= 2:
+                    department = texts[1]
 
         raw_snippet = " ".join(x for x in [title, department, location] if x)
         out.append(
