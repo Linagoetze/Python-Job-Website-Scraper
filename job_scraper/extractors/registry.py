@@ -110,13 +110,13 @@ REGISTRY: dict[str, ExtractorFn] = {
         page_step=25,
         base_search_url="https://careers.coloplast.com/search/",
     ),
-    # --- SAP SuccessFactors (dynamic / Playwright — infinite scroll) ---
+    # --- SAP SuccessFactors (Playwright — infinite scroll; the rendering
+    # fetcher comes from sources.yaml's `strategy: dynamic`, not from here) ---
     "iss": partial(
         successfactors_html.extract,
         source_name="iss",
         page_step=20,
         base_search_url="https://jobs.issworld.com/search/",
-        dynamic=True,
     ),
     # --- Jobsinnetwork ---
     "jobsinlund": partial(jobsinlund.extract, source_name="jobsinlund"),

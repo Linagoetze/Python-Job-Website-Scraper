@@ -7,17 +7,19 @@ These portals serve job listings as server-rendered HTML at a /search/ or
 Pagination uses a ?startrow=N query parameter. Loop until a page returns no
 job links or the page_step would exceed a reasonable upper bound.
 
-Supports two modes selected via the `dynamic` flag:
-  static (default) — fetch with requests (fetch_text); works for DSV, Novo
-      Nordisk, Coloplast where static HTML is fully server-rendered.
-  dynamic — fetch with Playwright (fetch_rendered); needed for ISS which uses
-      AJAX infinite scroll (the ?start=N parameter alone is not enough).
+Whether a page needs JavaScript is the caller's business, not this module's:
+`sources.yaml`'s `strategy` picks the fetcher, and this extractor uses whatever
+callable it is handed. When that callable renders, it is wrapped with a selector
+wait so Playwright blocks until job links exist rather than relying on a fixed
+settle delay.
 
 Known instances:
-  DSV        https://jobs.dsv.com/search/           page_step=10
-  Novo Nordisk https://careers.novonordisk.com/search  page_step=100
-  Coloplast  https://careers.coloplast.com/search/  page_step=25
-  ISS        https://jobs.issworld.com/search/      dynamic=True
+  DSV        https://jobs.dsv.com/search/           page_step=10, static
+  Novo Nordisk https://careers.novonordisk.com/search  page_step=100, static
+  Coloplast  https://careers.coloplast.com/search/  page_step=25, static
+  ISS        https://jobs.issworld.com/search/      page_step=20, dynamic
+             (AJAX infinite scroll — the ?startrow=N parameter alone is not
+             enough, so its sources.yaml entry sets `strategy: dynamic`)
 """
 
 from __future__ import annotations
@@ -101,16 +103,17 @@ def extract(
     source_name: str,
     page_step: int,
     base_search_url: str,
-    dynamic: bool = False,
 ) -> list[dict[str, Any]]:
-    from job_scraper.http import fetch_rendered  # avoid circular import
+    from job_scraper.http import is_rendering_fetcher  # avoid circular import
 
-    if dynamic:
-        fetch_fn: Callable[[str], str] = partial(
-            fetch_rendered, wait_for_selector=_WAIT_SELECTOR
-        )
-    else:
-        fetch_fn = fetch_text
+    # ISS's listing is built by AJAX, so it needs a selector wait before the
+    # job links exist. Test the fetcher's *capability* and wrap the callable we
+    # were given rather than substituting fetch_rendered: the caller's wrapper
+    # may be doing something (the fixture capture script records the URL
+    # through it, and an extractor that fetches for itself records nothing).
+    fetch_fn: Callable[..., str] = fetch_text
+    if is_rendering_fetcher(fetch_text):
+        fetch_fn = partial(fetch_text, wait_for_selector=_WAIT_SELECTOR)
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
