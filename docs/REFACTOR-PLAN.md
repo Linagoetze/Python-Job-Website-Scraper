@@ -196,6 +196,21 @@ Record any decision a future session would otherwise have to re-derive.
   labelled `review`, so the leftover case costs as much as WP8f's whole gain.
   Consequence for the queue: WP8g goes **before** WP8, and the `location`
   column refresh below stops being optional — see the next entry.
+- **The gold set is a measuring instrument, and it needed recalibrating before
+  WP8 (2026-08-24).** WP8e, WP8f and WP8g all changed what the extractors and
+  Layer 0 produce, and `labels.csv` still held the old values, so the harness
+  was scoring a filter that no longer existed. `scripts/refresh_label_locations.py`
+  refreshed 63 locations; the owner re-judged the 13 rows that had been labelled
+  `review` without one — eight of them turned out to be in Chennai, Gdansk, New
+  York or London and were never wanted, while four BearingPoint roles turned out
+  to be in Malmo and genuinely were. Four ISS rows could not be refreshed at all:
+  the postings vanished before WP8g fixed the extractor, so nothing can ever
+  re-observe them, and they were corrected by hand from their surviving Gdansk
+  siblings. Reconciling six jobs the edits had left labelled both ways took the
+  set from 514 scored to 520. Net effect on the measurement, none of it earned by
+  changing a filter: recall 0.554 -> 0.647. The lesson for any future extractor
+  package: refresh and re-judge before quoting a number, because a stale gold set
+  does not fail loudly — it just answers a question about last month's code.
 - **`httpx` is declared because the test imports it, not because anthropic
   used to supply it (2026-08-21).** CI went red on every branch overnight, on a
   docs-only commit. `anthropic` 1.0.0 released and switched its HTTP client to
@@ -2872,19 +2887,72 @@ decisions log. What survives is a smaller, honest package: delete two layers
 that genuinely earn nothing, prune the keyword list with evidence instead of
 deleting it, and fix the seniority list if the evidence still supports it.
 
-The baseline to measure against is the **"after" column** of WP8d's before/after
-table, not WP8c's original numbers. WP8d moved five losses from Layer 0 into the
-keyword layer without changing anything about the keyword layer; its cost reads
-14 in the old numbers and 19 in the current ones.
+### Baseline, measured 2026-08-24 — use this, not WP8d's table
+
+WP8d's before/after table is no longer the baseline. WP8f, WP8g and the gold-set
+location refresh have all landed since, and the refresh moved the gold set
+itself: `scripts/refresh_label_locations.py` corrected 63 stale locations, the
+owner re-judged the 13 that had been labelled without one, and six jobs that had
+ended up labelled both ways were reconciled. The set now scores **520 labelled
+jobs — 68 review, 452 discard**, up from 514, and every number below is measured
+against it with `python -m job_scraper.eval` on the owner's real config.
+
+|  | value |
+|---|---|
+| review kept / dropped | 44 / 24 |
+| discard kept / dropped | 92 / 360 |
+| precision | 0.324 |
+| recall | 0.647 |
+| F2 | 0.539 |
+
+| layer | reached | dropped | wanted lost |
+|---|---|---|---|
+| 0-rules | 520 | 132 | 4 |
+| **1a-title-keyword** | 388 | **202** | **20** |
+| 1-seniority | 186 | 42 | 0 |
+| 1c-non-english | 144 | 3 | 0 |
+| 1b-language | 141 | 5 | 0 |
+
+**The keyword layer causes 20 of the 24 remaining false negatives.** It is the
+only layer in the ladder still costing wanted jobs in volume, which is what makes
+step 2 the substance of this package and steps 1 and 3 housekeeping around it.
+
+Per-keyword cost, already broken out by the harness — re-derive rather than
+trust it, but this is where to start:
+
+| lost | of drops | keyword |
+|---|---|---|
+| 4 | 12 | `Specialist` (word) |
+| 4 | 4 | `Security` (word) |
+| 3 | 6 | `leader` (word) |
+| 2 | 2 | `SEA` (word) |
+| 1 | 14 | `engineer` (prefix) |
+| 1 | 7 | `architect` (word) |
+| 1 | 6 | `AI` (word) |
+| 1 | 6 | `lab` (prefix) |
+| 1 | 3 | `owner` (word) |
+| 1 | 1 | `clerk` (word), `intern` (word) |
+
+Two of those drop *only* wanted jobs: `Security` (4 of 4) and `SEA` (2 of 2).
+WP8c's guess about `SEA` matching "Baltic Sea" is confirmed on the current set.
+A keyword whose every drop was wanted is the easy case; the argument to weigh is
+`Specialist` and `engineer`, which cost wanted jobs while also doing real work.
+
+Read the recall figure with the caveat the harness prints: of the 44 review jobs
+kept, 5 are deferred to Layer 2 on an unresolvable location and 3 on a hybrid
+gate. Layer 2 fails closed, so those are a ceiling, not banked recall.
 
 ```
 think hard
 
 Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8 only. Read the WP8
 preamble in the plan file before this prompt: an earlier version of it assumed
-the LLM scorer was running, and it is not.
+the LLM scorer was running, and it is not, and its baseline predates three
+packages and a gold-set refresh.
 
-Take the baseline first, and do not run the live pipeline to get it:
+Confirm the baseline first — it is recorded in the preamble, dated 2026-08-24.
+Re-run it rather than trusting the table, and say so if it has moved. Do not run
+the live pipeline to get it:
 
   python -m job_scraper.eval
 
@@ -2896,18 +2964,18 @@ WP8c built that harness for exactly this package. Compare configurations with
 
    Be honest about why in the plan file. The argument is NOT that the scorer
    covers them, because it is switched off. It is that they are two layers of
-   complexity that between them fire six times on a 514-row gold set, cost zero
+   complexity that between them fire eight times on the 520-row gold set, cost zero
    wanted jobs, and one of them (non-English) is already inert on the
    refilter_stored_jobs path because stored rows carry no raw_snippet, while
    langdetect is nondeterministic enough that the harness has to seed it.
-   Deleting them keeps roughly six more unwanted jobs and loses nothing.
+   Deleting them keeps roughly eight more unwanted jobs and loses nothing.
    Measure the real number with --compare and report it. If it comes back
    materially worse than that, stop and say so rather than pressing on.
 
 2. DO NOT delete config/title_exclude_keywords.csv. Nothing subsumes it with
    scoring off. Prune it instead, with evidence:
 
-   - The current numbers say the keyword layer costs 19 wanted jobs. Use
+   - The current numbers say the keyword layer costs 20 wanted jobs. Use
      --compare to measure removing individual keywords, and report the recall
      and precision delta per keyword rather than in one lump.
    - WP8c named the worst offenders and one of them, 'SEA' as a whole-word
@@ -2920,7 +2988,7 @@ WP8c built that harness for exactly this package. Compare configurations with
 3. The seniority list still contains 'Lead' and 'Architect', and the original
    prompt called them false positives ("Lead Generation Analyst", junior
    architect roles). Check that against the gold set before acting: the
-   seniority layer currently drops 41 jobs and loses zero wanted ones, so the
+   seniority layer currently drops 42 jobs and loses zero wanted ones, so the
    harness gives no evidence the problem is real on this data. If you cannot
    demonstrate the false positive, say so and leave the list alone. If you can,
    propose narrowed patterns; do not just delete entries.
