@@ -48,7 +48,9 @@ LABEL_COL = "label"
 KEY_COL = "dedupe_key"
 
 
-def current_locations(db_path: Path) -> dict[str, str]:
+def current_locations(
+    db_path: Path,
+) -> tuple[dict[str, tuple[int, str, str]], int]:
     """Map dedupe_key -> the most recently observed location.
 
     Two places hold one: `jobs` for postings that survived the filters and were
@@ -61,19 +63,20 @@ def current_locations(db_path: Path) -> dict[str, str]:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         best: dict[str, tuple[int, str]] = {}
-        for key, loc, run in con.execute(
-            "SELECT dedupe_key, location, last_run_id FROM jobs"
+        for key, loc, run, src in con.execute(
+            "SELECT dedupe_key, location, last_run_id, source_name FROM jobs"
         ):
-            best[key] = (run or 0, loc or "")
-        for key, loc, run in con.execute(
-            "SELECT dedupe_key, location, run_id FROM run_exclusions"
+            best[key] = (run or 0, loc or "", src or "")
+        for key, loc, run, src in con.execute(
+            "SELECT dedupe_key, location, run_id, source_name FROM run_exclusions"
         ):
             seen = best.get(key)
             if seen is None or (run or 0) >= seen[0]:
-                best[key] = (run or 0, loc or "")
+                best[key] = (run or 0, loc or "", src or "")
+        latest = con.execute("SELECT max(run_id) FROM runs").fetchone()[0] or 0
     finally:
         con.close()
-    return {k: v[1] for k, v in best.items()}
+    return best, latest
 
 
 def main() -> int:
@@ -113,19 +116,29 @@ def main() -> int:
             print(f"{args.labels} has no {required!r} column", file=sys.stderr)
             return 1
 
-    locations = current_locations(args.db)
+    locations, latest_run = current_locations(args.db)
 
     changed: list[tuple[dict[str, str], str, str]] = []
+    # A posting that vanished before the extractor serving it was fixed can
+    # never be re-observed, so the store's newest value for it is still the
+    # broken one and refreshing is a no-op that looks like success. There is no
+    # general way to spot a wrong location, but there is a precise one: a value
+    # this very run corrected on other rows is a value known to be wrong. Those
+    # are collected once the changes are known, below.
+    seen_runs: list[tuple[dict[str, str], int]] = []
     missing = 0
     for row in rows:
-        new = locations.get(row[KEY_COL])
-        if new is None:
+        seen = locations.get(row[KEY_COL])
+        if seen is None:
             missing += 1
             continue
+        run, new, source = seen
         old = row[LOCATION_COL] or ""
         if new != old:
             changed.append((row, old, new))
             row[LOCATION_COL] = new
+        if run < latest_run:
+            seen_runs.append((row, run))
 
     print(f"{len(rows)} labelled rows, {len(rows) - missing} found in the store.")
     if missing:
@@ -144,6 +157,20 @@ def main() -> int:
         for row, old, new in rejudge:
             print(f"  {row.get('company', '')[:20]:22} {row.get('title', '')[:42]:44}")
             print(f"  {'':22} {old!r} -> {new!r}")
+
+    corrected = {old for _, old, _ in changed}
+    stale = [(r, run) for r, run in seen_runs if r[LOCATION_COL] in corrected]
+    if stale:
+        print(
+            f"\n{len(stale)} rows still hold a location this run corrected elsewhere, "
+            f"so the value is known to be wrong — but the posting vanished before run "
+            f"{latest_run} and can never be re-observed, so nothing can refresh it. "
+            f"Correct or re-judge these by hand:\n"
+        )
+        for row, run in stale:
+            print(f"  [{row[LABEL_COL]:8}] last seen run {run:>3}  "
+                  f"{row.get('company', '')[:16]:18} {row.get('title', '')[:34]:36} "
+                  f"{row[LOCATION_COL]!r}")
 
     if args.report_all and changed:
         print(f"\nAll {len(changed)} changed rows:\n")
