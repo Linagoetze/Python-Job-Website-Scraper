@@ -2889,9 +2889,14 @@ deleting it, and fix the seniority list if the evidence still supports it.
 
 ### Baseline, measured 2026-08-24 — use this, not WP8d's table
 
-WP8d's before/after table is no longer the baseline. WP8f, WP8g and the gold-set
-location refresh have all landed since, and the refresh moved the gold set
-itself: `scripts/refresh_label_locations.py` corrected 63 stale locations, the
+WP8d's before/after table is no longer the baseline. **WP8e**, WP8f, WP8g and
+the gold-set location refresh have all landed since. WP8e matters most of the
+four and is the easiest to overlook, because its gain was invisible until the
+refresh: it populated locations for sources that had none, and four BearingPoint
+roles that turned out to be in Malmo — a listed city — had been sitting in the
+gold set as unlocatable ever since. WP8g contributed one source, ISS, and
+mostly by correcting wrong values rather than recovering jobs. The refresh moved
+the gold set itself: `scripts/refresh_label_locations.py` corrected 63 stale locations, the
 owner re-judged the 13 that had been labelled without one, and six jobs that had
 ended up labelled both ways were reconciled. The set now scores **520 labelled
 jobs — 68 review, 452 discard**, up from 514, and every number below is measured
