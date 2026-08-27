@@ -51,7 +51,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
-| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | not started | `wp8-trim-ladder` |
+| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.824 (0.868 once the owner drops `"Architect"` from `rules.json`), precision up too | `wp8-trim-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -316,6 +316,34 @@ Record any decision a future session would otherwise have to re-derive.
   buy almost nothing. Two of the prompt's three performance fixes were already
   done or overstated. If API billing is ever opened, revisit the keyword CSV:
   that is the moment the original argument becomes true.
+- **Every per-rule cost the eval harness prints is an *attribution*, not a
+  marginal cost (WP8, 2026-08-27).** A rule is credited with a drop when it is
+  the first configured term to match; removing it changes a verdict only if
+  nothing further down the ladder also catches that job. On the WP8 baseline
+  only 38 of 112 keywords changed any verdict when removed, and `SEA`, `AI` and
+  `architect` — all named as costly — changed none. `Security`/`architect` and
+  `architect`/seniority `Architect` mask each other exactly, so removing either
+  half alone measures zero and removing both measures the real cost. **Never
+  prune from the printed table.** Remove the rule, re-run, diff. This is also
+  why WP8's step 3 could not be answered until step 2 had landed.
+- **`Architect` was a genuine false positive; `Lead` was not (WP8,
+  2026-08-27).** The original prompt named both. The gold set supports only
+  `Architect`: 4 of its 16 architect titles are labelled review, and "ASIC SoC
+  **Security** Architect" is review while "ASIC SoC **System** Architect" is
+  discard — a topic distinction the seniority layer was making by accident. It
+  is narrowed to `Solution Architect` + `System Architect`, moved into
+  `title_exclude_keywords.csv` where job families belong. For `Lead` the
+  claimed example ("Lead Generation Analyst") **does not occur in the gold set
+  at all**; 20 of 21 `\bLead\b` titles are discard and removing it returns 13
+  unwanted jobs for zero wanted. Left alone. Do not re-propose it without new
+  labelled evidence.
+- **`rules.json` stayed untouched, so WP8 lands in two stages (2026-08-27).**
+  The seniority list lives in the gitignored `rules.json`, which CLAUDE.md puts
+  on the never-touch list. WP8 therefore committed the keyword CSV and
+  `rules.example.json` only, and left the owner one hand edit: drop
+  `"Architect"` from `seniority_exclude_titles`. Committed state scores recall
+  0.824; with that edit, 0.868. If a later session measures 0.824 and expects
+  0.868, this is why.
 
 ---
 
@@ -3012,6 +3040,266 @@ experience extraction. Do not touch WP8d's deferred-location state.
 Branch wp8-trim-ladder. Commit, do not push. Update the plan file with the
 before/after numbers from --compare, per change rather than in one lump.
 ```
+
+### Result — done 2026-08-27, branch `wp8-trim-ladder`
+
+352 tests pass, `ruff check .` clean, `--help` still works.
+(`tests/test_scoring.py` does not collect: `anthropic` is not installed in this
+environment. It fails identically on `main` — pre-existing, not this package.)
+
+**The baseline held.** `python -m job_scraper.eval` reproduced the 2026-08-24
+table exactly — 520 labelled jobs, 68/452, precision 0.324, recall 0.647,
+F2 0.539, and every per-layer row unchanged. Nothing had moved underneath it.
+
+#### The finding that reorganised this package
+
+**The per-keyword table above counts attribution, not cost.** A keyword is
+credited with a drop when it is the *first configured* term to match the title.
+Removing it only changes a verdict if nothing further down the ladder also
+catches that job. Measured marginally — remove one keyword, re-run, diff — only
+**38 of 112 keywords change any verdict at all**, and three of the names the
+table singles out change none:
+
+| keyword | credited | marginal | what actually catches it |
+|---|---|---|---|
+| `SEA` (word) | 2 lost | **0** | both titles also say "Senior" — the seniority layer |
+| `AI` (word) | 1 lost | **0** | another keyword on the same title |
+| `architect` (word) | 1 lost | **0** | `Architect` in `seniority_exclude_titles` |
+
+So the instruction to re-derive rather than trust the WP8c figures was the
+right one, and it inverted the answer: **`SEA` is not a worst offender on this
+data, it is inert.** WP8c's guess about "Baltic Sea" and "Air & Sea" is still
+correct as a description of the pattern — it does match both — but both titles
+carry "Senior" and the seniority layer would drop them anyway. The same masking
+runs the other way between `Security` and `architect`, which is why removing
+either alone recovers one job and removing both recovers one job.
+
+This is why every number below is a marginal measurement against a stated
+baseline, and why the seniority question in step 3 could only be answered after
+step 2 had removed the keywords masking it.
+
+#### 1. Layers 1c and 1b, deleted
+
+Not because the scorer covers them — it is still off, and `scoring_enabled` is
+still `false`. Because their entire measured output on 520 rows is eight
+discard-labelled jobs.
+
+| | before | after | delta |
+|---|---|---|---|
+| precision | 0.324 | 0.306 | −0.018 |
+| recall | 0.647 | 0.647 | +0.000 |
+| F2 | 0.539 | 0.529 | −0.010 |
+| discard kept | 92 | 100 | +8 |
+| wanted lost | 24 | 24 | 0 |
+
+Eight more unwanted jobs reach the review pile; no wanted job is lost. That is
+exactly the "roughly eight" the prompt predicted, so nothing here warranted
+stopping.
+
+Two corrections to the prompt's own reasoning, both in the deletion's favour:
+
+- **"Already inert on the `refilter_stored_jobs` path" is too strong.** Stored
+  rows do carry no `raw_snippet` — there is no such column in the `jobs` table
+  — but `apply_non_english_text_filter` falls back to the title, and detects
+  whenever that exceeds 50 characters. All three of its gold-set drops fired on
+  title alone. The layer was weakened on that path, not disabled.
+- **The better argument is what those three drops were.** One of them is a
+  misdetection: *"Regional Readiness Consultant - Latin America Region"*, an
+  English title, read as Italian. On title-only input — which is all the
+  refilter path and the gold set ever supply — langdetect got one in three
+  wrong, and it seeds itself randomly, which is why WP8c had to pin it before
+  it could measure anything at all. A layer that is one-third wrong on the only
+  evidence available, non-deterministic, and worth two discards is not carrying
+  its complexity.
+
+Layer 1b was the more accurate of the two: five drops, all "Swedish-speaking
+Customer Support" roles in Malta, Barcelona and Cyprus, all correctly unwanted.
+It is deleted for cost, not error — five rows is not a layer.
+
+**There were no config keys to delete.** The prompt anticipated some; neither
+layer ever had one. `rules.json` gates the seniority filter and the location
+rules only.
+
+Also removed with them: `langdetect` from `requirements.txt` (its only caller
+is gone), the `LAYER_NON_ENGLISH` / `LAYER_LANGUAGE` drop-log constants, the
+two `RunSummary` counters and their lines in the run summary, and the eval
+harness's `_seed_langdetect`. `test_replay_is_deterministic` stays — the
+replayed ladder is now deterministic by construction, and that test is what
+would notice if a later layer reintroduced a coin flip.
+
+The eval fixture's two rows for these layers are **kept, not deleted**: both
+are labelled discard, so they now land as false positives, and the regression
+pin moved from `(4, 2, 3, 5)` to `(4, 4, 3, 3)`. That is the price of the
+deletion, recorded where a future refactor will trip over it.
+
+#### 2. The keyword list, pruned — not deleted
+
+`config/title_exclude_keywords.csv` stays. Nothing subsumes it with scoring
+off. 112 entries → 106.
+
+Each row is the marginal effect of removing **that one keyword**, against the
+post-step-1 baseline (precision 0.306, recall 0.647, F2 0.529):
+
+| keyword | +wanted | +unwanted | Δprecision | Δrecall | ΔF2 | verdict |
+|---|---|---|---|---|---|---|
+| `Specialist` (word) | +4 | +6 | +0.006 | +0.059 | **+0.035** | removed |
+| `leader` (word) | +3 | +3 | +0.008 | +0.044 | **+0.028** | removed |
+| `intern` (word) | +1 | 0 | +0.005 | +0.015 | **+0.011** | removed |
+| `Security` (word) | +1 | 0 | +0.005 | +0.015 | **+0.011** | removed |
+| `clerk` (word) | +1 | 0 | +0.005 | +0.015 | **+0.011** | removed |
+| `owner` (word) | +1 | +2 | +0.001 | +0.015 | +0.008 | removed |
+| `lab` (prefix) | +1 | +2 | +0.001 | +0.015 | +0.008 | removed |
+| `engineer` (prefix) | +1 | +8 | −0.011 | +0.015 | +0.001 | **kept** |
+| `SEA` (word) | 0 | 0 | 0.000 | 0.000 | 0.000 | **kept** |
+| `AI` (word) | 0 | 0 | 0.000 | 0.000 | 0.000 | **kept** |
+
+`intern`, `Security` and `clerk` are the easy cases: every job they cost was
+wanted and they hold back nothing. `Specialist` and `leader` are the ones worth
+arguing about, and they are also the two biggest wins — four UN/UNOPS
+specialist roles and three "Agile Project Leader"/"Channels Leader" roles, for
+six and three unwanted rows respectively. At beta=2 that trade is clearly
+right; it would not be at beta=0.5.
+
+**Kept deliberately:**
+
+- `engineer` (prefix) buys one wanted job for eight unwanted. F2 +0.001 is
+  inside the noise and precision drops 0.011 — it pays in the metric the ladder
+  is already worst at. One job is not worth it.
+- `SEA` and `AI` earn nothing either way. The plan's own standard is that
+  removing a keyword that costs nothing is churn, so they stay. `SEA` is on
+  record as a latent misfire that this gold set happens to mask; if a future
+  "Air & Sea Coordinator" arrives without a seniority word, it will fire, and
+  this entry is where to look.
+
+**`architect` (word) is replaced, not removed.** Bare "architect" is a job
+family, not a level: 4 of the gold set's 16 architect titles are labelled
+review, and every architect title the owner rejected *on level* already says
+Senior, Lead or Principal. In its place go `Solution Architect` and
+`System Architect` — the two compounds that, measured, only ever caught jobs
+the owner did not want.
+
+**Step 2 as committed** (`--compare` against the post-step-1 config):
+
+| | before | after | delta |
+|---|---|---|---|
+| precision | 0.306 | 0.331 | **+0.026** |
+| recall | 0.647 | 0.824 | **+0.176** |
+| F2 | 0.529 | 0.635 | **+0.106** |
+| false negatives | 24 | 12 | −12 |
+| newly dropped | — | — | **0** |
+
+Nothing that used to be kept is now dropped.
+
+#### 3. Seniority: `Architect` is real, `Lead` is not
+
+The prompt was right to demand evidence before acting, and the evidence splits.
+
+**`Lead` — claim not supported; the list is unchanged.** The original prompt's
+example was "Lead Generation Analyst". **No such title exists in the gold set.**
+Of the 21 titles containing `\bLead\b`, 20 are labelled discard, and they are
+genuine senior roles: "S&OP Lead", "Portfolio Manager: Growth & Strategy Lead",
+"Remote Handling Group Lead". Removing `Lead` returns 13 unwanted jobs and zero
+wanted ones (Δprecision −0.024, ΔF2 −0.018). The one wanted title with "Lead"
+in it — *"Lead ASIC SoC Architect for High-Performance Security"* — is
+recovered by the architect fix below, not by touching `Lead`. **Left alone.**
+
+`Senior`, `Director` and `Head of` were checked the same way and are likewise
+clean (0 wanted, 17 / 10 / 4 unwanted respectively).
+
+**`Architect` — demonstrated, and narrowed rather than deleted.** This could
+only be seen after step 2: `architect` in the CSV and `Architect` in
+`seniority_exclude_titles` mask each other perfectly, and removing *either
+alone changes nothing at all*. Removing both recovers three wanted jobs:
+
+- Software Architect (Airbus)
+- ASIC SoC Security Architect, Lund (Axis)
+- ASIC SoC Security Architect: Embedded Crypto & TEEs (Axis)
+
+The gold set makes the category error plain: **"ASIC SoC Security Architect" is
+review and "ASIC SoC System Architect" is discard.** Those differ by one word,
+and it is not a seniority word. The layer was doing topic filtering by
+accident.
+
+Narrowings measured, all against the pruned-keyword baseline:
+
+| option | +wanted | +unwanted | Δprecision | Δrecall | ΔF2 |
+|---|---|---|---|---|---|
+| drop `Architect` outright | +3 | +6 | +0.000 | +0.044 | +0.021 |
+| narrow to `Solution Architect` | +3 | +4 | +0.004 | +0.044 | +0.024 |
+| **narrow to `Solution Architect` + `System Architect`** | **+3** | **0** | **+0.012** | **+0.044** | **+0.029** |
+| + Chief/Principal/Enterprise Architect | +3 | 0 | +0.012 | +0.044 | +0.029 |
+
+The last row buys nothing: "Chief Architect" is already caught by the `chief`
+keyword and "Principal Architect" by `Principal`, so those entries would be
+unmeasured decoration. The third row is the proposal, and it is a pure gain —
+recall up, precision up, nothing newly dropped.
+
+The two compounds are placed in `title_exclude_keywords.csv`, not in
+`seniority_exclude_titles`. They are job families, and a list called
+"seniority" should hold levels — that miscategorisation is what produced the
+false positive in the first place.
+
+One visible consequence worth expecting: the committed state's per-layer table
+now reports **`1-seniority` losing 4 wanted jobs**, where the 2026-08-24
+baseline reported 0. Nothing got worse — those four were always being lost,
+attributed to the keyword layer that reached them first. Pruning the keywords
+moved the attribution to where the drop actually happens. Three of the four are
+the architect roles the hand edit below recovers; the fourth is *"Lead ASIC SoC
+Architect for High-Performance Security"*, which `Lead` catches and which stays
+dropped by design.
+
+#### The one change the owner has to make by hand
+
+`job_scraper/config/rules.json` is on CLAUDE.md's never-touch list, so this
+session did not edit it. `rules.example.json` has been updated to match.
+**Remove `"Architect"` from `seniority_exclude_titles` in your `rules.json`.**
+
+Until that edit lands, the committed state gives the **stage 1** numbers; after
+it, **stage 2**:
+
+| | baseline | stage 1 (committed) | stage 2 (after the hand edit) |
+|---|---|---|---|
+| precision | 0.306 | 0.331 | **0.343** |
+| recall | 0.647 | 0.824 | **0.868** |
+| F2 | 0.529 | 0.635 | **0.664** |
+| false negatives | 24 | 12 | **9** |
+
+Against the *original* WP8 baseline of 2026-08-24 (precision 0.324, recall
+0.647, F2 0.539), the finished package is precision **0.343**, recall
+**0.868**, F2 **0.664** — and 15 of the 24 false negatives are gone, with
+nothing newly dropped at any step.
+
+Read the recall figure with WP8c's standing caveat, which this package does not
+change: some kept jobs are deferred to Layer 2, which fails closed, so recall
+remains a ceiling rather than banked.
+
+#### 4. Performance — nothing done, deliberately
+
+- `build_hybrid_pattern` is compiled once and passed down, exactly as the
+  corrected prompt says. Not touched.
+- `_build_title_keyword_pattern` is called once per batch inside
+  `apply_combined_title_filter`, which runs **twice per run** (`run_pipeline`
+  and `refilter_stored_jobs`). Timed on the real 106-keyword list: 45.6 µs for
+  the combined pattern and 91.8 µs for the per-keyword matchers, so **0.275 ms
+  per run, total**. That is unmeasurable next to a single rate-limited HTTP
+  request. Hoisting it would mean threading a compiled pattern through both
+  call sites and the eval harness to save a quarter of a millisecond. **Not
+  done, and not worth revisiting.**
+
+#### Not touched, per scope
+
+The location rules, the review statuses, the numeric experience extraction, and
+WP8d's deferred-location state are all unchanged. The README still documents
+layers 1c and 1b and still prints them in its sample summary — that is WP8b's
+job, and doing it here would mean doing it twice.
+
+#### Left for later
+
+- The masking effect is a general property of the ladder, not a fact about
+  these keywords: **any** per-rule cost figure the harness prints is an
+  attribution, and the marginal cost can only be got by removing the rule and
+  re-running. `format_costly_rules` could say so in its own header; it
+  currently invites exactly the misreading this package started with.
 
 ---
 
