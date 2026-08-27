@@ -3552,7 +3552,7 @@ one was exercised at DEBUG level to confirm the `%s`/argument counts match.
 **Still on the old vocabulary, deliberately: code comments and CLAUDE.md.**
 About 54 comments and docstrings across eight files say "Layer 0"/"Layer 2"
 meaning the stored-id vocabulary, and CLAUDE.md:32 does too — plus one line of
-shipped prose in `config/rules.example.json`, the only one of these a reader
+shipped prose in `job_scraper/config/rules.example.json`, the only one of these a reader
 meets without opening the source. None is shown to a person running the tool
 (the example config is read, not rendered), and sweeping
 them would have buried this package's real fixes in a sixty-hunk comment diff.
@@ -3591,6 +3591,16 @@ of the package's scope strictly read, but it is documentation-only, in strings
 this package was already rewriting, and leaving a known-false example in place
 after touching the line would have been the wrong call.
 
+**Ties in the drops report sorted by the stored id's alphabet.** Found in the
+second review. `rule_counts` broke equal counts with the `(layer, rule)` tuple,
+and the stored ids sort `'0-rules'`, `'1-seniority'`, `'1a-title-keyword'` — so
+the report printed the ladder as Layer 1, 3, 2, 4, 5. Pre-existing, and invisible
+for as long as the stored ids were the only thing on screen; WP8h is what put the
+ordinals there and made it wrong. Fixed with `drops.layer_sort_key`, derived from
+the same `LAYERS` table: ladder order, a layer's own rows before its `refilter/`
+ones, retired ids last as a group. Count still dominates — the report's first job
+is still "which rule fired most?" — and that is pinned by its own test.
+
 **Column width in the drops report.** The `layer` column was first widened 18 → 30,
 which was still too narrow: the longest label a stored id can produce is a
 re-filtered one, `"Layer 1: Location and rules (re-filter)"` at 39 characters, and
@@ -3598,7 +3608,13 @@ re-filtered one, `"Layer 1: Location and rules (re-filter)"` at 39 characters, a
 the whole point of that suffix — WP8a keeps the two populations separable — so it
 must not be the part that gets trimmed. Now 39.
 
-**Tests.** `tests/test_drop_log.py` gained a "the display ordinal" section:
+**Tests.** `layer_short` is covered alongside its two siblings — the ordinals it
+returns, that it agrees with `layer_ordinal` for every row of the table, and that
+it raises on a retired id (it is the one of the three that must refuse, since
+`layer_display` is the one that has to survive history). Report ordering has four
+tests: ladder order on equal counts, count still beating ladder order, retired
+last, and a `refilter/` row sorting beside its base layer.
+`tests/test_drop_log.py` gained a "the display ordinal" section:
 the full `(id, display, name)` table pinned in order, a retired id rendering
 without raising (`1c-non-english`, `1b-language`), a current id, a
 `refilter/`-prefixed id (both current and retired underneath), `layer_ordinal`
@@ -3652,7 +3668,7 @@ sixty-hunk documentation diff. They are now this package's:
   which now actively collide with the new scheme.
 - **~54 code comments and docstrings** across eight files, plus CLAUDE.md's own
   architecture line — and, easy to miss, one line of shipped prose in
-  `config/rules.example.json` that a reader copies when building their own
+  `job_scraper/config/rules.example.json` that a reader copies when building their own
   `rules.json`.
 
 Both are inert — no instruction in either would lose data if followed — but the
@@ -3764,9 +3780,10 @@ render as "(retired)". Do not resurrect them in prose.
 
    filtering.py 21, experience_filter.py 11, pipeline.py 11, eval.py 6,
    scoring.py 2, drops.py 2, extractors/successfactors_html.py 2,
-   config/rules.example.json 1.
+   config/rules.example.json 1 — all relative to job_scraper/, the grep root above.
 
-   **`config/rules.example.json` is the one to do first and most carefully.**
+   **`job_scraper/config/rules.example.json` is the one to do first and most
+   carefully.**
    Its `_non_place_locations_comment` is not an internal comment at all — it is
    prose shipped in the example config, the thing a reader copies to build
    their own `rules.json`, and it explains WP8d's deferral as "passes Layer 0

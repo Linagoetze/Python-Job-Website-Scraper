@@ -103,6 +103,26 @@ def layer_short(stored_id: str) -> str:
     return f"Layer {_BY_ID[stored_id].display}"
 
 
+def layer_sort_key(stored_id: str) -> tuple[int, int, str]:
+    """Where *stored_id* sorts in a report: execution order, this run before re-filter.
+
+    Ties in the drop log used to fall back to the stored id, which sorts
+    alphabetically — '0-rules', '1-seniority', '1a-title-keyword' — and so
+    printed the ladder as Layer 1, 3, 2, 4, 5. That was invisible while the
+    stored ids were the only thing on screen and plainly wrong once WP8h put
+    the ordinals there.
+
+    Retired ids have no ordinal, so they sort after every current layer,
+    together, by id: they are history, and history belongs at the foot of the
+    table rather than interleaved with layers that still run.
+    """
+    is_refilter = stored_id.startswith(REFILTER_PREFIX)
+    base_id = stored_id[len(REFILTER_PREFIX) :] if is_refilter else stored_id
+    layer = _BY_ID.get(base_id)
+    position = len(LAYERS) + 1 if layer is None else layer.display
+    return (position, int(is_refilter), stored_id)
+
+
 def layer_display(stored_id: str) -> str:
     """Human label for *stored_id*: 'Layer N: Name'.
 
@@ -174,11 +194,16 @@ def rule_counts(rows: list[dict[str, Any]]) -> list[tuple[str, str, int]]:
 
     Counted from the same rows the detail view lists, so a filtered summary and
     a filtered listing can never disagree about how many there were.
+
+    Equal counts break to ladder order, not to the stored id's alphabet — see
+    `layer_sort_key`.
     """
     counter = Counter((str(r["layer"]), str(r["rule"])) for r in rows)
     return [
         (layer, rule, n)
-        for (layer, rule), n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+        for (layer, rule), n in sorted(
+            counter.items(), key=lambda kv: (-kv[1], layer_sort_key(kv[0][0]), kv[0][1])
+        )
     ]
 
 
