@@ -7,7 +7,7 @@ job worth seeing that a rule quietly ate — could not be found at all, and a
 rule change could not be shown to have helped.
 
 The pipeline now records one row per exclusion in the store's `run_exclusions`
-table, naming the specific keyword, term, location case or language code that
+table, naming the specific keyword, term or location case that
 fired. This module reads it back:
 
     python -m job_scraper.drops                    # last run, counts per rule
@@ -38,8 +38,6 @@ from job_scraper.storage.db import JobStore, dedupe_key_for_job
 LAYER_RULES = "0-rules"
 LAYER_TITLE_KEYWORD = "1a-title-keyword"
 LAYER_SENIORITY = "1-seniority"
-LAYER_NON_ENGLISH = "1c-non-english"
-LAYER_LANGUAGE = "1b-language"
 LAYER_REVIEW_STATUS = "1d-review-status"
 LAYER_DETAIL = "2-detail"
 

@@ -12,8 +12,6 @@ from job_scraper import JobRecord
 from job_scraper.config_loader import load_rules, load_sources
 from job_scraper.drops import (
     LAYER_DETAIL,
-    LAYER_LANGUAGE,
-    LAYER_NON_ENGLISH,
     LAYER_REVIEW_STATUS,
     LAYER_RULES,
     LAYER_SENIORITY,
@@ -34,8 +32,6 @@ from job_scraper.filtering import (
     _LOCATION_EMPTY_ADMITTED_REASON,
     _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
-    apply_language_filter,
-    apply_non_english_text_filter,
     build_hybrid_pattern,
     build_location_pattern,
     build_non_place_pattern,
@@ -78,8 +74,6 @@ class RunSummary:
     jobs_extracted: int
     jobs_kept: int
     jobs_keyword_excluded: int
-    jobs_language_excluded: int
-    jobs_non_english_excluded: int
     jobs_title_excluded: int
     jobs_blocklist_excluded: int
     jobs_already_stored: int
@@ -124,7 +118,7 @@ def refilter_stored_jobs(
     different population from this run's scrape.
     """
     jobs = store.jobs_with_status(("new",))
-    counts = {"rules": 0, "title": 0, "title_keywords": 0, "non_english_text": 0, "language": 0}
+    counts = {"rules": 0, "title": 0, "title_keywords": 0}
     rejected_keys: list[str] = []
     drops: list[dict[str, Any]] = []
 
@@ -152,16 +146,6 @@ def refilter_stored_jobs(
     rejected_keys += [j["dedupe_key"] for j in kw_excluded + title_excluded]
     drops += _exclusions(kw_excluded, refiltered(LAYER_TITLE_KEYWORD))
     drops += _exclusions(title_excluded, refiltered(LAYER_SENIORITY))
-
-    kept, non_english = apply_non_english_text_filter(kept)
-    counts["non_english_text"] = len(non_english)
-    rejected_keys += [j["dedupe_key"] for j in non_english]
-    drops += _exclusions(non_english, refiltered(LAYER_NON_ENGLISH))
-
-    kept, language_excluded = apply_language_filter(kept)
-    counts["language"] = len(language_excluded)
-    rejected_keys += [j["dedupe_key"] for j in language_excluded]
-    drops += _exclusions(language_excluded, refiltered(LAYER_LANGUAGE))
 
     if rejected_keys:
         store.set_status(rejected_keys, "rejected")
@@ -342,22 +326,6 @@ def run_pipeline(
         logger.debug("Layer 1a (title keyword filter): excluded %d jobs", jobs_keyword_excluded)
     if jobs_title_excluded:
         logger.debug("Layer 1 (title filter): excluded %d senior-level jobs", jobs_title_excluded)
-
-    # Layer 1c — non-English text filter (runs before 1b to drop non-English first)
-    kept_rows, non_english_excluded = apply_non_english_text_filter(kept_rows)
-    jobs_non_english_excluded = len(non_english_excluded)
-    drops += _exclusions(non_english_excluded, LAYER_NON_ENGLISH)
-    if jobs_non_english_excluded:
-        logger.debug(
-            "Layer 1c (non-English text filter): excluded %d jobs", jobs_non_english_excluded
-        )
-
-    # Layer 1b — language filter ("[Language] Speaker/speaking" in title)
-    kept_rows, language_excluded = apply_language_filter(kept_rows)
-    jobs_language_excluded = len(language_excluded)
-    drops += _exclusions(language_excluded, LAYER_LANGUAGE)
-    if jobs_language_excluded:
-        logger.debug("Layer 1b (language filter): excluded %d jobs", jobs_language_excluded)
 
     # Build source_name → fetch_fn map so dynamic sources use fetch_rendered
     source_fetch_map: dict[str, Any] = {
@@ -553,8 +521,6 @@ def run_pipeline(
         jobs_extracted=jobs_extracted,
         jobs_kept=jobs_kept,
         jobs_keyword_excluded=jobs_keyword_excluded,
-        jobs_language_excluded=jobs_language_excluded,
-        jobs_non_english_excluded=jobs_non_english_excluded,
         jobs_title_excluded=jobs_title_excluded,
         jobs_blocklist_excluded=jobs_blocklist_excluded,
         jobs_already_stored=len(cached_jobs),

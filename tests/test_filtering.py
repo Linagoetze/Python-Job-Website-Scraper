@@ -1,15 +1,10 @@
 """Tests for job_scraper.filtering."""
 
-import sys
-from unittest.mock import MagicMock, patch
-
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
     _LOCATION_EMPTY_ADMITTED_REASON,
     _UNRESOLVED_PENDING_REASON,
-    apply_language_filter,
-    apply_non_english_text_filter,
     apply_title_keyword_filter,
     build_hybrid_pattern,
     build_location_pattern,
@@ -351,148 +346,5 @@ class TestTitleKeywordFilter:
 
     def test_empty_entries_keeps_all(self):
         kept, excluded = apply_title_keyword_filter([_job(), _job()], [])
-        assert len(kept) == 2
-        assert len(excluded) == 0
-
-
-# ---------------------------------------------------------------------------
-# apply_language_filter
-# ---------------------------------------------------------------------------
-
-class TestLanguageFilter:
-    # --- languages that must still be blocked ---
-
-    def test_blocks_spanish_speaker(self):
-        _, excluded = apply_language_filter([_job(title="Spanish Speaker needed")])
-        assert len(excluded) == 1
-
-    def test_blocks_french_speaking(self):
-        _, excluded = apply_language_filter([_job(title="French speaking Account Manager")])
-        assert len(excluded) == 1
-
-    def test_blocks_dutch_hyphen_speaking(self):
-        _, excluded = apply_language_filter([_job(title="Dutch-speaking Account Manager")])
-        assert len(excluded) == 1
-
-    def test_blocks_unlisted_language_speaking(self):
-        # Languages not in the old explicit blocklist must also be blocked
-        _, excluded = apply_language_filter([_job(title="Tagalog speaking Support Agent")])
-        assert len(excluded) == 1
-
-    def test_blocks_arbitrary_word_speaking(self):
-        # Any made-up or rare language word should be caught
-        _, excluded = apply_language_filter([_job(title="Klingon speaking Developer")])
-        assert len(excluded) == 1
-
-    # --- allowed languages ---
-
-    def test_keeps_german_speaker(self):
-        kept, excluded = apply_language_filter([_job(title="German Speaker")])
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_keeps_german_speaking(self):
-        kept, excluded = apply_language_filter([_job(title="German-speaking Account Manager")])
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_keeps_english_speaking(self):
-        kept, excluded = apply_language_filter([_job(title="English Speaking Developer")])
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_keeps_english_speaker(self):
-        kept, excluded = apply_language_filter([_job(title="English Speaker Required")])
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_keeps_english_hyphen_speaking(self):
-        kept, excluded = apply_language_filter([_job(title="English-speaking role in Berlin")])
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_keeps_germ_speaking(self):
-        # 'Germ' is an explicitly allowed abbreviation for German
-        kept, excluded = apply_language_filter([_job(title="Germ speaking Team Lead")])
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_keeps_english_title(self):
-        kept, _ = apply_language_filter([_job(title="Marketing Analyst")])
-        assert len(kept) == 1
-
-
-# ---------------------------------------------------------------------------
-# apply_non_english_text_filter
-# ---------------------------------------------------------------------------
-
-def _langdetect_mock(lang: str) -> MagicMock:
-    """Return a sys.modules-injectable langdetect mock that returns *lang* from detect()."""
-    FakeLangDetectException = type("LangDetectException", (Exception,), {})
-    m = MagicMock()
-    m.detect.return_value = lang
-    m.LangDetectException = FakeLangDetectException
-    return m
-
-
-def _langdetect_mock_raising() -> MagicMock:
-    """Return a langdetect mock whose detect() raises LangDetectException."""
-    FakeLangDetectException = type("LangDetectException", (Exception,), {})
-    m = MagicMock()
-    m.detect.side_effect = FakeLangDetectException(0, "")
-    m.LangDetectException = FakeLangDetectException
-    return m
-
-
-class TestNonEnglishTextFilter:
-    def test_keeps_english_job(self):
-        with patch.dict(sys.modules, {"langdetect": _langdetect_mock("en")}):
-            kept, excluded = apply_non_english_text_filter(
-            [_job(title="Product Manager in Berlin")]
-        )
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_excludes_swedish_job(self):
-        with patch.dict(sys.modules, {"langdetect": _langdetect_mock("sv")}):
-            kept, excluded = apply_non_english_text_filter(
-            [_job(title="Produktchef i Malmö", location="Malmö, Sweden")]
-        )
-        assert len(excluded) == 1
-        assert len(kept) == 0
-
-    def test_excludes_german_text_job(self):
-        with patch.dict(sys.modules, {"langdetect": _langdetect_mock("de")}):
-            kept, excluded = apply_non_english_text_filter([_job(title="Projektmanager gesucht")])
-        assert len(excluded) == 1
-        assert len(kept) == 0
-
-    def test_excludes_danish_job(self):
-        with patch.dict(sys.modules, {"langdetect": _langdetect_mock("da")}):
-            kept, excluded = apply_non_english_text_filter(
-            [_job(title="Projektleder søges", location="Frederiksberg, København")]
-        )
-        assert len(excluded) == 1
-
-    def test_keeps_on_short_text(self):
-        # Text <= 50 chars → fail open, keep the job without calling detect
-        mock_ld = _langdetect_mock("sv")
-        with patch.dict(sys.modules, {"langdetect": mock_ld}):
-            kept, excluded = apply_non_english_text_filter([_job(title="Nej", raw_snippet="")])
-        mock_ld.detect.assert_not_called()
-        assert len(kept) == 1
-
-    def test_keeps_on_detection_failure(self):
-        with patch.dict(sys.modules, {"langdetect": _langdetect_mock_raising()}):
-            kept, excluded = apply_non_english_text_filter(
-            [_job(title="Some long enough title here")]
-        )
-        assert len(kept) == 1
-        assert len(excluded) == 0
-
-    def test_langdetect_not_installed(self):
-        # Simulate langdetect not being importable — all jobs are kept (fail open)
-        with patch.dict(sys.modules, {"langdetect": None}):
-            kept, excluded = apply_non_english_text_filter([_job(), _job()])
         assert len(kept) == 2
         assert len(excluded) == 0

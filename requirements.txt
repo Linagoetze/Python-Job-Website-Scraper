@@ -5,7 +5,6 @@ lxml>=5.0.0
 pyyaml>=6.0.0
 playwright>=1.40.0
 openpyxl>=3.1.0
-langdetect>=1.0.9
 
 # Optional: only used by the LLM scoring stage (job_scraper/scoring.py), which
 # is off by default (rules.json's scoring_enabled). scoring.py imports it

@@ -16,10 +16,6 @@ SEO,word
 SEA,word
 developer,prefix
 legal,word
-trainee,word
-intern,word
-Praktikant,word
-Praktikum,word
 IT,word
 AI,word
 Executive,word
@@ -34,10 +30,8 @@ store,word
 General Interest,word
 chief,word
 Accountant,word
-Specialist,word
 Producer,word
 Cloud,word
-Security,word
 Mechaniker,prefix
 techniker,prefix
 Meister,word
@@ -56,11 +50,9 @@ Language teachers,word
 teacher,prefix
 tutor,prefix
 expert,word
-clerk,word
 passive cooling,word
 editing,word
 investment,word
-internship,word
 voluntary,word
 attorney,word
 videographer,word
@@ -68,11 +60,9 @@ caseworker,word
 scientist,word
 interpreter,word
 donor,word
-leader,word
 modeling,word
 bio,prefix
 key account,word
-owner,word
 theory,word
 electro,prefix
 technician,word
@@ -83,7 +73,6 @@ power,word
 therapist,word
 Sr,word
 concierge,word
-lab,prefix
 pricing,word
 risk,word
 SaaS,word
@@ -109,5 +98,6 @@ systemintegratör,prefix
 DevOps,word
 Scrum Master,word
 software developer,word
-architect,word
 azure,word
+Solution Architect,word
+System Architect,word

@@ -3,7 +3,7 @@
 Two things are being pinned here. The first is coverage — that no filter layer
 silently drops a job without logging it, which is the blindness the package
 exists to remove. The second is attribution — that the logged rule names the
-*specific* keyword, term, language code or location case, because a layer name
+*specific* keyword, term or location case, because a layer name
 alone is what made a false negative unfindable in the first place.
 
 No network: the pipeline's extractor and both fetchers are replaced, and one
@@ -16,7 +16,6 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -25,7 +24,6 @@ from job_scraper import drops as drops_mod
 from job_scraper import pipeline as pipeline_mod
 from job_scraper.drops import (
     LAYER_DETAIL,
-    LAYER_LANGUAGE,
     LAYER_REVIEW_STATUS,
     LAYER_RULES,
     LAYER_SENIORITY,
@@ -38,7 +36,6 @@ from job_scraper.filtering import (
     RULE_LOC_CONDITIONAL_UNGATED,
     RULE_LOC_REMOTE_OVERRIDDEN,
     RULE_LOC_UNLISTED_CITY,
-    apply_non_english_text_filter,
     build_hybrid_pattern,
     matches_rules,
 )
@@ -75,7 +72,6 @@ _EXTRACTED = [
     _job("Data Analyst", location="Remote | Nairobi", slug="remote-overridden"),
     _job("Marketing Analyst", location="Berlin", slug="keyword"),
     _job("Head of Data", location="Berlin", slug="seniority"),
-    _job("Analyst (Dutch speaking)", location="Berlin", slug="lang"),
     _job("Data Analyst", location="Berlin", slug="blocked"),
     _job("Reporting Analyst", location="Berlin", slug="senior-detail"),
     _job("Research Analyst", location="Berlin", slug="phd"),
@@ -231,7 +227,6 @@ def test_every_layer_records_its_exclusions(env: Path) -> None:
     assert by_layer[LAYER_RULES] == 2
     assert by_layer[LAYER_TITLE_KEYWORD] == 1
     assert by_layer[LAYER_SENIORITY] == 1
-    assert by_layer[LAYER_LANGUAGE] == 1
     assert by_layer[LAYER_REVIEW_STATUS] == 1
     assert by_layer[LAYER_DETAIL] == 3  # years, PhD, not-hybrid
 
@@ -252,7 +247,6 @@ def test_each_rule_names_the_specific_thing_that_fired(env: Path) -> None:
     # The keyword and its match type, not just "a title keyword matched".
     assert rules["keyword"] == "title_keyword: 'marketing' (word)"
     assert rules["seniority"] == "seniority: 'Head of' (word)"
-    assert rules["lang"] == "language_speaker: 'dutch'"
     assert rules["blocked"] == "review status: already rejected"
     assert rules["senior-detail"] == "experience: 8+ years required"
     assert rules["phd"].startswith("phd: required")
@@ -292,22 +286,8 @@ def test_logging_costs_no_extra_http_request(env: Path, monkeypatch: pytest.Monk
     # in this set: WP8f admits it at Layer 0, so it does reach Layer 2, on the
     # same footing as any other newly-seen job with no prior verdict on it.
     dropped_early = {"unlisted-city", "remote-overridden", "keyword",
-                     "seniority", "lang", "blocked"}
+                     "seniority", "blocked"}
     assert not any(url.rsplit("/", 1)[-1] in dropped_early for url in fetched)
-
-
-def test_language_filter_names_the_language_it_saw() -> None:
-    """langdetect's verdict is the whole diagnosis for that layer, so the code
-    it returned has to be in the rule rather than folded into 'non-English'."""
-    fake = MagicMock()
-    fake.detect.return_value = "sv"
-    fake.LangDetectException = type("LangDetectException", (Exception,), {})
-    with patch.dict(sys.modules, {"langdetect": fake}):
-        _, excluded = apply_non_english_text_filter(
-            [_job("Produktchef sokes till vart team i Malmo nu", location="Malmo", slug="x")]
-        )
-
-    assert excluded[0]["drop_rule"] == "non_english: langdetect 'sv'"
 
 
 # --- the re-filter pass is logged, and kept separable -----------------------
