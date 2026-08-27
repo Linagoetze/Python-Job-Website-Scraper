@@ -52,6 +52,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.824 (0.868 once the owner drops `"Architect"` from `rules.json`), precision up too | `wp8-trim-ladder` |
+| 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | not started | `wp8h-renumber-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3331,6 +3332,103 @@ job, and doing it here would mean doing it twice.
   attribution, and the marginal cost can only be got by removing the rule and
   re-running. `format_costly_rules` could say so in its own header; it
   currently invites exactly the misreading this package started with.
+
+---
+
+## WP8h — Renumber the ladder
+
+**Do this before WP8b, not after.** WP8b rewrites the README's layer table, and
+that table is where the numbering is most visible. Renumbering afterwards means
+rewriting the same table twice — the same argument that put WP8 before WP8b.
+
+The labels are historical and always have been: they record the order the
+filters were *added*, not the order they run. WP8 made that worse by deleting
+1c and 1b, leaving a ladder labelled **1a, 1, 1d, 2** — no layer 0 in the
+display, a bare `1` running *after* `1a`, and two gaps. `drops.py` carries a
+comment apologising for this, which is a fair sign the scheme has failed.
+
+Proposed, in execution order:
+
+| stored id (unchanged) | display | name |
+|---|---|---|
+| `0-rules` | **Layer 1** | Location and rules |
+| `1a-title-keyword` | **Layer 2** | Title keywords |
+| `1-seniority` | **Layer 3** | Seniority |
+| `1d-review-status` | **Layer 4** | Review status |
+| `2-detail` | **Layer 5** | Detail page |
+| `1c-non-english` | — | retired by WP8, history only |
+| `1b-language` | — | retired by WP8, history only |
+
+Note for whoever writes this: the owner's sketch was "Layer 1: location, Layer
+2: seniority keywords". The real order puts **title keywords second and
+seniority third** — they are separate layers that share one title scan in
+`apply_combined_title_filter`. The whole point of renumbering is that the
+numbers follow execution order, so this is the order to use.
+
+### The one design decision, and why
+
+**Do not rename the stored values.** The `run_exclusions.layer` column already
+holds **48,921 rows across 6 runs** in the current vocabulary, including 212
+`1c-non-english`, 114 `1b-language` and 1 `refilter/1c-non-english` for layers
+that no longer exist. Three reasons that column stays as it is:
+
+1. It is a log of what actually happened. Rewriting it to say a run used names
+   it never used contradicts the first priority in CLAUDE.md.
+2. The retired layers have no equivalent in the new scheme, so a migration
+   could not map them to anything honest.
+3. CLAUDE.md already answers this: *one canonical representation* — the store
+   holds plain data, presentation concerns live at the presentation edge.
+
+So the ordinal and the human name are **presentation**, derived from one
+ordered table in `drops.py` and consumed by `drops.py`, `run.py`, `eval.py` and
+the README. A stored id with no entry in that table renders as retired rather
+than crashing, which is what makes the historical rows readable instead of
+mysterious.
+
+`--layer` is a substring match ("only exclusions whose layer contains this
+text"), so it keeps working against the stored ids either way. Decide
+deliberately whether it should also accept the new display numbers, and say
+which in the plan.
+
+### Scope
+
+Small and contained. The constants are defined once in `drops.py:38-42`; the
+only hard-coded literals outside it are `tests/test_drop_log.py:346,364,412`.
+`storage/db.py` has an explanatory comment mentioning the layer vocabulary.
+`eval.py`'s `LADDER` already encodes execution order and should be the same
+source of truth rather than a second copy of it.
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8h only.
+
+Give the filter ladder sensible ordinals. The labels are historical — 1a runs
+before 1, there are gaps where WP8 deleted 1c and 1b, and nothing displays as
+layer 0 sensibly. Renumber the *display* to 1-5 in execution order, per the
+table in this section.
+
+Do not rename the values stored in run_exclusions.layer, and do not migrate
+existing rows. That column is a log of what happened and already holds ~49,000
+rows in the old vocabulary, two of whose layers no longer exist. Keep the
+stored ids as opaque stable identifiers and put the ordinal and the display
+name in one ordered table at the presentation edge, per CLAUDE.md's "one
+canonical representation". A stored id not in that table must render as
+retired, not raise.
+
+Update every place a layer is shown to a person: run.py's summary, drops.py's
+report and its --layer help, eval.py's per-layer table. eval.py's LADDER
+already encodes execution order — make it and the display table one source of
+truth, not two.
+
+Decide deliberately whether --layer should accept the new display numbers as
+well as the stored ids, and record which in the plan file.
+
+Leave README.md alone — WP8b owns it and runs next.
+
+Add a test that pins the display order and that a retired stored id renders
+without raising.
+
+Branch wp8h-renumber-ladder. Commit, do not push. Update the plan file.
+```
 
 ---
 
