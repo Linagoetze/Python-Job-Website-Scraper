@@ -23,6 +23,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from job_scraper import JobRecord
+from job_scraper.drops import LAYER_DETAIL, layer_short
 from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
@@ -307,7 +308,12 @@ def _fetch_and_analyze(
             description_text=text[:_MAX_DESCRIPTION_CHARS],
         )
     except Exception as exc:
-        logger.debug("Layer 2: fetch failed for %r — keeping job. Error: %s", url, exc)
+        logger.debug(
+            "%s: fetch failed for %r — keeping job. Error: %s",
+            layer_short(LAYER_DETAIL),
+            url,
+            exc,
+        )
         return _DetailSignals(job=job, fetch_failed=True)
 
 
@@ -530,13 +536,14 @@ def apply_detail_filter(
 
     if jobs:
         logger.debug(
-            "Layer 2: %d/%d jobs failed to fetch (kept fail-open); "
+            "%s: %d/%d jobs failed to fetch (kept fail-open); "
             "%d had no numeric requirement; "
             "%d dropped as non-hybrid in a conditional location; "
             "%d dropped because an unresolvable location field named no listed place "
             "in the description "
             "(%d of those two totals because nothing could be verified this run, not "
             "because it was checked and found lacking)",
+            layer_short(LAYER_DETAIL),
             fetch_failed,
             len(jobs),
             no_requirement,

@@ -18,6 +18,7 @@ from job_scraper.drops import (
     LAYER_TITLE_KEYWORD,
     RULE_REVIEW_REJECTED,
     exclusion,
+    layer_short,
     refiltered,
 )
 from job_scraper.experience_filter import (
@@ -275,7 +276,8 @@ def run_pipeline(
     )
     if conditional_admits:
         logger.debug(
-            "Layer 0 (rules): %d jobs admitted from a conditional location, pending hybrid check",
+            "%s (rules): %d jobs admitted from a conditional location, pending hybrid check",
+            layer_short(LAYER_RULES),
             conditional_admits,
         )
     unresolved_admits = sum(
@@ -286,9 +288,11 @@ def run_pipeline(
         # before WP8d, and most will fail closed at Layer 2. Logged so the cost
         # is visible in the run rather than inferred from the drop log.
         logger.debug(
-            "Layer 0 (rules): %d jobs admitted with an unresolvable location field, "
-            "pending a Layer 2 read of the description",
+            "%s (rules): %d jobs admitted with an unresolvable location field, "
+            "pending a %s read of the description",
+            layer_short(LAYER_RULES),
             unresolved_admits,
+            layer_short(LAYER_DETAIL),
         )
     empty_location_admits = sum(
         1
@@ -300,7 +304,8 @@ def run_pipeline(
         # _LOCATION_EMPTY_ADMITTED_REASON's comment in filtering.py. Logged
         # anyway, so the volume WP8f admits is as visible as what WP8d defers.
         logger.debug(
-            "Layer 0 (rules): %d jobs admitted with no location given at all",
+            "%s (rules): %d jobs admitted with no location given at all",
+            layer_short(LAYER_RULES),
             empty_location_admits,
         )
 
@@ -323,9 +328,17 @@ def run_pipeline(
     drops += _exclusions(keyword_excluded, LAYER_TITLE_KEYWORD)
     drops += _exclusions(title_excluded, LAYER_SENIORITY)
     if jobs_keyword_excluded:
-        logger.debug("Layer 1a (title keyword filter): excluded %d jobs", jobs_keyword_excluded)
+        logger.debug(
+            "%s (title keyword filter): excluded %d jobs",
+            layer_short(LAYER_TITLE_KEYWORD),
+            jobs_keyword_excluded,
+        )
     if jobs_title_excluded:
-        logger.debug("Layer 1 (title filter): excluded %d senior-level jobs", jobs_title_excluded)
+        logger.debug(
+            "%s (title filter): excluded %d senior-level jobs",
+            layer_short(LAYER_SENIORITY),
+            jobs_title_excluded,
+        )
 
     # Build source_name → fetch_fn map so dynamic sources use fetch_rendered
     source_fetch_map: dict[str, Any] = {
@@ -364,7 +377,9 @@ def run_pipeline(
             blocked_keys = {dedupe_key_for_job(j) for j in blocked_jobs}
             kept_rows = [j for j in kept_rows if dedupe_key_for_job(j) not in blocked_keys]
             logger.debug(
-                "Layer 1d (review status): excluded %d rejected jobs", jobs_blocklist_excluded
+                "%s (review status): excluded %d rejected jobs",
+                layer_short(LAYER_REVIEW_STATUS),
+                jobs_blocklist_excluded,
             )
 
         # Layer 2 — detail-page experience extraction.
@@ -394,9 +409,17 @@ def run_pipeline(
         truly_new_jobs = [j for j in new_jobs if not _is_stored(j)]
         stored_rechecked_jobs = [j for j in new_jobs if _is_stored(j)]
         if cached_jobs:
-            logger.debug("Layer 2: skipped %d already-stored jobs", len(cached_jobs))
+            logger.debug(
+                "%s: skipped %d already-stored jobs",
+                layer_short(LAYER_DETAIL),
+                len(cached_jobs),
+            )
 
-        logger.debug("Layer 2 (detail filter): fetching detail pages for %d jobs…", len(new_jobs))
+        logger.debug(
+            "%s (detail filter): fetching detail pages for %d jobs…",
+            layer_short(LAYER_DETAIL),
+            len(new_jobs),
+        )
         kept_new, detail_excluded = apply_detail_filter(
             new_jobs,
             fetch_text,
@@ -425,9 +448,10 @@ def run_pipeline(
 
         if jobs_detail_excluded:
             logger.debug(
-                "Layer 2 (detail filter): excluded %d jobs "
+                "%s (detail filter): excluded %d jobs "
                 "(%d requiring 3+ years, %d requiring PhD, %d non-hybrid in a conditional "
                 "location, %d whose unresolvable location named no listed place)",
+                layer_short(LAYER_DETAIL),
                 jobs_detail_excluded,
                 jobs_years_excluded,
                 jobs_phd_excluded,
@@ -472,8 +496,9 @@ def run_pipeline(
                 detail_rejected_rows, run_id, initial_status="rejected"
             )
             logger.debug(
-                "Store: %d Layer 2 rejections recorded as 'rejected', %d refreshed",
+                "Store: %d %s rejections recorded as 'rejected', %d refreshed",
                 inserted_rejected,
+                layer_short(LAYER_DETAIL),
                 refreshed_rejected,
             )
 

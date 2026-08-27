@@ -12,7 +12,7 @@ fired. This module reads it back:
 
     python -m job_scraper.drops                    # last run, counts per rule
     python -m job_scraper.drops --show-drops       # last run, one line per job
-    python -m job_scraper.drops --show-drops --layer locations --source impactpool
+    python -m job_scraper.drops --show-drops --rule locations --source impactpool
     python -m job_scraper.drops --drops-csv ~/drops.csv
 
 Reading is free and offline. The log is built from titles and metadata already
@@ -36,7 +36,7 @@ from job_scraper.storage.db import JobStore, dedupe_key_for_job
 # record the order the filters were *added*, not the order they run (WP8
 # deleted 1c/1b, leaving gaps and a bare `1` running after `1a`), and
 # ~49,000 historical rows already use this vocabulary. Never rename or
-# renumber these; see LADDER below for the human-facing ordinal and name.
+# renumber these; see LAYERS below for the human-facing ordinal and name.
 LAYER_RULES = "0-rules"
 LAYER_TITLE_KEYWORD = "1a-title-keyword"
 LAYER_SENIORITY = "1-seniority"
@@ -93,13 +93,23 @@ def layer_ordinal(stored_id: str) -> int:
     return _BY_ID[stored_id].display
 
 
+def layer_short(stored_id: str) -> str:
+    """'Layer 3' — the ordinal alone, for log lines that supply their own detail.
+
+    The log messages in `pipeline.py` and `experience_filter.py` already name
+    what each layer does ("(title keyword filter)"), so they want the number
+    without the table's name repeated after it.
+    """
+    return f"Layer {_BY_ID[stored_id].display}"
+
+
 def layer_display(stored_id: str) -> str:
     """Human label for *stored_id*: 'Layer N: Name'.
 
     Handles both edge cases a raw stored id can carry: a `refilter/` prefix
     (WP8a's re-filter pass over stored jobs, same layer, different population)
     is kept visible rather than swallowed, and a stored id absent from
-    `LADDER` — one of WP8's retired layers, still present in ~49,000 historical
+    `LAYERS` — one of WP8's retired layers, still present in ~49,000 historical
     rows — renders as retired instead of raising, so old rows stay readable.
     """
     is_refilter = stored_id.startswith(REFILTER_PREFIX)
@@ -181,11 +191,16 @@ def format_rule_counts(rows: list[dict[str, Any]], run_id: int) -> str:
     lines = [
         f"Exclusions in run {run_id}: {total:,} across {len(counts)} rules",
         "",
-        f"{'count':>7}  {'layer':<30}  rule",
-        f"{'-' * 7}  {'-' * 30}  {'-' * 44}",
+        # Wide enough for the longest label a stored id can produce: a
+        # re-filtered layer ("Layer 1: Location and rules (re-filter)", 39).
+        # The re-filter marker is the whole point of that suffix — WP8a keeps
+        # the two populations separable — so it must not be the part that gets
+        # trimmed away.
+        f"{'count':>7}  {'layer':<39}  rule",
+        f"{'-' * 7}  {'-' * 39}  {'-' * 44}",
     ]
     lines += [
-        f"{n:>7,}  {_trim(layer_display(layer), 30):<30}  {rule}" for layer, rule, n in counts
+        f"{n:>7,}  {_trim(layer_display(layer), 39):<39}  {rule}" for layer, rule, n in counts
     ]
     return "\n".join(lines)
 
@@ -223,7 +238,9 @@ def main() -> None:
         description="Show what the filters excluded on the last run, and which rule fired.",
         epilog=(
             "With no flags, prints the per-rule counts. The filters match on a "
-            "case-insensitive substring, so --layer locations and --rule hybrid both work."
+            "case-insensitive substring, so --rule locations and --rule hybrid both work. "
+            "Location cases are named by their rule, not their layer: --rule locations, "
+            "not --layer locations."
         ),
     )
     parser.add_argument(
@@ -234,12 +251,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--layer",
+        metavar="ID",
         help=(
-            "Only exclusions whose stored layer id contains this text (not the display "
-            "number — the id is what's actually stored, and a substring match against a "
-            "bare digit like '1' would hit three different layers). Current ids, oldest "
-            "naming first: "
-            + ", ".join(f"{layer.id} = {layer_display(layer.id)}" for layer in LAYERS)
+            "Only exclusions whose stored layer id contains this text. Match on the "
+            "stored id, not the display number: the ids are what the table holds, and "
+            "a substring match on a bare digit like '1' would hit three of them. "
+            "In execution order — "
+            + "; ".join(f"{layer.id} ({layer_display(layer.id)})" for layer in LAYERS)
         ),
     )
     parser.add_argument("--rule", help="Only exclusions whose rule contains this text")

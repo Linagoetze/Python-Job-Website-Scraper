@@ -55,6 +55,7 @@ from job_scraper.drops import (
     LAYER_TITLE_KEYWORD,
     LAYERS,
     layer_display,
+    layer_short,
 )
 from job_scraper.experience_filter import apply_combined_title_filter
 from job_scraper.filtering import (
@@ -773,14 +774,14 @@ def format_report(
     if pending:
         lines.append(
             f"  {_plural(len(pending), 'kept job')} in a hybrid-gated conditional city, which "
-            "Layer 2 would still settle."
+            f"{layer_short(LAYER_DETAIL)} would still settle."
         )
     unresolved = result.pending_location
     if unresolved:
         wanted = len(result.pending_location_wanted)
         lines.append(
             f"  {_plural(len(unresolved), 'kept job')} with an unresolvable location field, "
-            "which Layer 2 would"
+            f"which {layer_short(LAYER_DETAIL)} would"
         )
         lines.append(
             "  still settle against the description — and it fails closed, so read these as "

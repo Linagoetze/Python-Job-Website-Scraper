@@ -3453,11 +3453,17 @@ Branch wp8h-renumber-ladder. Commit, do not push. Update the plan file.
 
 ### Result
 
-371 tests pass (up from 364), `ruff check .` clean. Touched: `job_scraper/drops.py`
-(the new table), `job_scraper/eval.py`, `job_scraper/run.py`, `tests/test_drop_log.py`,
-`tests/test_eval.py`. Nothing else referenced a layer id outside the two hard-coded
-test-file spots the scope section already named, and those weren't touched — they
-assert against stored ids in the database layer, not display text.
+376 tests pass (up from 364), `ruff check .` clean. Touched: `job_scraper/drops.py`
+(the new table), `job_scraper/eval.py`, `job_scraper/run.py`, `job_scraper/pipeline.py`
+and `job_scraper/experience_filter.py` (log lines), `job_scraper/storage/db.py`
+(docstring), `tests/test_drop_log.py`, `tests/test_eval.py`, and a new
+`tests/test_run_summary.py`.
+
+**This section was rewritten after review.** The first attempt shipped an
+alignment regression in the run summary, left the `--verbose` log lines on the old
+numbering, and recorded a check it had not actually performed. Both bugs and the
+false assurance are described in full below rather than quietly corrected — the
+plan file is only useful if it records what happened.
 
 **The one table.** `drops.py` gained a frozen `Layer(id, display, name)` dataclass
 and `LAYERS: tuple[Layer, ...]`, in execution order, still keyed by the unchanged
@@ -3495,11 +3501,62 @@ a layer column and needed no change.
 funnel lines are free text ("off-criteria (location/keywords)", "title keyword",
 …) that happen to correspond to layers one-to-one (the three detail-page lines all
 share Layer 5). Since the prompt named it explicitly as a place a layer is shown,
-each of those seven lines now opens with its ordinal, read from `layer_ordinal`
-rather than hard-coded, so a future reorder updates this display too. Column
-widths were checked by hand against 5-digit counts (`tests/` has no golden test
-for `format_summary`'s exact text — none existed before this package either) to
-keep the funnel's right-aligned numbers from drifting for the longest lines.
+each of those seven lines now carries its ordinal in a left gutter (`L1  − …`),
+read from `layer_ordinal` rather than hard-coded, so a future reorder updates this
+display too.
+
+**The ordinal goes in a gutter, not in front of the label, and this cost a
+round of review.** The first attempt wrote `− 1  off-criteria (location/keywords)`
+— the ordinal appended to the label inside `cut()`. Two things were wrong with it,
+both caught by the WP8h review rather than by me:
+
+1. **It broke the funnel's alignment, and I claimed to have checked that it
+   hadn't.** The earlier version of this section said column widths "were checked
+   by hand against 5-digit counts". That check was either not done or done wrong:
+   the ladder gutter costs six characters, `_NUMCOL` was left at 46, and the two
+   longest labels overran it. `location unresolvable in the text` collided with
+   its own number at **four** digits — `…in the text−1,100`, an ordinary run — and
+   `off-criteria (location/keywords)` at five. Recording the false assurance was
+   worse than shipping the bug: it told the next reader the question had been
+   settled. Fixed by widening `_NUMCOL` to 52, and by making `row()` guarantee a
+   two-space gap (`max(_NUMCOL - len(value), len(text) + 2)`) so an over-long label
+   pushes its number right instead of abutting it — degrading gracefully at any
+   magnitude rather than exactly at the width someone happened to measure.
+2. **`− 1  off-criteria` reads as "minus one".** The minus sign belongs to the
+   count, not the ordinal, and putting a digit straight after it inverted that at a
+   glance. The marker now sits in its own gutter ahead of the sign: `L1  − …`.
+
+`tests/test_run_summary.py` is new and pins this: the exact golden rendering, the
+specific four-digit line that broke, the label-never-abuts-its-number invariant at
+six figures, and that all five ordinals appear in execution order. There was no
+test on `format_summary`'s text before — which is precisely why the regression
+reached review — and the lesson is the same one WP8 recorded about the eval
+harness: **a layout claim that is not pinned by a test is an assertion, not a
+check.**
+
+**The old numbering was still live in the `--verbose` logs, and that was the real
+miss.** The package's instruction was "every place a layer is shown to a person",
+and I updated the three modules the prompt named while leaving the diagnostic log
+lines in `pipeline.py` and `experience_filter.py` on the old vocabulary. The
+write-up's claim that "nothing else referenced a layer id" was technically true and
+substantively misleading: those lines print layer *numbers*, not stored ids, and
+they are exactly the human-facing labels the package existed to fix. The result
+was a straight name collision — in one `--verbose` run, "Layer 2" meant the
+detail-page filter in the logs and the title-keyword filter in the summary and
+reports. That is worse than the muddle WP8h set out to remove. All ten log sites
+in `pipeline.py`, both in `experience_filter.py`, and two report strings in
+`eval.py` (`"Layer 2 would still settle"`, which meant the detail layer) now read
+their number from the table via a new `drops.layer_short(id)` → `"Layer 5"`. Every
+one was exercised at DEBUG level to confirm the `%s`/argument counts match.
+
+**Still on the old vocabulary, deliberately: code comments and CLAUDE.md.** Some
+forty comments across `filtering.py`, `experience_filter.py` and `pipeline.py` say
+"Layer 0"/"Layer 2" meaning the stored-id vocabulary, and CLAUDE.md's architecture
+notes do too. These are not shown to a person running the tool, and sweeping them
+would have buried this package's real fixes in a forty-hunk comment diff. They are
+now out of step, and the sweep is worth folding into WP8b (which is already
+rewriting the README's layer table) or a follow-up — noted here rather than done
+quietly.
 
 **Decision: `--layer` keeps matching stored ids only, not display numbers.**
 `--layer` is (and stays) a case-insensitive substring match against the column
@@ -3507,9 +3564,30 @@ SQLite actually holds. Display numbers were considered and rejected: `1` is a
 substring of three different stored ids (`1a-title-keyword`, `1-seniority`,
 `1d-review-status`), so a bare digit would need a second matching mode layered on
 top of substring matching, and the two modes would silently disagree about what
-`--layer 1` means. Instead the `--layer` help text now lists all five `id = Layer
-N: Name` pairs inline, so `python -m job_scraper.drops --help` is where "which id
-is Layer 3?" gets answered, without teaching the flag two ways to match.
+`--layer 1` means. Instead the `--layer` help text now lists all five
+`id (Layer N: Name)` pairs inline, so `python -m job_scraper.drops --help` is
+where "which id is Layer 3?" gets answered, without teaching the flag two ways to
+match.
+
+**A pre-existing bug in that help text, fixed while adjacent.** Three places
+advertised `--layer locations` as a worked example — the module docstring, the
+argparse epilog, and `storage/db.py`'s `exclusions()` docstring, which claimed it
+"finds '0-rules' drops named 'locations: ...'". It does not and never did: each
+filter matches its own column, the location cases live in `rule`, and no stored
+layer id contains the string "locations", so the documented command returns
+nothing. This was broken on `main` before WP8h and the first attempt edited the
+text right beside it without noticing. All three now say `--rule locations`, and
+db.py's docstring states outright that `--layer locations` matches nothing. Out
+of the package's scope strictly read, but it is documentation-only, in strings
+this package was already rewriting, and leaving a known-false example in place
+after touching the line would have been the wrong call.
+
+**Column width in the drops report.** The `layer` column was first widened 18 → 30,
+which was still too narrow: the longest label a stored id can produce is a
+re-filtered one, `"Layer 1: Location and rules (re-filter)"` at 39 characters, and
+30 truncated it to `"Layer 1: Location and rules (…"`. The `(re-filter)` marker is
+the whole point of that suffix — WP8a keeps the two populations separable — so it
+must not be the part that gets trimmed. Now 39.
 
 **Tests.** `tests/test_drop_log.py` gained a "the display ordinal" section:
 the full `(id, display, name)` table pinned in order, a retired id rendering
@@ -3523,12 +3601,19 @@ strings `"1d-review-status"`/`"2-detail"`) updated to check for
 `layer_display(...)` output instead — a deliberate update to match the intended
 formatting change, not a weakened test.
 
-Not touched, per scope: `README.md` (WP8b's), `storage/db.py`'s comment
-mentioning the layer vocabulary (still accurate — the stored column is
-unchanged), and the two hard-coded stored-id literals in `tests/test_drop_log.py`
-outside the new section (`layer="2-detail"`, `"0-rules"` in a CSV/JSON fixture
-row and a `--layer` CLI arg) — both exercise the stored-id matching path
-directly and are correct left alone.
+Not touched, per scope: `README.md` (WP8b's), and the hard-coded stored-id
+literals in `tests/test_drop_log.py` outside the new section (`layer="2-detail"`,
+`"0-rules"` in a fixture row and a `--layer` CLI arg) — all exercise the stored-id
+matching path directly and are correct left alone. Note for WP8b: the plan's old
+scope note said there were three such literals; the new tests add a fourth, so
+that count is stale.
+
+**One naming decision worth keeping straight.** The table is `drops.LAYERS`, not
+`drops.LADDER`, because `eval.LADDER` already exists for the smaller replayable
+subset and two `LADDER`s one import apart would be exactly the confusion the
+renumbering is meant to remove. Two comments in the first attempt then referred
+readers to "`LADDER`" when they meant `LAYERS` — pointing at the very thing the
+naming decision disambiguates. Both fixed.
 
 ---
 
