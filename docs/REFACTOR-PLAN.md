@@ -53,7 +53,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
-| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged | `wp8i-layer-guard` |
+| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 406 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3821,10 +3821,17 @@ columns, where a bare digit is a legitimate search.
 Not touched, per scope: `README.md` (WP8b's, and it runs next). Note for WP8b:
 the `--layer` passage it writes must describe the refusal, not just the mapping.
 
-**Unrelated, noted not fixed:** `tests/test_scoring.py` fails to *collect* in
-this environment — `ModuleNotFoundError: No module named 'anthropic'` under the
-system Python. The rest of the suite (394 tests) passes, as does
-`.venv/bin/ruff check .`.
+**Verification.** `.venv/bin/pytest`: 406 passed. `.venv/bin/ruff check .`:
+clean. `python -m job_scraper.run --help` works.
+
+**Method note, since it cost a wrong answer.** Run the tools from `.venv/bin`,
+not via `python -m` — a bare `python` here is conda base, which lacks
+`anthropic` and `ruff`. `python -m pytest` therefore fails to *collect*
+`tests/test_scoring.py` with `ModuleNotFoundError: No module named 'anthropic'`,
+which looks like a repo problem and is not one. This session reported that as a
+pre-existing environment gap after already having worked around the identical
+failure for `ruff` one command earlier — the same fact twice, read as two
+different things. The owner caught it.
 
 ---
 
