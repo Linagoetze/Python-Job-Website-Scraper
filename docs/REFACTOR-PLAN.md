@@ -51,7 +51,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
-| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.824 (0.868 once the owner drops `"Architect"` from `rules.json`), precision up too | `wp8-trim-ladder` |
+| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
@@ -359,13 +359,23 @@ Record any decision a future session would otherwise have to re-derive.
   separating them to reorder would give that up. **The real performance
   conversation is WP9** — browser reuse and HTTP caching attack the four
   minutes, not the 79 milliseconds.
-- **`rules.json` stayed untouched, so WP8 lands in two stages (2026-08-27).**
-  The seniority list lives in the gitignored `rules.json`, which CLAUDE.md puts
-  on the never-touch list. WP8 therefore committed the keyword CSV and
-  `rules.example.json` only, and left the owner one hand edit: drop
-  `"Architect"` from `seniority_exclude_titles`. Committed state scores recall
-  0.824; with that edit, 0.868. If a later session measures 0.824 and expects
-  0.868, this is why.
+- **`rules.json` stayed untouched, so WP8 landed in two stages — both now done
+  (2026-08-27).** The seniority list lives in the gitignored `rules.json`, which
+  CLAUDE.md puts on the never-touch list. WP8 therefore committed the keyword CSV
+  and `rules.example.json` only, and left the owner one hand edit: drop
+  `"Architect"` from `seniority_exclude_titles`. **The owner made that edit the
+  same day, and it is verified: `seniority_exclude_titles` now holds 23 terms and
+  no `Architect`, and `python -m job_scraper.eval` scores recall 0.868 against the
+  520-row gold set.** So the live configuration is the 0.868 one, not the 0.824
+  one. A later session measuring 0.824 is looking at a `rules.json` where the edit
+  was lost or reverted — check the list before re-proposing the change.
+
+  Worth keeping as a method note, since it cost a wrong answer in the WP8h
+  session: the plan said "one hand edit outstanding" and stayed saying it after
+  the edit was made, so a later session repeated it as still pending. **A plan
+  entry describing something the owner must do by hand is stale the moment they
+  do it, and nothing updates it automatically.** Read the file — `rules.json` is
+  never-touch for *writes*, and always readable for a check like this.
 
 ---
 
