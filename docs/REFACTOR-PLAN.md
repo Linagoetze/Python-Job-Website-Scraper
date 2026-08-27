@@ -3336,11 +3336,12 @@ job, and doing it here would mean doing it twice.
 
 ## WP8b — README reconciliation
 
-**Do this after WP8, not before.** WP8 deletes two filter layers and prunes
-the keyword CSV, which rewrites the "How it works" layer table and the
-language-filter description. The keyword CSV itself stays — the rewritten WP8
-no longer deletes it — so that input-file section needs updating rather than
-removing. Doing the README first means doing it twice.
+**WP8 has landed (2026-08-27), so this is now unblocked.** WP8 deleted
+layers 1c and 1b, took `title_exclude_keywords.csv` from 112 entries to 102,
+and moved `Architect` out of `seniority_exclude_titles`. That rewrites the
+"How it works" layer table and removes the language-filter rows entirely. The
+keyword CSV itself stays — the rewritten WP8 did not delete it — so that
+input-file section needs updating rather than removing.
 
 Note that WP8d also changed the README's location story: there is now a third
 Layer 0 answer and a `non_place_locations` key, both already documented by that
@@ -3373,9 +3374,40 @@ trusting this list, and look for more:
   routine; it is now a one-off import, and the review commands are the flow.
 - The options table under "Running" omits --delist-after,
   --allow-empty-delist, --score and --show-all.
-- Nothing documents `python -m job_scraper.drops` or `python -m job_scraper.eval`
-  (WP8a and WP8c). Both are read-only, offline commands the owner will forget
-  exist if the README never names them.
+- Nothing documents `python -m job_scraper.eval` (WP8c). It is a read-only,
+  offline command the owner will forget exists if the README never names it.
+  (`python -m job_scraper.drops` **is** already documented, around README:173
+  — WP8a added it. This bullet used to name both; check before rewriting.)
+  When you document `eval`, carry the warning from the decisions log with it:
+  **its per-rule cost column reports attribution, not marginal cost.** A rule
+  is credited with a drop when it is the first to match, so removing it changes
+  nothing if something downstream also catches the job. WP8 nearly pruned three
+  keywords that cost nothing on exactly this mistake. A README that introduces
+  the command without that caveat invites the next person to repeat it.
+
+New drift created by WP8 itself — all four are in the README now:
+
+- The layer table lists `1c | Non-English text` and `1b | Language-speaker`.
+  Both layers are deleted. The surviving ladder is rules → title keyword →
+  seniority → blocklist → detail.
+- The sentence after it explains that the labels are historical "which is why
+  1c comes before 1b". With both gone the example explains nothing, but the
+  point still holds — 1a runs before 1 — so rewrite it around the surviving
+  pair rather than deleting it. See the renumbering note below before you
+  spend long on this passage.
+- The sample run-summary block (around README:128) prints `− non-English text`
+  and `− language-speaker`, which `format_summary` no longer emits. **Do not
+  just delete the two lines:** the `→ N passed title filters` running total
+  used to hang off the language-speaker row and now hangs off `senior-level
+  title`. The block needs regenerating as a whole.
+- "the exact rule that fired, down to which keyword, which seniority term,
+  which language code" (around README:170) — the drop log can no longer name a
+  language code; `LAYER_NON_ENGLISH` and `LAYER_LANGUAGE` are gone.
+
+Not affected, so do not go looking: `langdetect` never appeared in the README,
+the `seniority_exclude_titles` example and the `"Lead"`/`"Leadership"` note are
+both still accurate, and the keyword-CSV examples (`design`, `tax`) both
+survived the prune.
 
 Check the whole file against the current CLI while you are in there: every
 flag documented should exist, and `python -m job_scraper.run --help` is the
