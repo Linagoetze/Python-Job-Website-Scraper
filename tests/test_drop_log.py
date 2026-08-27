@@ -373,6 +373,145 @@ def test_filters_narrow_both_the_listing_and_the_counts(env: Path) -> None:
     assert sum(n for _, _, n in rule_counts(located)) == len(located)
 
 
+# --- the display ordinal (WP8h) ----------------------------------------------
+
+
+def test_display_order_is_pinned() -> None:
+    """The ladder's execution order, 1-5, with no gap and no layer 0.
+
+    `LAYER_RULES`, historically prefixed '0', displays first — the numeric
+    prefix on the stored id is not the display ordinal, which is the whole
+    point of the renumbering. If a future package reorders the pipeline, this
+    is the test that must be updated deliberately.
+    """
+    assert [(layer.id, layer.display, layer.name) for layer in drops_mod.LAYERS] == [
+        (LAYER_RULES, 1, "Location and rules"),
+        (LAYER_TITLE_KEYWORD, 2, "Title keywords"),
+        (LAYER_SENIORITY, 3, "Seniority"),
+        (LAYER_REVIEW_STATUS, 4, "Review status"),
+        (LAYER_DETAIL, 5, "Detail page"),
+    ]
+    assert [layer.display for layer in drops_mod.LAYERS] == [1, 2, 3, 4, 5]
+
+
+def test_a_retired_stored_id_renders_without_raising() -> None:
+    """WP8 deleted 1c-non-english and 1b-language; ~49,000 old rows still name
+    them. `layer_display` must show that instead of raising KeyError."""
+    assert drops_mod.layer_display("1c-non-english") == "1c-non-english (retired)"
+    assert drops_mod.layer_display("1b-language") == "1b-language (retired)"
+
+
+def test_a_current_layer_renders_as_layer_n_name() -> None:
+    assert drops_mod.layer_display(LAYER_RULES) == "Layer 1: Location and rules"
+    assert drops_mod.layer_display(LAYER_DETAIL) == "Layer 5: Detail page"
+
+
+def test_a_refiltered_layer_renders_as_its_base_layer_marked_re_filter() -> None:
+    assert (
+        drops_mod.layer_display(f"{REFILTER_PREFIX}{LAYER_SENIORITY}")
+        == "Layer 3: Seniority (re-filter)"
+    )
+    # A retired layer behind the prefix still renders, not raises.
+    assert (
+        drops_mod.layer_display(f"{REFILTER_PREFIX}1c-non-english")
+        == f"{REFILTER_PREFIX}1c-non-english (retired)"
+    )
+
+
+def test_layer_ordinal_raises_for_a_retired_id() -> None:
+    """`layer_ordinal` is for current ids only; a retired one has no ordinal to
+    give, and inventing one would be worse than refusing."""
+    with pytest.raises(KeyError):
+        drops_mod.layer_ordinal("1c-non-english")
+
+
+def test_layer_short_gives_the_ordinal_alone() -> None:
+    """The log lines' form: 'Layer 5', with the layer's own message supplying
+    the detail after it."""
+    assert drops_mod.layer_short(LAYER_RULES) == "Layer 1"
+    assert drops_mod.layer_short(LAYER_TITLE_KEYWORD) == "Layer 2"
+    assert drops_mod.layer_short(LAYER_SENIORITY) == "Layer 3"
+    assert drops_mod.layer_short(LAYER_REVIEW_STATUS) == "Layer 4"
+    assert drops_mod.layer_short(LAYER_DETAIL) == "Layer 5"
+
+
+def test_layer_short_agrees_with_layer_ordinal() -> None:
+    """Both read the same table, and must never drift apart."""
+    for layer in drops_mod.LAYERS:
+        assert drops_mod.layer_short(layer.id) == f"Layer {drops_mod.layer_ordinal(layer.id)}"
+
+
+def test_layer_short_raises_for_a_retired_id() -> None:
+    """Like `layer_ordinal`, and for the same reason: a retired layer has no
+    number. Callers are log lines naming layers that still run, so refusing is
+    right — `layer_display` is the one that must survive a retired id."""
+    with pytest.raises(KeyError):
+        drops_mod.layer_short("1b-language")
+
+
+# --- report ordering ---------------------------------------------------------
+
+
+def test_equal_counts_sort_in_ladder_order_not_by_stored_id() -> None:
+    """Ties used to fall back to the stored id, whose alphabet ('0-rules',
+    '1-seniority', '1a-title-keyword') printed the ladder as 1, 3, 2, 4, 5.
+
+    Invisible while only the ids were on screen; wrong once the ordinals are.
+    """
+    rows = [
+        {"layer": layer.id, "rule": f"rule for {layer.id}"} for layer in drops_mod.LAYERS
+    ]
+    ordered = [drops_mod.layer_ordinal(layer) for layer, _, _ in rule_counts(rows)]
+    assert ordered == [1, 2, 3, 4, 5]
+
+
+def test_count_still_beats_ladder_order() -> None:
+    """Ladder order is the tiebreak, not the primary sort: the report's job is
+    still to answer 'which rule fired most?' first."""
+    rows = [{"layer": LAYER_RULES, "rule": "rare"}]
+    rows += [{"layer": LAYER_DETAIL, "rule": "common"}] * 5
+    assert [(layer, n) for layer, _, n in rule_counts(rows)] == [
+        (LAYER_DETAIL, 5),
+        (LAYER_RULES, 1),
+    ]
+
+
+def test_a_retired_layer_sorts_below_every_current_one() -> None:
+    """History belongs at the foot of the table, not interleaved with layers
+    that still run."""
+    rows = [{"layer": "1c-non-english", "rule": "non-english title"}]
+    rows += [{"layer": layer.id, "rule": "r"} for layer in drops_mod.LAYERS]
+    assert rule_counts(rows)[-1][0] == "1c-non-english"
+
+
+def test_a_refiltered_layer_sorts_beside_its_base_layer() -> None:
+    """The re-filter pass is the same layer over a different population, so it
+    belongs next to its base rather than sorted off by its 'refilter/' prefix."""
+    refiltered_rules = drops_mod.refiltered(LAYER_RULES)
+    rows = [
+        {"layer": LAYER_TITLE_KEYWORD, "rule": "r"},
+        {"layer": refiltered_rules, "rule": "r"},
+        {"layer": LAYER_RULES, "rule": "r"},
+    ]
+    assert [layer for layer, _, _ in rule_counts(rows)] == [
+        LAYER_RULES,
+        refiltered_rules,
+        LAYER_TITLE_KEYWORD,
+    ]
+
+
+def test_rule_counts_report_shows_the_display_label_not_the_stored_id(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run(env)
+    monkeypatch.setattr(sys, "argv", ["drops.py", "--db", str(env / "jobs.sqlite3")])
+    drops_mod.main()
+
+    out = capsys.readouterr().out
+    assert "Layer 1: Location and rules" in out
+    assert "0-rules" not in out
+
+
 def test_cli_shows_the_last_run(env: Path, monkeypatch: pytest.MonkeyPatch,
                                 capsys: pytest.CaptureFixture[str]) -> None:
     _run(env)

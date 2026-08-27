@@ -589,9 +589,11 @@ class JobStore:
         """This run's exclusions, newest layer last, optionally filtered.
 
         The three filters match case-insensitively on a substring, so
-        `--layer locations` finds '0-rules' drops named 'locations: ...' and
+        `--rule locations` finds the '0-rules' drops named 'locations: ...' and
         `--rule hybrid` finds both hybrid cases without anyone having to type a
-        rule string exactly.
+        rule string exactly. Note that each filter matches its own column only:
+        the location cases live in `rule`, so `--layer locations` matches
+        nothing — `layer` holds ids like '0-rules'.
         """
         clauses = ["run_id = ?"]
         params: list[Any] = [run_id]

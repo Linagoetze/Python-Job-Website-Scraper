@@ -15,6 +15,14 @@ from job_scraper.config_loader import (
     default_title_keywords_path,
     load_rules,
 )
+from job_scraper.drops import (
+    LAYER_DETAIL,
+    LAYER_REVIEW_STATUS,
+    LAYER_RULES,
+    LAYER_SENIORITY,
+    LAYER_TITLE_KEYWORD,
+    layer_ordinal,
+)
 from job_scraper.pipeline import (
     DEFAULT_DELIST_AFTER,
     DEFAULT_KEEP_DROP_RUNS,
@@ -24,7 +32,7 @@ from job_scraper.pipeline import (
 from job_scraper.scoring import ScoringSummary, score_new_jobs
 from job_scraper.storage.xlsx_store import write_xlsx
 
-_RULE = "─" * 48
+_RULE = "─" * 52
 
 
 def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -> str:
@@ -36,17 +44,34 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     review status; "Unreviewed jobs in table" counts only the ones not yet
     decided about. A run that finds 100 jobs still listed and 2 unreviewed is a
     normal run, not a lost-data incident — which is how the old single line,
-    labelled "Jobs now in table", read."""
+    labelled "Jobs now in table", read.
 
-    # All numeric columns end at the same character position for vertical scanning.
-    _NUMCOL = 46  # column where the dropped/total numbers right-align to
+    Each dropped-jobs line carries the filter ladder's display ordinal in a
+    left gutter (WP8h; see `drops.LAYERS`), so "L3  − senior-level title" is
+    Layer 3 of 5 — the three detail-page lines all share Layer 5."""
+
+    # All numeric columns end at the same character position for vertical
+    # scanning. Wide enough for the longest label plus a six-figure count:
+    # WP8h's ladder gutter costs six characters that the old width did not
+    # have to carry.
+    _NUMCOL = 52  # column where the dropped/total numbers right-align to
+    _GUTTER = 8  # width of the "  L5  − " ladder-marker gutter
 
     def row(label: str, value: str, indent: int = 0) -> str:
         # right-align *value* so it ends at _NUMCOL, regardless of indent/label.
-        return f"{' ' * indent}{label}".ljust(_NUMCOL - len(value)) + value
+        # A label long enough to reach the column keeps a two-space gap rather
+        # than running into its own number: a line that misaligns is readable,
+        # one that renders "…in the text−1,100" is not.
+        text = f"{' ' * indent}{label}"
+        return text.ljust(max(_NUMCOL - len(value), len(text) + 2)) + value
 
-    def cut(label: str, dropped: int, remaining: tuple[int, str] | None = None) -> str:
-        line = row(f"− {label}", "−" + format(dropped, ","), indent=2)
+    def cut(layer_id: str, label: str, dropped: int,
+            remaining: tuple[int, str] | None = None) -> str:
+        # The ladder ordinal sits in its own gutter ahead of the minus sign
+        # (WP8h). "− 1  off-criteria" reads at a glance as "minus one";
+        # "L1  − off-criteria" cannot be misread as part of the count.
+        marker = f"L{layer_ordinal(layer_id)}".ljust(4)
+        line = row(f"{marker}− {label}", "−" + format(dropped, ","), indent=2)
         if remaining is not None:
             kept, note = remaining
             line += f"   → {kept:>5,} {note}"
@@ -64,21 +89,21 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         f"({summary.sources_skipped} skipped)",
         "",
         row("Jobs seen (all pages, dupes incl.)", f"{summary.jobs_extracted:,}"),
-        cut("off-criteria (location/keywords)", rules_excluded,
+        cut(LAYER_RULES, "off-criteria (location/keywords)", rules_excluded,
             (summary.jobs_kept, "match your criteria")),
-        cut("title keyword", summary.jobs_keyword_excluded),
-        cut("senior-level title", summary.jobs_title_excluded,
+        cut(LAYER_TITLE_KEYWORD, "title keyword", summary.jobs_keyword_excluded),
+        cut(LAYER_SENIORITY, "senior-level title", summary.jobs_title_excluded,
             (passed_titles, "passed title filters")),
-        cut("blocklisted (rejected)", summary.jobs_blocklist_excluded,
+        cut(LAYER_REVIEW_STATUS, "blocklisted (rejected)", summary.jobs_blocklist_excluded,
             (after_blocklist, "after blocklist")),
-        row("already in table (skipped)", f"{summary.jobs_already_stored:,}", indent=6),
-        row("stored, hybrid recheck", f"{summary.jobs_stored_rechecked:,}", indent=6),
-        row("new, detail-checked", f"{summary.jobs_new_checked:,}", indent=6),
-        cut(f"needs 3+ yrs / PhD ({summary.jobs_phd_excluded} PhD)",
+        row("already in table (skipped)", f"{summary.jobs_already_stored:,}", indent=_GUTTER),
+        row("stored, hybrid recheck", f"{summary.jobs_stored_rechecked:,}", indent=_GUTTER),
+        row("new, detail-checked", f"{summary.jobs_new_checked:,}", indent=_GUTTER),
+        cut(LAYER_DETAIL, f"needs 3+ yrs / PhD ({summary.jobs_phd_excluded} PhD)",
             summary.jobs_detail_excluded - summary.jobs_hybrid_excluded
             - summary.jobs_location_excluded),
-        cut("non-hybrid (distant city)", summary.jobs_hybrid_excluded),
-        cut("location unresolvable in the text", summary.jobs_location_excluded,
+        cut(LAYER_DETAIL, "non-hybrid (distant city)", summary.jobs_hybrid_excluded),
+        cut(LAYER_DETAIL, "location unresolvable in the text", summary.jobs_location_excluded,
             (summary.jobs_kept_new, "new jobs kept")),
         _RULE,
         row("New rows written", f"{summary.rows_written:,}"),

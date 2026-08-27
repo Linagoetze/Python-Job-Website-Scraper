@@ -31,9 +31,13 @@ from pathlib import Path
 import pytest
 
 from job_scraper.drops import (
+    LAYER_DETAIL,
+    LAYER_REVIEW_STATUS,
     LAYER_RULES,
     LAYER_SENIORITY,
     LAYER_TITLE_KEYWORD,
+    LAYERS,
+    layer_display,
 )
 from job_scraper.eval import (
     DEFAULT_BETA,
@@ -188,6 +192,18 @@ def test_ladder_order_matches_the_pipeline() -> None:
     )
 
 
+def test_ladder_is_drawn_from_the_display_table_not_a_second_copy() -> None:
+    """WP8h: `eval.LADDER` must be `drops.LAYERS` filtered, not a hand-kept
+    duplicate — otherwise the display ordinal and the replay order could drift
+    against each other silently."""
+    assert LADDER == tuple(
+        layer.id for layer in LAYERS if layer.id not in {LAYER_REVIEW_STATUS, LAYER_DETAIL}
+    )
+    # Same order LAYERS declares, not merely the same members.
+    replayable_ids = [layer.id for layer in LAYERS if layer.id in LADDER]
+    assert replayable_ids == list(LADDER)
+
+
 def test_every_labelled_job_gets_exactly_one_verdict(gold, config) -> None:
     verdicts = replay(gold, config)
     assert len(verdicts) == len(gold)
@@ -315,9 +331,10 @@ def test_report_names_every_false_negative(gold, config) -> None:
     assert "False negatives: 3 jobs" in text
     for title in ("Graphic Designer", "Head of Operations", "Programme Officer"):
         assert title in text
-    # And admits what it could not evaluate.
-    assert "1d-review-status not replayed" in text
-    assert "2-detail not replayed" in text
+    # And admits what it could not evaluate, using the WP8h display label
+    # rather than the raw stored id.
+    assert f"{layer_display(LAYER_REVIEW_STATUS)} not replayed" in text
+    assert f"{layer_display(LAYER_DETAIL)} not replayed" in text
     assert "unresolvable location field" in text
     assert "ceiling on the recall this buys" in text
 

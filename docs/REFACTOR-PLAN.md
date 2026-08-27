@@ -51,9 +51,9 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8e | Extractor location gaps | 2 hr | Sonnet 5 | `think` | done — 8/11 sources fixed (41/54 rows), 3 confirmed genuinely location-less | `wp8e-extractor-locations` |
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
-| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.824 (0.868 once the owner drops `"Architect"` from `rules.json`), precision up too | `wp8-trim-ladder` |
-| 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | not started | `wp8h-renumber-ladder` |
-| 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
+| 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
+| 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
+| 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
 
@@ -359,13 +359,23 @@ Record any decision a future session would otherwise have to re-derive.
   separating them to reorder would give that up. **The real performance
   conversation is WP9** — browser reuse and HTTP caching attack the four
   minutes, not the 79 milliseconds.
-- **`rules.json` stayed untouched, so WP8 lands in two stages (2026-08-27).**
-  The seniority list lives in the gitignored `rules.json`, which CLAUDE.md puts
-  on the never-touch list. WP8 therefore committed the keyword CSV and
-  `rules.example.json` only, and left the owner one hand edit: drop
-  `"Architect"` from `seniority_exclude_titles`. Committed state scores recall
-  0.824; with that edit, 0.868. If a later session measures 0.824 and expects
-  0.868, this is why.
+- **`rules.json` stayed untouched, so WP8 landed in two stages — both now done
+  (2026-08-27).** The seniority list lives in the gitignored `rules.json`, which
+  CLAUDE.md puts on the never-touch list. WP8 therefore committed the keyword CSV
+  and `rules.example.json` only, and left the owner one hand edit: drop
+  `"Architect"` from `seniority_exclude_titles`. **The owner made that edit the
+  same day, and it is verified: `seniority_exclude_titles` now holds 23 terms and
+  no `Architect`, and `python -m job_scraper.eval` scores recall 0.868 against the
+  520-row gold set.** So the live configuration is the 0.868 one, not the 0.824
+  one. A later session measuring 0.824 is looking at a `rules.json` where the edit
+  was lost or reverted — check the list before re-proposing the change.
+
+  Worth keeping as a method note, since it cost a wrong answer in the WP8h
+  session: the plan said "one hand edit outstanding" and stayed saying it after
+  the edit was made, so a later session repeated it as still pending. **A plan
+  entry describing something the owner must do by hand is stale the moment they
+  do it, and nothing updates it automatically.** Read the file — `rules.json` is
+  never-touch for *writes*, and always readable for a check like this.
 
 ---
 
@@ -3451,6 +3461,195 @@ without raising.
 Branch wp8h-renumber-ladder. Commit, do not push. Update the plan file.
 ```
 
+### Result
+
+376 tests pass (up from 364), `ruff check .` clean. Touched: `job_scraper/drops.py`
+(the new table), `job_scraper/eval.py`, `job_scraper/run.py`, `job_scraper/pipeline.py`
+and `job_scraper/experience_filter.py` (log lines), `job_scraper/storage/db.py`
+(docstring), `tests/test_drop_log.py`, `tests/test_eval.py`, and a new
+`tests/test_run_summary.py`.
+
+**This section was rewritten after review.** The first attempt shipped an
+alignment regression in the run summary, left the `--verbose` log lines on the old
+numbering, and recorded a check it had not actually performed. Both bugs and the
+false assurance are described in full below rather than quietly corrected — the
+plan file is only useful if it records what happened.
+
+**The one table.** `drops.py` gained a frozen `Layer(id, display, name)` dataclass
+and `LAYERS: tuple[Layer, ...]`, in execution order, still keyed by the unchanged
+stored ids:
+
+| stored id | display | name |
+|---|---|---|
+| `0-rules` | 1 | Location and rules |
+| `1a-title-keyword` | 2 | Title keywords |
+| `1-seniority` | 3 | Seniority |
+| `1d-review-status` | 4 | Review status |
+| `2-detail` | 5 | Detail page |
+
+Named `LAYERS`, not `LADDER` — `eval.py` already owns that name for its smaller,
+replayable subset, and giving the full table the same name one import away would
+have made "which LADDER" a question every reader had to answer. Two functions read
+it: `layer_ordinal(id)` (raises `KeyError` for a retired id — it has no ordinal to
+give, and the callers that use it, `run.py`'s summary, only ever pass a current id)
+and `layer_display(id)` (never raises: unknown ids render `"{id} (retired)"`, and a
+`refilter/`-prefixed id renders its base layer's label with `" (re-filter)"`
+appended). `eval.LADDER` is now `tuple(layer.id for layer in LAYERS if layer.id not
+in _UNREPLAYABLE_IDS)` — derived from `LAYERS`, not a second hand-kept copy, per the
+prompt's instruction and pinned by `test_ladder_is_drawn_from_the_display_table_not_a_second_copy`.
+
+**Every render site now goes through `layer_display`**, not just the one the prompt
+named. Once `eval.py`'s per-layer table used it, leaving `format_costly_rules`,
+`format_false_negatives`'s per-layer grouping, and `_verdict_text` (the
+before/after lines in a `--compare` diff) printing raw stored ids like
+`1a-title-keyword` alongside a per-layer table saying `Layer 2: Title keywords`
+would have been a worse inconsistency than the one being fixed. All four now agree.
+`drops.py`'s `format_rule_counts` does the same; `format_exclusions` never printed
+a layer column and needed no change.
+
+**`run.py`'s summary** didn't reference the stored ids at all before this — its
+funnel lines are free text ("off-criteria (location/keywords)", "title keyword",
+…) that happen to correspond to layers one-to-one (the three detail-page lines all
+share Layer 5). Since the prompt named it explicitly as a place a layer is shown,
+each of those seven lines now carries its ordinal in a left gutter (`L1  − …`),
+read from `layer_ordinal` rather than hard-coded, so a future reorder updates this
+display too.
+
+**The ordinal goes in a gutter, not in front of the label, and this cost a
+round of review.** The first attempt wrote `− 1  off-criteria (location/keywords)`
+— the ordinal appended to the label inside `cut()`. Two things were wrong with it,
+both caught by the WP8h review rather than by me:
+
+1. **It broke the funnel's alignment, and I claimed to have checked that it
+   hadn't.** The earlier version of this section said column widths "were checked
+   by hand against 5-digit counts". That check was either not done or done wrong:
+   the ladder gutter costs six characters, `_NUMCOL` was left at 46, and the two
+   longest labels overran it. `location unresolvable in the text` collided with
+   its own number at **four** digits — `…in the text−1,100`, an ordinary run — and
+   `off-criteria (location/keywords)` at five. Recording the false assurance was
+   worse than shipping the bug: it told the next reader the question had been
+   settled. Fixed by widening `_NUMCOL` to 52, and by making `row()` guarantee a
+   two-space gap (`max(_NUMCOL - len(value), len(text) + 2)`) so an over-long label
+   pushes its number right instead of abutting it — degrading gracefully at any
+   magnitude rather than exactly at the width someone happened to measure.
+2. **`− 1  off-criteria` reads as "minus one".** The minus sign belongs to the
+   count, not the ordinal, and putting a digit straight after it inverted that at a
+   glance. The marker now sits in its own gutter ahead of the sign: `L1  − …`.
+
+`tests/test_run_summary.py` is new and pins this: the exact golden rendering, the
+specific four-digit line that broke, the label-never-abuts-its-number invariant at
+six figures, and that all five ordinals appear in execution order. There was no
+test on `format_summary`'s text before — which is precisely why the regression
+reached review — and the lesson is the same one WP8 recorded about the eval
+harness: **a layout claim that is not pinned by a test is an assertion, not a
+check.**
+
+**The old numbering was still live in the `--verbose` logs, and that was the real
+miss.** The package's instruction was "every place a layer is shown to a person",
+and I updated the three modules the prompt named while leaving the diagnostic log
+lines in `pipeline.py` and `experience_filter.py` on the old vocabulary. The
+write-up's claim that "nothing else referenced a layer id" was technically true and
+substantively misleading: those lines print layer *numbers*, not stored ids, and
+they are exactly the human-facing labels the package existed to fix. The result
+was a straight name collision — in one `--verbose` run, "Layer 2" meant the
+detail-page filter in the logs and the title-keyword filter in the summary and
+reports. That is worse than the muddle WP8h set out to remove. All ten log sites
+in `pipeline.py`, both in `experience_filter.py`, and two report strings in
+`eval.py` (`"Layer 2 would still settle"`, which meant the detail layer) now read
+their number from the table via a new `drops.layer_short(id)` → `"Layer 5"`. Every
+one was exercised at DEBUG level to confirm the `%s`/argument counts match.
+
+**Still on the old vocabulary, deliberately: code comments and CLAUDE.md.**
+About 54 comments and docstrings across eight files say "Layer 0"/"Layer 2"
+meaning the stored-id vocabulary, and CLAUDE.md:32 does too — plus one line of
+shipped prose in `job_scraper/config/rules.example.json`, the only one of these a reader
+meets without opening the source. None is shown to a person running the tool
+(the example config is read, not rendered), and sweeping
+them would have buried this package's real fixes in a sixty-hunk comment diff.
+**Folded into WP8b's prompt** (2026-08-27) rather than left as a loose follow-up:
+that package is already rewriting the README's layer table, so the renumbering
+lands in one place, and its prompt now carries the mapping, the grep, and the
+instruction to commit the mechanical rename separately from the prose. WP8b's
+estimate went from 1 hr to 2 hr to pay for it.
+
+The collision this leaves open until then is worth naming precisely: "Layer 2"
+currently means the title-keyword filter in every rendered output and the
+detail-page filter in every code comment. Anyone reading `filtering.py` before
+WP8b lands should trust `drops.LAYERS`, not the prose around them.
+
+**Decision: `--layer` keeps matching stored ids only, not display numbers.**
+`--layer` is (and stays) a case-insensitive substring match against the column
+SQLite actually holds. Display numbers were considered and rejected: `1` is a
+substring of three different stored ids (`1a-title-keyword`, `1-seniority`,
+`1d-review-status`), so a bare digit would need a second matching mode layered on
+top of substring matching, and the two modes would silently disagree about what
+`--layer 1` means. Instead the `--layer` help text now lists all five
+`id (Layer N: Name)` pairs inline, so `python -m job_scraper.drops --help` is
+where "which id is Layer 3?" gets answered, without teaching the flag two ways to
+match.
+
+**A pre-existing bug in that help text, fixed while adjacent.** Three places
+advertised `--layer locations` as a worked example — the module docstring, the
+argparse epilog, and `storage/db.py`'s `exclusions()` docstring, which claimed it
+"finds '0-rules' drops named 'locations: ...'". It does not and never did: each
+filter matches its own column, the location cases live in `rule`, and no stored
+layer id contains the string "locations", so the documented command returns
+nothing. This was broken on `main` before WP8h and the first attempt edited the
+text right beside it without noticing. All three now say `--rule locations`, and
+db.py's docstring states outright that `--layer locations` matches nothing. Out
+of the package's scope strictly read, but it is documentation-only, in strings
+this package was already rewriting, and leaving a known-false example in place
+after touching the line would have been the wrong call.
+
+**Ties in the drops report sorted by the stored id's alphabet.** Found in the
+second review. `rule_counts` broke equal counts with the `(layer, rule)` tuple,
+and the stored ids sort `'0-rules'`, `'1-seniority'`, `'1a-title-keyword'` — so
+the report printed the ladder as Layer 1, 3, 2, 4, 5. Pre-existing, and invisible
+for as long as the stored ids were the only thing on screen; WP8h is what put the
+ordinals there and made it wrong. Fixed with `drops.layer_sort_key`, derived from
+the same `LAYERS` table: ladder order, a layer's own rows before its `refilter/`
+ones, retired ids last as a group. Count still dominates — the report's first job
+is still "which rule fired most?" — and that is pinned by its own test.
+
+**Column width in the drops report.** The `layer` column was first widened 18 → 30,
+which was still too narrow: the longest label a stored id can produce is a
+re-filtered one, `"Layer 1: Location and rules (re-filter)"` at 39 characters, and
+30 truncated it to `"Layer 1: Location and rules (…"`. The `(re-filter)` marker is
+the whole point of that suffix — WP8a keeps the two populations separable — so it
+must not be the part that gets trimmed. Now 39.
+
+**Tests.** `layer_short` is covered alongside its two siblings — the ordinals it
+returns, that it agrees with `layer_ordinal` for every row of the table, and that
+it raises on a retired id (it is the one of the three that must refuse, since
+`layer_display` is the one that has to survive history). Report ordering has four
+tests: ladder order on equal counts, count still beating ladder order, retired
+last, and a `refilter/` row sorting beside its base layer.
+`tests/test_drop_log.py` gained a "the display ordinal" section:
+the full `(id, display, name)` table pinned in order, a retired id rendering
+without raising (`1c-non-english`, `1b-language`), a current id, a
+`refilter/`-prefixed id (both current and retired underneath), `layer_ordinal`
+raising `KeyError` on a retired id, and the CLI's rule-count report showing
+`"Layer 1: Location and rules"` rather than `"0-rules"`. `tests/test_eval.py`
+gained the `LADDER`-is-derived test above and had its one text-format assertion
+(`test_report_names_every_false_negative`, previously checking for the literal
+strings `"1d-review-status"`/`"2-detail"`) updated to check for
+`layer_display(...)` output instead — a deliberate update to match the intended
+formatting change, not a weakened test.
+
+Not touched, per scope: `README.md` (WP8b's), and the hard-coded stored-id
+literals in `tests/test_drop_log.py` outside the new section (`layer="2-detail"`,
+`"0-rules"` in a fixture row and a `--layer` CLI arg) — all exercise the stored-id
+matching path directly and are correct left alone. Note for WP8b: the plan's old
+scope note said there were three such literals; the new tests add a fourth, so
+that count is stale.
+
+**One naming decision worth keeping straight.** The table is `drops.LAYERS`, not
+`drops.LADDER`, because `eval.LADDER` already exists for the smaller replayable
+subset and two `LADDER`s one import apart would be exactly the confusion the
+renumbering is meant to remove. Two comments in the first attempt then referred
+readers to "`LADDER`" when they meant `LAYERS` — pointing at the very thing the
+naming decision disambiguates. Both fixed.
+
 ---
 
 ## WP8b — README reconciliation
@@ -3465,6 +3664,28 @@ input-file section needs updating rather than removing.
 Note that WP8d also changed the README's location story: there is now a third
 Layer 0 answer and a `non_place_locations` key, both already documented by that
 package, so check rather than assume that section is stale.
+
+**WP8h has also landed (2026-08-27), and it grew this package.** The filter
+ladder now *displays* as Layer 1-5 in execution order while the stored ids in
+`run_exclusions.layer` keep their historical names. Every user-facing surface was
+converted — the run summary, the drop-log report, the eval report, the `--verbose`
+logs — but two categories were deliberately left on the old vocabulary, because
+sweeping them inside WP8h would have buried that package's real fixes in a
+sixty-hunk documentation diff. They are now this package's:
+
+- **The README**, which is the most visible layer table in the project and is
+  being rewritten here anyway. It currently has ~15 layer references, several of
+  which now actively collide with the new scheme.
+- **~54 code comments and docstrings** across eight files, plus CLAUDE.md's own
+  architecture line — and, easy to miss, one line of shipped prose in
+  `job_scraper/config/rules.example.json` that a reader copies when building their own
+  `rules.json`.
+
+Both are inert — no instruction in either would lose data if followed — but the
+collision is worse than ordinary staleness: "Layer 2" now means the title-keyword
+filter in every rendered output and the detail-page filter in every comment. A
+reader who trusts a comment gets the wrong layer. That is the thing to fix, and
+it is why this package is now nearer two hours than one.
 
 Nothing here is dangerous — every stale passage is misleading but inert, and no
 instruction in the README would lose data if followed. It costs confusion, not
@@ -3510,10 +3731,10 @@ New drift created by WP8 itself — all four are in the README now:
   Both layers are deleted. The surviving ladder is rules → title keyword →
   seniority → blocklist → detail.
 - The sentence after it explains that the labels are historical "which is why
-  1c comes before 1b". With both gone the example explains nothing, but the
-  point still holds — 1a runs before 1 — so rewrite it around the surviving
-  pair rather than deleting it. See the renumbering note below before you
-  spend long on this passage.
+  1c comes before 1b". **WP8h has since renumbered the display, so do not
+  rewrite this passage around the surviving pair — delete the apology and
+  renumber the table instead.** See the renumbering section below, which
+  supersedes this bullet.
 - The sample run-summary block (around README:128) prints `− non-English text`
   and `− language-speaker`, which `format_summary` no longer emits. **Do not
   just delete the two lines:** the `→ N passed title filters` running total
@@ -3527,6 +3748,79 @@ Not affected, so do not go looking: `langdetect` never appeared in the README,
 the `seniority_exclude_titles` example and the `"Lead"`/`"Leadership"` note are
 both still accurate, and the keyword-CSV examples (`design`, `tax`) both
 survived the prune.
+
+THE RENUMBERING SWEEP (from WP8h, folded in here)
+
+WP8h renumbered the ladder's *display* to Layer 1-5 in execution order and left
+the stored ids in `run_exclusions.layer` alone. `job_scraper/drops.py`'s `LAYERS`
+table is the single source of truth; read it first. The mapping is:
+
+    0-rules           -> Layer 1: Location and rules
+    1a-title-keyword  -> Layer 2: Title keywords
+    1-seniority       -> Layer 3: Seniority
+    1d-review-status  -> Layer 4: Review status
+    2-detail          -> Layer 5: Detail page
+
+Two retired ids, `1c-non-english` and `1b-language`, exist only in history and
+render as "(retired)". Do not resurrect them in prose.
+
+1. The README's layer table and every layer reference in it (there are about
+   fifteen; `grep -nE 'Layer|layer' README.md` finds them). Renumber to 1-5,
+   delete the paragraph apologising that the labels are historical — it no
+   longer applies to what a reader sees — and regenerate the sample run-summary
+   block, which WP8h reformatted: each dropped-jobs line now carries its ordinal
+   in a left gutter ("L1  − off-criteria …") and the column widths changed.
+   Run the command and copy real output; do not hand-draw it.
+
+2. Two README examples are now actively wrong, not merely stale:
+   - `--layer 2` (around README:185) is offered as an example alongside
+     `--rule locations`. It still *works*, but it matches the stored id
+     `2-detail`, which now displays as Layer 5 — so the example reads as
+     "show me Layer 2" and returns Layer 5. Replace it. `--layer` matches
+     stored ids, never display numbers; that was a deliberate WP8h decision
+     recorded in the decisions log, and the README should say so in one line.
+   - `--rule locations` is correct and `--layer locations` is not. WP8h fixed
+     three places that advertised the latter; check the README does not too.
+
+3. The comments and docstrings still using the old numbering — 56 lines across
+   eight files, of which 2 are already correct (see the warning below), so
+   about 54 to change. Find them with:
+
+       grep -rnE 'Layer (0|1a|1b|1c|1d|1|2)\b' job_scraper/
+
+   filtering.py 21, experience_filter.py 11, pipeline.py 11, eval.py 6,
+   scoring.py 2, drops.py 2, extractors/successfactors_html.py 2,
+   config/rules.example.json 1 — all relative to job_scraper/, the grep root above.
+
+   **`job_scraper/config/rules.example.json` is the one to do first and most
+   carefully.**
+   Its `_non_place_locations_comment` is not an internal comment at all — it is
+   prose shipped in the example config, the thing a reader copies to build
+   their own `rules.json`, and it explains WP8d's deferral as "passes Layer 0
+   provisionally and Layer 2 settles it". Both numbers are now wrong to a
+   reader looking at any output. The live `rules.json` is gitignored and on
+   CLAUDE.md's never-touch list, so change the example only, and mention in
+   your summary that the owner may want to copy the wording across by hand.
+
+   The rest is a mechanical rename of prose only. **Change no code, no string
+   literal that is rendered to a user, and no stored id.** WP8h already
+   converted every rendered string; if this grep hits something inside a
+   `logger.*` call or a report line, stop and check why before touching it.
+
+   **The grep also matches two already-correct new usages** —
+   `drops.py:195` ("Layer 1: Location and rules (re-filter)", explaining the
+   report's column width) and `eval.py:806` ("Layer 2: Title keywords — ti…",
+   a truncation example). Both are new-scheme labels and must be left exactly
+   as they are. Read every hit rather than sed-ing the tree; this is precisely
+   the kind of rename where a blind pass is worse than no pass.
+
+4. CLAUDE.md:32 — "experience_filter.py Layer 1 (title) and Layer 2 (detail
+   page)" is now Layer 3 and Layer 5. CLAUDE.md:51's "There are already five"
+   is still true and reads better than ever; leave it.
+
+Do this sweep as its own commit, separate from the README rewrite, so the
+mechanical rename can be reviewed at a glance rather than read line by line
+alongside prose changes.
 
 Check the whole file against the current CLI while you are in there: every
 flag documented should exist, and `python -m job_scraper.run --help` is the
