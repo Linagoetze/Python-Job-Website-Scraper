@@ -53,6 +53,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
+| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | not started | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3580,13 +3581,34 @@ WP8b lands should trust `drops.LAYERS`, not the prose around them.
 **Decision: `--layer` keeps matching stored ids only, not display numbers.**
 `--layer` is (and stays) a case-insensitive substring match against the column
 SQLite actually holds. Display numbers were considered and rejected: `1` is a
-substring of three different stored ids (`1a-title-keyword`, `1-seniority`,
-`1d-review-status`), so a bare digit would need a second matching mode layered on
-top of substring matching, and the two modes would silently disagree about what
-`--layer 1` means. Instead the `--layer` help text now lists all five
-`id (Layer N: Name)` pairs inline, so `python -m job_scraper.drops --help` is
-where "which id is Layer 3?" gets answered, without teaching the flag two ways to
-match.
+substring of six different stored values, so a bare digit would need a second
+matching mode layered on top of substring matching, and the two modes would
+silently disagree about what `--layer 1` means. Instead the `--layer` help text
+now lists all five `id (Layer N: Name)` pairs inline, so
+`python -m job_scraper.drops --help` is where "which id is Layer 3?" gets
+answered, without teaching the flag two ways to match.
+
+**That decision was right and half-finished — WP8i completes it.** Documenting
+the mapping in `--help` serves the person who reads `--help`. It does nothing for
+the person who reads `Layer 3: Seniority` on screen, types `--layer 3`, and is
+told "recorded no matching exclusions" — which reads as a finding about the
+ladder rather than a rejected query. **WP8h made that worse rather than
+inheriting it**: before this package the on-screen labels *were* the stored ids,
+so a typed digit matched what you had just read; now the display teaches an input
+that does not work. Every digit 0-5 is wrong today, half of them silently and
+half of them confidently — see WP8i for the measured table. Rejecting a bare digit
+loudly does **not** reopen the decision above; it is the same decision plus an
+error case, and it is what should have shipped here.
+
+Provenance worth recording, because it explains why this took two packages: the
+owner had already chosen the loud rejection at 09:30 on 2026-08-27, eleven
+minutes before this package started, in a commit that never reached `main` — it
+was made on `wp8b-plan-refresh` after that branch's PR had already merged, then
+orphaned when the branch was deleted. So WP8h read the plan's *open question*
+form and answered it independently. The decision was lost in transit, not
+overruled. The commit is preserved as the local tag
+`rescued/wp8h-layer-decision`; its reasoning is folded into WP8i below and
+nothing further is needed from it.
 
 **A pre-existing bug in that help text, fixed while adjacent.** Three places
 advertised `--layer locations` as a worked example — the module docstring, the
@@ -3652,6 +3674,108 @@ naming decision disambiguates. Both fixed.
 
 ---
 
+## WP8i — `--layer` refuses a display number
+
+**Do this before WP8b.** WP8b documents `--layer` in the README, and this package
+changes both its behaviour and its error message. Documenting it first means
+writing that passage twice — the same argument that put WP8h before WP8b.
+
+**Do not fold it into WP8b.** WP8b's prompt says "docs only: change no
+behaviour", and this is a behaviour change. Two packages, two commits, two
+things a reviewer can check independently.
+
+WP8h put display numbers on screen. The stored ids they map to are unchanged, so
+those numbers are not searchable — and `--layer` answers a meaningless query with
+an empty table rather than an error. Measured against a store holding all eight
+historical layer values:
+
+| typed | the user means | what actually comes back | exit |
+|---|---|---|---|
+| `0` | — | Layer 1's rows | 0 |
+| `1` | Layer 1 | rows from Layers 2, 3, 4 **and** a retired layer | 0 |
+| `2` | Layer 2 | **Layer 5's rows** | 0 |
+| `3` | Layer 3 | nothing: "recorded no matching exclusions" | 0 |
+| `4` | Layer 4 | nothing, same message | 0 |
+| `5` | Layer 5 | nothing, same message | 0 |
+
+**Not one digit gives a right answer.** Three return silence, three return a
+confidently wrong table. `--layer 2` printing a table headed `Layer 5: Detail
+page` is the worst of them, because nothing on screen prompts a second look. And
+`--layer 1` is not a near miss either: six of the eight stored values contain the
+character `1`, `refilter/1c-non-english` among them.
+
+This is CLAUDE.md's priority 2 in a reporting tool. An empty table meaning "you
+asked a meaningless question" is indistinguishable from one meaning "nothing was
+dropped there", and the second is a conclusion the owner might act on — loosening
+a rule that never fired, or trusting a layer that is quietly eating jobs.
+
+### The decision, and what it is not
+
+**The owner chose this on 2026-08-27: reject a bare number, name the substitute.**
+The decision was made before WP8h and lost in transit rather than overruled — see
+the provenance note at the end of WP8h's result section.
+
+It does **not** reopen WP8h's decision that `--layer` matches stored ids only.
+Teaching `--layer` the display numbers was considered and rejected twice, for the
+same reason both times: a bare digit would mean something categorically different
+from every other argument, and it would break `--layer 1` for anyone matching
+stored ids today. Rejecting an input is not the same as matching it differently.
+This package adds an error case and changes no input that works.
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP8i only.
+
+`python -m job_scraper.drops --layer 3` today runs the query, matches "3"
+against no stored layer id, and prints "recorded no matching exclusions" with
+exit code 0. That is indistinguishable from "Layer 3 dropped nothing", which is
+a conclusion someone might act on. `--layer 2` is worse: it returns Layer 5's
+rows under a heading that says Layer 5, and exits 0. See the table above for all
+six digits; none of them is right.
+
+Make `--layer` refuse a bare display number instead of answering it wrongly.
+
+- An argument that is **entirely digits** is refused before any query runs.
+  Message to stderr, non-zero exit. Do not print an empty table, and do not
+  print a partial one.
+- The message names the stored id to use instead, so it teaches the mapping
+  rather than just scolding:
+  "--layer 3 is a display number, not a stored layer name. Did you mean
+  --layer seniority? (layer 3 is stored as '1-seniority')"
+- A digit outside the ladder gets the range, not a lookup: "there is no layer 9;
+  the ladder is 1-5".
+- **Anything not entirely digits is untouched.** `--layer 1a`, `--layer
+  seniority`, `--layer 0-rules` and `--layer refilter/` keep working exactly as
+  they do today, as plain case-insensitive substring matches. Restricting the
+  rule to bare digits is the whole point: this is a new error case, not a
+  change to any input that works.
+- Retired layers stay searchable by their stored ids. `--layer 1c` must still
+  find the 212 historical `1c-non-english` rows — WP8 deleted the layer, not its
+  history — and `1c` is not all digits, so it should fall out of the rule above
+  rather than need a special case. Check that it does.
+
+Derive the number→id mapping from `drops.LAYERS`; do not hand-write a second
+table. `layer_ordinal` already goes one way, and note that the id you want in
+the message is the stored id, not the display name.
+
+Do not touch `--rule` or `--source`. They match different columns, a bare digit
+in either is a legitimate search (a rule string can contain "3"), and nothing
+about them is misleading.
+
+Update the `--layer` help text so it states the rule rather than only listing
+the mapping.
+
+Tests: `--layer 3` exits non-zero and names '1-seniority'; `--layer 9` gives the
+range; `--layer 1a`, `--layer seniority` and `--layer 1c` all still return rows;
+and the refusal happens before the store is opened, so a bad argument costs no
+query.
+
+Leave README.md alone — WP8b owns it and runs next.
+
+Branch wp8i-layer-guard. Commit, do not push. Update the plan file.
+```
+
+---
+
 ## WP8b — README reconciliation
 
 **WP8 has landed (2026-08-27), so this is now unblocked.** WP8 deleted
@@ -3665,9 +3789,13 @@ Note that WP8d also changed the README's location story: there is now a third
 Layer 0 answer and a `non_place_locations` key, both already documented by that
 package, so check rather than assume that section is stale.
 
-**WP8h has also landed (2026-08-27), and it grew this package.** The filter
-ladder now *displays* as Layer 1-5 in execution order while the stored ids in
-`run_exclusions.layer` keep their historical names. Every user-facing surface was
+**WP8h has also landed (2026-08-27), and it grew this package.** WP8i follows it
+and precedes this one — it makes `--layer` refuse a bare display number, which
+changes what the README must say about that flag, so **do not start WP8b until
+WP8i has landed** or you will write the `--layer` passage twice.
+
+The filter ladder now *displays* as Layer 1-5 in execution order while the
+stored ids in `run_exclusions.layer` keep their historical names. Every user-facing surface was
 converted — the run summary, the drop-log report, the eval report, the `--verbose`
 logs — but two categories were deliberately left on the old vocabulary, because
 sweeping them inside WP8h would have buried that package's real fixes in a
@@ -3774,11 +3902,12 @@ render as "(retired)". Do not resurrect them in prose.
 
 2. Two README examples are now actively wrong, not merely stale:
    - `--layer 2` (around README:185) is offered as an example alongside
-     `--rule locations`. It still *works*, but it matches the stored id
-     `2-detail`, which now displays as Layer 5 — so the example reads as
-     "show me Layer 2" and returns Layer 5. Replace it. `--layer` matches
-     stored ids, never display numbers; that was a deliberate WP8h decision
-     recorded in the decisions log, and the README should say so in one line.
+     `--rule locations`. **After WP8i it is an error, not a wrong answer** —
+     a bare digit is refused with a non-zero exit. Replace the example with a
+     stored id (`--layer seniority` reads best) and state the rule in one line:
+     `--layer` matches stored ids, never display numbers, and a bare number is
+     refused with a message naming the id to use. Run WP8i's error path and
+     quote the real message rather than paraphrasing it.
    - `--rule locations` is correct and `--layer locations` is not. WP8h fixed
      three places that advertised the latter; check the README does not too.
 
@@ -3842,8 +3971,10 @@ Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP9 only.
 Two performance problems in http.py.
 
 1. fetch_rendered launches and tears down a fresh Chromium on every call. For a
-   dynamic source's Layer 2 pass that is one browser launch per job, up to 10
-   concurrently given _DETAIL_WORKERS = 10. Restructure so one browser is
+   dynamic source's detail pass — Layer 5, the stored id '2-detail'; WP8h
+   renumbered the display, so read any "Layer 2" in an old comment as this one
+   — that is one browser launch per job, up to 10 concurrently given
+   _DETAIL_WORKERS = 10. Restructure so one browser is
    launched per run and reused, with a context or page per fetch. Mind that the
    Playwright sync API is not safe to share across threads: either give each
    worker thread its own context correctly, or move rendered fetches out of the
@@ -3880,6 +4011,20 @@ These are other people's career sites and the current code is not a good guest.
   source whose row count dropped by more than 50% against its previous
   successful run.
 - Add --dry-run that fetches and filters but writes nothing.
+
+Two notes before you touch run.py's output, both from WP8h:
+
+- `format_summary` now has a golden test, `tests/test_run_summary.py`, pinning
+  its exact rendering. It exists because WP8h shipped a layout regression that
+  no test caught — two labels ran into their own numbers at four digits. If you
+  add a line to the funnel, regenerate the EXPECTED block from real output and
+  say in the plan that you did. **Do not weaken or delete that test to make a
+  failure go away**; the invariant tests beside it (no label abutting its
+  number, ordinals in execution order) must keep passing untouched.
+- The funnel's dropped-jobs lines carry the ladder ordinal in a left gutter
+  ("L5  − …"), read from `drops.LAYERS` via `layer_ordinal`. A health warning
+  is not a ladder layer, so give it its own shape rather than borrowing an
+  ordinal — a warning that looks like a filter line will be read as one.
 
 Branch wp10-politeness. Commit, do not push. Update the plan file.
 ```
