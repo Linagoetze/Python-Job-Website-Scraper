@@ -53,7 +53,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
-| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 406 tests pass | `wp8i-layer-guard` |
+| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3821,7 +3821,40 @@ columns, where a bare digit is a legitimate search.
 Not touched, per scope: `README.md` (WP8b's, and it runs next). Note for WP8b:
 the `--layer` passage it writes must describe the refusal, not just the mapping.
 
-**Verification.** `.venv/bin/pytest`: 406 passed. `.venv/bin/ruff check .`:
+### Review follow-up (2026-08-27)
+
+Three findings from a review session, all fixed in a second commit.
+
+**A stray space defeated the guard.** `--layer " 3"` is not entirely digits, so
+it fell through to the store and printed "recorded no matching exclusions" with
+exit 0 — the exact misleading outcome this package exists to remove, reachable
+by a typo. `layer_query_error` now strips the argument *before* the digits test.
+
+Only the test is stripped; the query still runs on the argument as typed. That
+line is deliberate: trimming the query value too would change what a non-digit
+argument matches (` seniority` would start finding rows), and the package's
+whole scope is "add an error case, change no working input". So a padded
+non-digit is still searched for verbatim and still finds nothing — pinned by
+`test_only_the_digits_test_is_stripped_not_the_query`, so the asymmetry is a
+recorded decision rather than an oversight for a later session to trip over.
+
+**`--layer 03` echoed the padding back**: "layer 03 is stored as '1-seniority'".
+The opening still quotes the argument as typed, since that is what the typist
+has to recognise, but every claim about the ladder after it now uses the parsed
+number. `--layer 007` likewise says "there is no layer 7".
+
+**A test docstring overstated a count**, saying the retired `1c-non-english`
+layer holds "~49,000 historical rows". 212 is that layer's own count; ~49,000 is
+the whole `run_exclusions` table across every id, current ones included (see the
+WP8h measurement above: 48,921 across 6 runs, of which 212 are `1c-non-english`
+and 114 `1b-language`). Comment only, no behaviour.
+
+**Noted, not fixed — pre-existing, and WP8b's to judge.** `layer_display`'s
+docstring in `drops.py` has the same conflation, describing a retired id as
+"still present in ~49,000 historical rows". WP8h wrote it and it is outside this
+package; the true figure for the two retired ids together is 327.
+
+**Verification.** `.venv/bin/pytest`: 414 passed. `.venv/bin/ruff check .`:
 clean. `python -m job_scraper.run --help` works.
 
 **Method note, since it cost a wrong answer.** Run the tools from `.venv/bin`,

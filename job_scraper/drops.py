@@ -177,19 +177,33 @@ def layer_query_error(value: str) -> str | None:
     Only an argument that is *entirely* digits is refused. '1a', '1c' and
     'seniority' are ordinary substring searches and are none of this
     function's business.
+
+    Surrounding whitespace is stripped before that test, so a fat-fingered
+    `--layer " 3"` is refused rather than slipping through to print the empty
+    table this function exists to prevent. Only the test is stripped: the
+    caller still queries on the argument as typed, because trimming that would
+    change what a *non*-digit argument searches for, which is outside this
+    rule.
+
+    The digits are reported back two ways on purpose. The opening quotes the
+    argument as typed, since that is what the typist has to recognise; every
+    claim about the ladder after it uses the parsed number, so `--layer 03`
+    does not produce "layer 03 is stored as ...".
     """
-    if not _BARE_DIGITS.fullmatch(value):
+    typed = value.strip()
+    if not _BARE_DIGITS.fullmatch(typed):
         return None
-    opening = f"--layer {value} is a display number, not a stored layer name."
-    layer = _BY_DISPLAY.get(int(value))
+    number = int(typed)
+    opening = f"--layer {typed} is a display number, not a stored layer name."
+    layer = _BY_DISPLAY.get(number)
     if layer is None:
         return (
-            f"{opening} There is no layer {value}; "
+            f"{opening} There is no layer {number}; "
             f"the ladder is {LAYERS[0].display}-{LAYERS[-1].display}."
         )
     return (
         f"{opening} Did you mean --layer {layer_search_hint(layer.id)}? "
-        f"(layer {value} is stored as {layer.id!r})"
+        f"(layer {number} is stored as {layer.id!r})"
     )
 
 
