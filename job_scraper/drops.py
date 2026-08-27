@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +81,15 @@ LAYERS: tuple[Layer, ...] = (
 )
 
 _BY_ID: dict[str, Layer] = {layer.id: layer for layer in LAYERS}
+
+# The other direction: `layer_ordinal` maps a stored id to its display number,
+# and this maps a display number back to the layer it names. Both are derived
+# from LAYERS, so the ladder is described in exactly one place (WP8i).
+_BY_DISPLAY: dict[int, Layer] = {layer.display: layer for layer in LAYERS}
+
+# ASCII digits only, and the whole argument. `str.isdigit` would also accept
+# '\u00b3', which `int` then refuses.
+_BARE_DIGITS = re.compile(r"[0-9]+")
 
 
 def layer_ordinal(stored_id: str) -> int:
@@ -139,6 +149,48 @@ def layer_display(stored_id: str) -> str:
         return f"{stored_id} (retired)"
     label = f"Layer {layer.display}: {layer.name}"
     return f"{label} (re-filter)" if is_refilter else label
+
+
+def layer_search_hint(stored_id: str) -> str:
+    """The shortest sensible `--layer` argument for *stored_id*.
+
+    The stored ids carry a numeric prefix recording the order the filters were
+    added ('1-seniority'), which is exactly the part a display number gets
+    confused with. Dropping it leaves a hint that is unambiguous, digit-free
+    and therefore itself an acceptable argument.
+    """
+    _, _, tail = stored_id.partition("-")
+    return tail or stored_id
+
+
+def layer_query_error(value: str) -> str | None:
+    """Why *value* is not a usable `--layer` argument, or None if it is (WP8i).
+
+    `--layer` matches the stored ids, and the display numbers WP8h put on
+    screen are not among them — so a bare digit is never the query the typist
+    meant. Left alone it does not fail: '3' matches nothing and prints "no
+    matching exclusions", which reads as "Layer 3 dropped nothing", and '2'
+    matches '2-detail' and prints Layer 5's rows under Layer 5's heading. Both
+    are answers someone might act on. Refusing is the only honest reply, and
+    naming the stored id teaches the mapping on the way past.
+
+    Only an argument that is *entirely* digits is refused. '1a', '1c' and
+    'seniority' are ordinary substring searches and are none of this
+    function's business.
+    """
+    if not _BARE_DIGITS.fullmatch(value):
+        return None
+    opening = f"--layer {value} is a display number, not a stored layer name."
+    layer = _BY_DISPLAY.get(int(value))
+    if layer is None:
+        return (
+            f"{opening} There is no layer {value}; "
+            f"the ladder is {LAYERS[0].display}-{LAYERS[-1].display}."
+        )
+    return (
+        f"{opening} Did you mean --layer {layer_search_hint(layer.id)}? "
+        f"(layer {value} is stored as {layer.id!r})"
+    )
 
 
 RULE_REVIEW_REJECTED = "review status: already rejected"
@@ -278,10 +330,10 @@ def main() -> None:
         "--layer",
         metavar="ID",
         help=(
-            "Only exclusions whose stored layer id contains this text. Match on the "
-            "stored id, not the display number: the ids are what the table holds, and "
-            "a substring match on a bare digit like '1' would hit three of them. "
-            "In execution order — "
+            "Only exclusions whose stored layer id contains this text, as a "
+            "case-insensitive substring. It matches the stored id, never the display "
+            "number, so a bare number is refused rather than answered: '1' would hit "
+            "three unrelated ids and '3' none at all. In execution order — "
             + "; ".join(f"{layer.id} ({layer_display(layer.id)})" for layer in LAYERS)
         ),
     )
@@ -300,6 +352,13 @@ def main() -> None:
         help=f"SQLite job store (default: {default_jobs_db_path()})",
     )
     args = parser.parse_args()
+
+    # Before the store is opened: a query that cannot mean anything should cost
+    # nothing, and must not reach the point where it could print half a table.
+    if args.layer is not None:
+        problem = layer_query_error(args.layer)
+        if problem is not None:
+            raise SystemExit(problem)
 
     with JobStore(args.db) as store:
         run_id = store.latest_exclusion_run()

@@ -53,7 +53,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
-| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | not started | `wp8i-layer-guard` |
+| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3773,6 +3773,58 @@ Leave README.md alone — WP8b owns it and runs next.
 
 Branch wp8i-layer-guard. Commit, do not push. Update the plan file.
 ```
+
+### Result (2026-08-27)
+
+**Done as specified.** `--layer` now refuses an argument that is entirely ASCII
+digits before `JobStore` is opened, with the message on stderr and a non-zero
+exit. Nothing is printed — not an empty table, not a partial one. Every other
+argument reaches the store exactly as it did.
+
+`drops.layer_query_error(value)` is the whole rule: `None` if the argument is
+usable, otherwise the message. It is a pure function of a string, so the refusal
+is testable without a database, and `main` does nothing with it but raise.
+
+**The mapping is derived, not written twice.** `_BY_DISPLAY` inverts `LAYERS` the
+way `_BY_ID` indexes it, so `layer_ordinal` and this guard read the same table.
+The parametrised test walks `drops.LAYERS` rather than listing the five numbers,
+so a future renumbering cannot leave a stale suggestion behind.
+
+**The suggested argument is the stored id with its numeric prefix dropped** —
+`layer_search_hint('1-seniority')` is `seniority` — because that prefix records
+when the filter was *added* and is exactly the thing a display number gets
+confused with. The message names both, so it teaches the mapping rather than
+only refusing: "Did you mean --layer seniority? (layer 3 is stored as
+'1-seniority')". A test pins that each hint survives the digits rule itself and
+matches only its own id; a hint that matched two stored ids would trade one
+wrong answer for another.
+
+**A number outside 1-5 gets the range, not a lookup** ("There is no layer 9; the
+ladder is 1-5"), with the bounds read off the ends of `LAYERS`. `0` lands here
+too, which is right: it used to return Layer 1's rows because `0-rules` contains
+the character.
+
+**Matched with `re.fullmatch(r"[0-9]+", ...)`, not `str.isdigit()`**, which is
+`True` for `'³'` — `int` then raises on it, so the guard would have crashed on
+the one input it exists to handle politely.
+
+**Retired ids needed no special case, as predicted.** `1c` is not all digits, so
+it falls out of the rule; a test records a `1c-non-english` row and runs the CLI
+against it to prove the historical rows are still reachable. `1a`, `seniority`,
+`0-rules`, `refilter/`, `2-detail` and the empty string are all pinned untouched.
+
+**Help text** now states the rule ("It matches the stored id, never the display
+number, so a bare number is refused rather than answered") instead of only
+listing the mapping. `--rule` and `--source` are unchanged: they match other
+columns, where a bare digit is a legitimate search.
+
+Not touched, per scope: `README.md` (WP8b's, and it runs next). Note for WP8b:
+the `--layer` passage it writes must describe the refusal, not just the mapping.
+
+**Unrelated, noted not fixed:** `tests/test_scoring.py` fails to *collect* in
+this environment — `ModuleNotFoundError: No module named 'anthropic'` under the
+system Python. The rest of the suite (394 tests) passes, as does
+`.venv/bin/ruff check .`.
 
 ---
 

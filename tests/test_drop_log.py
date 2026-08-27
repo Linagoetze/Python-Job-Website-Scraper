@@ -567,3 +567,116 @@ def test_cli_without_a_run_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     with pytest.raises(SystemExit) as exc:
         drops_mod.main()
     assert "No exclusions recorded yet" in str(exc.value)
+
+
+# --- --layer refuses a display number (WP8i) ---------------------------------
+#
+# WP8h put display numbers on screen; the stored ids they map to are unchanged,
+# so those numbers are not searchable. Left unguarded, none of the six digits
+# gives a right answer: three match nothing and print "recorded no matching
+# exclusions" — indistinguishable from "that layer dropped nothing" — and three
+# match the wrong id and print a confident table under someone else's heading.
+
+
+def _cli(monkeypatch: pytest.MonkeyPatch, db: Path, *argv: str) -> None:
+    monkeypatch.setattr(sys, "argv", ["drops.py", "--db", str(db), *argv])
+    drops_mod.main()
+
+
+def _record_retired_row(db_path: Path) -> None:
+    """A `1c-non-english` row in the latest run: WP8 deleted the layer, not the
+    ~49,000 historical rows filed under it, and they stay searchable."""
+    with JobStore(db_path) as store:
+        run_id = store.latest_exclusion_run()
+        assert run_id is not None
+        store.record_exclusions(
+            run_id,
+            [
+                {
+                    "dedupe_key": f"{_LISTING}/danish",
+                    "title": "Dataanalytiker",
+                    "source_name": _SOURCE,
+                    "layer": "1c-non-english",
+                    "rule": "language: 'da'",
+                }
+            ],
+        )
+
+
+def test_a_bare_display_number_is_refused_before_the_store_is_opened(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The refusal costs no query, and prints no table — not even an empty one."""
+
+    def _never(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the store was opened for an argument that cannot match")
+
+    monkeypatch.setattr(drops_mod, "JobStore", _never)
+    with pytest.raises(SystemExit) as exc:
+        _cli(monkeypatch, env / "jobs.sqlite3", "--layer", "3")
+
+    assert exc.value.code  # a message, so non-zero
+    assert capsys.readouterr().out == ""
+
+
+def test_a_display_number_names_the_stored_id_to_use_instead(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Teaching the mapping, not just scolding: '3' is stored as '1-seniority'."""
+    with pytest.raises(SystemExit) as exc:
+        _cli(monkeypatch, env / "jobs.sqlite3", "--layer", "3")
+
+    message = str(exc.value)
+    assert "--layer 3 is a display number" in message
+    assert "--layer seniority" in message
+    assert "'1-seniority'" in message
+
+
+@pytest.mark.parametrize("layer", drops_mod.LAYERS, ids=lambda layer: layer.id)
+def test_every_rung_of_the_ladder_is_refused_by_its_number(layer: drops_mod.Layer) -> None:
+    """Derived from LAYERS, so a renumbering cannot leave a stale mapping here."""
+    message = drops_mod.layer_query_error(str(layer.display))
+    assert message is not None
+    assert repr(layer.id) in message
+
+
+def test_a_number_outside_the_ladder_gets_the_range_not_a_lookup() -> None:
+    message = drops_mod.layer_query_error("9")
+    assert message is not None
+    assert "no layer 9" in message
+    assert "the ladder is 1-5" in message
+    assert "stored as" not in message
+
+
+@pytest.mark.parametrize(
+    "argument", ["1a", "1c", "seniority", "0-rules", "refilter/", "2-detail", ""]
+)
+def test_an_argument_that_is_not_all_digits_is_untouched(argument: str) -> None:
+    """The whole point of restricting the rule to bare digits: this package adds
+    an error case and changes no input that already works."""
+    assert drops_mod.layer_query_error(argument) is None
+
+
+@pytest.mark.parametrize("argument", ["1a", "seniority", "1c"])
+def test_the_arguments_that_worked_before_still_return_rows(
+    env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argument: str,
+) -> None:
+    _run(env)
+    _record_retired_row(env / "jobs.sqlite3")
+    _cli(monkeypatch, env / "jobs.sqlite3", "--show-drops", "--layer", argument)
+
+    out = capsys.readouterr().out
+    assert "No exclusions match." not in out
+    assert "1 exclusions" in out
+
+
+@pytest.mark.parametrize("layer", drops_mod.LAYERS, ids=lambda layer: layer.id)
+def test_the_suggested_hint_is_itself_a_usable_argument(layer: drops_mod.Layer) -> None:
+    """The suggestion has to survive its own rule, and has to be unambiguous —
+    a hint that matched two stored ids would trade one wrong answer for another."""
+    hint = drops_mod.layer_search_hint(layer.id)
+    assert drops_mod.layer_query_error(hint) is None
+    assert [other.id for other in drops_mod.LAYERS if hint in other.id] == [layer.id]
