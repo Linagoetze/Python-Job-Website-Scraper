@@ -25,16 +25,18 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from job_scraper.config_loader import default_jobs_db_path
 from job_scraper.storage.db import JobStore, dedupe_key_for_job
 
-# Layer names, matching the ladder as README documents it. The labels are
-# historical — they record the order the filters were added, not the order they
-# run — so the numeric prefix is kept and the execution order is the order of
-# this list.
+# Stored ids for `run_exclusions.layer` — opaque, stable identifiers. They
+# record the order the filters were *added*, not the order they run (WP8
+# deleted 1c/1b, leaving gaps and a bare `1` running after `1a`), and
+# ~49,000 historical rows already use this vocabulary. Never rename or
+# renumber these; see LADDER below for the human-facing ordinal and name.
 LAYER_RULES = "0-rules"
 LAYER_TITLE_KEYWORD = "1a-title-keyword"
 LAYER_SENIORITY = "1-seniority"
@@ -46,6 +48,68 @@ LAYER_DETAIL = "2-detail"
 # belong in the log, but they are a different population from this run's
 # scrape, and mixing the two would make the funnel counts unreadable.
 REFILTER_PREFIX = "refilter/"
+
+
+@dataclass(frozen=True)
+class Layer:
+    """One rung of the ladder: a stable stored id, and how it is shown (WP8h).
+
+    `id` is the only thing ever written to `run_exclusions.layer` or compared
+    against in code — it must never change. `display` and `name` are
+    presentation only, free to renumber or reword without touching a stored
+    row.
+    """
+
+    id: str
+    display: int
+    name: str
+
+
+# The ladder in execution order — the single source of truth for both the
+# display ordinal and `eval.LADDER` (the subset it can replay). Order matches
+# `pipeline.run_pipeline`: rules, then the combined title scan (keyword before
+# seniority), then review status, then the detail-page checks. Named LAYERS,
+# not LADDER, so it reads unambiguously next to `eval.LADDER` — that name is
+# eval's own, for the smaller, replayable subset of this list.
+LAYERS: tuple[Layer, ...] = (
+    Layer(LAYER_RULES, 1, "Location and rules"),
+    Layer(LAYER_TITLE_KEYWORD, 2, "Title keywords"),
+    Layer(LAYER_SENIORITY, 3, "Seniority"),
+    Layer(LAYER_REVIEW_STATUS, 4, "Review status"),
+    Layer(LAYER_DETAIL, 5, "Detail page"),
+)
+
+_BY_ID: dict[str, Layer] = {layer.id: layer for layer in LAYERS}
+
+
+def layer_ordinal(stored_id: str) -> int:
+    """The display number (1-5) for *stored_id*.
+
+    Only ever called with a current, non-retired id — WP8h's two retired ids
+    (`1c-non-english`, `1b-language`) have no ordinal, so this raises rather
+    than inventing one. Use `layer_display` for text that must also handle a
+    retired or `refilter/`-prefixed id.
+    """
+    return _BY_ID[stored_id].display
+
+
+def layer_display(stored_id: str) -> str:
+    """Human label for *stored_id*: 'Layer N: Name'.
+
+    Handles both edge cases a raw stored id can carry: a `refilter/` prefix
+    (WP8a's re-filter pass over stored jobs, same layer, different population)
+    is kept visible rather than swallowed, and a stored id absent from
+    `LADDER` — one of WP8's retired layers, still present in ~49,000 historical
+    rows — renders as retired instead of raising, so old rows stay readable.
+    """
+    is_refilter = stored_id.startswith(REFILTER_PREFIX)
+    base_id = stored_id[len(REFILTER_PREFIX) :] if is_refilter else stored_id
+    layer = _BY_ID.get(base_id)
+    if layer is None:
+        return f"{stored_id} (retired)"
+    label = f"Layer {layer.display}: {layer.name}"
+    return f"{label} (re-filter)" if is_refilter else label
+
 
 RULE_REVIEW_REJECTED = "review status: already rejected"
 
@@ -117,10 +181,12 @@ def format_rule_counts(rows: list[dict[str, Any]], run_id: int) -> str:
     lines = [
         f"Exclusions in run {run_id}: {total:,} across {len(counts)} rules",
         "",
-        f"{'count':>7}  {'layer':<18}  rule",
-        f"{'-' * 7}  {'-' * 18}  {'-' * 44}",
+        f"{'count':>7}  {'layer':<30}  rule",
+        f"{'-' * 7}  {'-' * 30}  {'-' * 44}",
     ]
-    lines += [f"{n:>7,}  {_trim(layer, 18):<18}  {rule}" for layer, rule, n in counts]
+    lines += [
+        f"{n:>7,}  {_trim(layer_display(layer), 30):<30}  {rule}" for layer, rule, n in counts
+    ]
     return "\n".join(lines)
 
 
@@ -166,7 +232,16 @@ def main() -> None:
         dest="show_drops",
         help="List the individual excluded jobs instead of the per-rule counts",
     )
-    parser.add_argument("--layer", help="Only exclusions whose layer contains this text")
+    parser.add_argument(
+        "--layer",
+        help=(
+            "Only exclusions whose stored layer id contains this text (not the display "
+            "number — the id is what's actually stored, and a substring match against a "
+            "bare digit like '1' would hit three different layers). Current ids, oldest "
+            "naming first: "
+            + ", ".join(f"{layer.id} = {layer_display(layer.id)}" for layer in LAYERS)
+        ),
+    )
     parser.add_argument("--rule", help="Only exclusions whose rule contains this text")
     parser.add_argument("--source", help="Only exclusions from sources matching this text")
     parser.add_argument(

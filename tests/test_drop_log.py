@@ -373,6 +373,70 @@ def test_filters_narrow_both_the_listing_and_the_counts(env: Path) -> None:
     assert sum(n for _, _, n in rule_counts(located)) == len(located)
 
 
+# --- the display ordinal (WP8h) ----------------------------------------------
+
+
+def test_display_order_is_pinned() -> None:
+    """The ladder's execution order, 1-5, with no gap and no layer 0.
+
+    `LAYER_RULES`, historically prefixed '0', displays first — the numeric
+    prefix on the stored id is not the display ordinal, which is the whole
+    point of the renumbering. If a future package reorders the pipeline, this
+    is the test that must be updated deliberately.
+    """
+    assert [(layer.id, layer.display, layer.name) for layer in drops_mod.LAYERS] == [
+        (LAYER_RULES, 1, "Location and rules"),
+        (LAYER_TITLE_KEYWORD, 2, "Title keywords"),
+        (LAYER_SENIORITY, 3, "Seniority"),
+        (LAYER_REVIEW_STATUS, 4, "Review status"),
+        (LAYER_DETAIL, 5, "Detail page"),
+    ]
+    assert [layer.display for layer in drops_mod.LAYERS] == [1, 2, 3, 4, 5]
+
+
+def test_a_retired_stored_id_renders_without_raising() -> None:
+    """WP8 deleted 1c-non-english and 1b-language; ~49,000 old rows still name
+    them. `layer_display` must show that instead of raising KeyError."""
+    assert drops_mod.layer_display("1c-non-english") == "1c-non-english (retired)"
+    assert drops_mod.layer_display("1b-language") == "1b-language (retired)"
+
+
+def test_a_current_layer_renders_as_layer_n_name() -> None:
+    assert drops_mod.layer_display(LAYER_RULES) == "Layer 1: Location and rules"
+    assert drops_mod.layer_display(LAYER_DETAIL) == "Layer 5: Detail page"
+
+
+def test_a_refiltered_layer_renders_as_its_base_layer_marked_re_filter() -> None:
+    assert (
+        drops_mod.layer_display(f"{REFILTER_PREFIX}{LAYER_SENIORITY}")
+        == "Layer 3: Seniority (re-filter)"
+    )
+    # A retired layer behind the prefix still renders, not raises.
+    assert (
+        drops_mod.layer_display(f"{REFILTER_PREFIX}1c-non-english")
+        == f"{REFILTER_PREFIX}1c-non-english (retired)"
+    )
+
+
+def test_layer_ordinal_raises_for_a_retired_id() -> None:
+    """`layer_ordinal` is for current ids only; a retired one has no ordinal to
+    give, and inventing one would be worse than refusing."""
+    with pytest.raises(KeyError):
+        drops_mod.layer_ordinal("1c-non-english")
+
+
+def test_rule_counts_report_shows_the_display_label_not_the_stored_id(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run(env)
+    monkeypatch.setattr(sys, "argv", ["drops.py", "--db", str(env / "jobs.sqlite3")])
+    drops_mod.main()
+
+    out = capsys.readouterr().out
+    assert "Layer 1: Location and rules" in out
+    assert "0-rules" not in out
+
+
 def test_cli_shows_the_last_run(env: Path, monkeypatch: pytest.MonkeyPatch,
                                 capsys: pytest.CaptureFixture[str]) -> None:
     _run(env)

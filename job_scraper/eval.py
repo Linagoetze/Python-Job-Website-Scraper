@@ -53,6 +53,8 @@ from job_scraper.drops import (
     LAYER_RULES,
     LAYER_SENIORITY,
     LAYER_TITLE_KEYWORD,
+    LAYERS,
+    layer_display,
 )
 from job_scraper.experience_filter import apply_combined_title_filter
 from job_scraper.filtering import (
@@ -76,21 +78,6 @@ DEFAULT_BETA = 2.0
 LABEL_POSITIVE = "review"
 LABEL_NEGATIVE = "discard"
 
-# The replayable ladder, in the order `pipeline.run_pipeline` runs it. Layer
-# names come from `drops.py` so the report, the drop log and the pipeline can
-# never disagree about what a layer is called.
-#
-# This order is duplicated from the pipeline rather than extracted from it:
-# extracting the ladder is WP8's business, not this package's, and doing it
-# here would mean changing filtering behaviour in the session that is meant to
-# measure it. `tests/test_eval.py` pins the order so the duplication cannot
-# drift silently.
-LADDER: tuple[str, ...] = (
-    LAYER_RULES,
-    LAYER_TITLE_KEYWORD,
-    LAYER_SENIORITY,
-)
-
 # Layers the harness deliberately does not replay, and why. Both are reported
 # as unevaluated: a job this harness keeps may still be dropped by one of them
 # in a real run, so the numbers below are an upper bound on the ladder's recall
@@ -105,6 +92,23 @@ UNREPLAYABLE_LAYERS: tuple[tuple[str, str], ...] = (
         LAYER_DETAIL,
         "needs the detail page, and this harness makes no HTTP request",
     ),
+)
+
+_UNREPLAYABLE_IDS = {layer_id for layer_id, _ in UNREPLAYABLE_LAYERS}
+
+# The replayable ladder, in the order `pipeline.run_pipeline` runs it —
+# `drops.LAYERS` minus the two layers above, so execution order and the
+# display ordinal (WP8h) come from one table rather than two. Layer names
+# come from `drops.py` so the report, the drop log and the pipeline can never
+# disagree about what a layer is called.
+#
+# The order itself is still duplicated from the pipeline rather than extracted
+# from it: extracting the ladder is WP8's business, not this package's, and
+# doing it here would mean changing filtering behaviour in the session that is
+# meant to measure it. `tests/test_eval.py` pins the order so the duplication
+# cannot drift silently.
+LADDER: tuple[str, ...] = tuple(
+    layer.id for layer in LAYERS if layer.id not in _UNREPLAYABLE_IDS
 )
 
 # Fields the replay cannot see, because the labels file has titles and metadata
@@ -661,13 +665,13 @@ def format_confusion(matrix: Confusion, beta: float) -> str:
 
 def format_layers(result: EvalResult) -> str:
     lines = [
-        f"{'layer':<18}  {'reached':>7}  {'dropped':>7}  {'lost':>5}  {'drop prec':>9}"
+        f"{'layer':<28}  {'reached':>7}  {'dropped':>7}  {'lost':>5}  {'drop prec':>9}"
         f"  {'recall':>6}  {'F' + format(result.beta, 'g'):>6}",
-        f"{'-' * 18}  {'-' * 7}  {'-' * 7}  {'-' * 5}  {'-' * 9}  {'-' * 6}  {'-' * 6}",
+        f"{'-' * 28}  {'-' * 7}  {'-' * 7}  {'-' * 5}  {'-' * 9}  {'-' * 6}  {'-' * 6}",
     ]
     for report in result.layers:
         lines.append(
-            f"{report.layer:<18}  {report.reached:>7,}  {report.dropped:>7,}  "
+            f"{layer_display(report.layer):<28}  {report.reached:>7,}  {report.dropped:>7,}  "
             f"{report.dropped_wanted:>5,}  {_num(report.drop_precision):>9}  "
             f"{_num(report.cumulative.recall):>6}  {_num(report.cumulative.fbeta(result.beta)):>6}"
         )
@@ -680,7 +684,7 @@ def format_layers(result: EvalResult) -> str:
         "  state after that layer ran.",
     ]
     for layer, why in UNREPLAYABLE_LAYERS:
-        lines.append(f"  {layer} not replayed: {why}.")
+        lines.append(f"  {layer_display(layer)} not replayed: {why}.")
     return "\n".join(lines)
 
 
@@ -703,11 +707,12 @@ def format_costly_rules(result: EvalResult) -> str:
     costly.sort(key=lambda row: (-row[2], -row[3], row[1]))
     lines = [
         "Rules that cost wanted jobs",
-        f"{'lost':>5}  {'of drops':>8}  {'layer':<18}  rule",
-        f"{'-' * 5}  {'-' * 8}  {'-' * 18}  {'-' * 40}",
+        f"{'lost':>5}  {'of drops':>8}  {'layer':<28}  rule",
+        f"{'-' * 5}  {'-' * 8}  {'-' * 28}  {'-' * 40}",
     ]
     lines += [
-        f"{lost:>5,}  {total:>8,}  {layer:<18}  {rule}" for layer, rule, lost, total in costly
+        f"{lost:>5,}  {total:>8,}  {layer_display(layer):<28}  {rule}"
+        for layer, rule, lost, total in costly
     ]
     return "\n".join(lines)
 
@@ -730,7 +735,7 @@ def format_false_negatives(result: EvalResult) -> str:
         group = by_layer.get(layer)
         if not group:
             continue
-        lines += ["", f"  {layer}  ({len(group)})"]
+        lines += ["", f"  {layer_display(layer)}  ({len(group)})"]
         for index, verdict in enumerate(group, start=1):
             job = verdict.job
             where = " · ".join(x for x in (job.company, job.location) if x)
@@ -789,7 +794,7 @@ def format_report(
 
 
 def _verdict_text(verdict: Verdict) -> str:
-    return "kept" if verdict.kept else f"{verdict.layer} — {verdict.rule}"
+    return "kept" if verdict.kept else f"{layer_display(str(verdict.layer))} — {verdict.rule}"
 
 
 def format_comparison(comparison: Comparison) -> str:
@@ -797,7 +802,7 @@ def format_comparison(comparison: Comparison) -> str:
 
     Each change is printed over three lines rather than squeezed into columns:
     the rule that fired is the whole point of the diff, and a truncated rule
-    ("1a-title-keyword — ti…") answers nothing.
+    ("Layer 2: Title keywords — ti…") answers nothing.
     """
     before, after = comparison.before, comparison.after
     beta = before.beta

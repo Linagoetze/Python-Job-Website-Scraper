@@ -52,7 +52,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8f | Empty location passthrough | 1.5 hr | Sonnet 5 | none | done — recall 0.432 → 0.554, RULE_LOC_EMPTY deleted | `wp8f-empty-location-passthrough` |
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.824 (0.868 once the owner drops `"Architect"` from `rules.json`), precision up too | `wp8-trim-ladder` |
-| 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | not started | `wp8h-renumber-ladder` |
+| 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
 | 8b | README reconciliation | 1 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3450,6 +3450,85 @@ without raising.
 
 Branch wp8h-renumber-ladder. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+371 tests pass (up from 364), `ruff check .` clean. Touched: `job_scraper/drops.py`
+(the new table), `job_scraper/eval.py`, `job_scraper/run.py`, `tests/test_drop_log.py`,
+`tests/test_eval.py`. Nothing else referenced a layer id outside the two hard-coded
+test-file spots the scope section already named, and those weren't touched — they
+assert against stored ids in the database layer, not display text.
+
+**The one table.** `drops.py` gained a frozen `Layer(id, display, name)` dataclass
+and `LAYERS: tuple[Layer, ...]`, in execution order, still keyed by the unchanged
+stored ids:
+
+| stored id | display | name |
+|---|---|---|
+| `0-rules` | 1 | Location and rules |
+| `1a-title-keyword` | 2 | Title keywords |
+| `1-seniority` | 3 | Seniority |
+| `1d-review-status` | 4 | Review status |
+| `2-detail` | 5 | Detail page |
+
+Named `LAYERS`, not `LADDER` — `eval.py` already owns that name for its smaller,
+replayable subset, and giving the full table the same name one import away would
+have made "which LADDER" a question every reader had to answer. Two functions read
+it: `layer_ordinal(id)` (raises `KeyError` for a retired id — it has no ordinal to
+give, and the callers that use it, `run.py`'s summary, only ever pass a current id)
+and `layer_display(id)` (never raises: unknown ids render `"{id} (retired)"`, and a
+`refilter/`-prefixed id renders its base layer's label with `" (re-filter)"`
+appended). `eval.LADDER` is now `tuple(layer.id for layer in LAYERS if layer.id not
+in _UNREPLAYABLE_IDS)` — derived from `LAYERS`, not a second hand-kept copy, per the
+prompt's instruction and pinned by `test_ladder_is_drawn_from_the_display_table_not_a_second_copy`.
+
+**Every render site now goes through `layer_display`**, not just the one the prompt
+named. Once `eval.py`'s per-layer table used it, leaving `format_costly_rules`,
+`format_false_negatives`'s per-layer grouping, and `_verdict_text` (the
+before/after lines in a `--compare` diff) printing raw stored ids like
+`1a-title-keyword` alongside a per-layer table saying `Layer 2: Title keywords`
+would have been a worse inconsistency than the one being fixed. All four now agree.
+`drops.py`'s `format_rule_counts` does the same; `format_exclusions` never printed
+a layer column and needed no change.
+
+**`run.py`'s summary** didn't reference the stored ids at all before this — its
+funnel lines are free text ("off-criteria (location/keywords)", "title keyword",
+…) that happen to correspond to layers one-to-one (the three detail-page lines all
+share Layer 5). Since the prompt named it explicitly as a place a layer is shown,
+each of those seven lines now opens with its ordinal, read from `layer_ordinal`
+rather than hard-coded, so a future reorder updates this display too. Column
+widths were checked by hand against 5-digit counts (`tests/` has no golden test
+for `format_summary`'s exact text — none existed before this package either) to
+keep the funnel's right-aligned numbers from drifting for the longest lines.
+
+**Decision: `--layer` keeps matching stored ids only, not display numbers.**
+`--layer` is (and stays) a case-insensitive substring match against the column
+SQLite actually holds. Display numbers were considered and rejected: `1` is a
+substring of three different stored ids (`1a-title-keyword`, `1-seniority`,
+`1d-review-status`), so a bare digit would need a second matching mode layered on
+top of substring matching, and the two modes would silently disagree about what
+`--layer 1` means. Instead the `--layer` help text now lists all five `id = Layer
+N: Name` pairs inline, so `python -m job_scraper.drops --help` is where "which id
+is Layer 3?" gets answered, without teaching the flag two ways to match.
+
+**Tests.** `tests/test_drop_log.py` gained a "the display ordinal" section:
+the full `(id, display, name)` table pinned in order, a retired id rendering
+without raising (`1c-non-english`, `1b-language`), a current id, a
+`refilter/`-prefixed id (both current and retired underneath), `layer_ordinal`
+raising `KeyError` on a retired id, and the CLI's rule-count report showing
+`"Layer 1: Location and rules"` rather than `"0-rules"`. `tests/test_eval.py`
+gained the `LADDER`-is-derived test above and had its one text-format assertion
+(`test_report_names_every_false_negative`, previously checking for the literal
+strings `"1d-review-status"`/`"2-detail"`) updated to check for
+`layer_display(...)` output instead — a deliberate update to match the intended
+formatting change, not a weakened test.
+
+Not touched, per scope: `README.md` (WP8b's), `storage/db.py`'s comment
+mentioning the layer vocabulary (still accurate — the stored column is
+unchanged), and the two hard-coded stored-id literals in `tests/test_drop_log.py`
+outside the new section (`layer="2-detail"`, `"0-rules"` in a CSV/JSON fixture
+row and a `--layer` CLI arg) — both exercise the stored-id matching path
+directly and are correct left alone.
 
 ---
 
