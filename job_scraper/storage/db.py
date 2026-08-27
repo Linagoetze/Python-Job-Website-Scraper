@@ -126,8 +126,8 @@ CREATE TABLE IF NOT EXISTS source_health (
 -- jobs: the whole point is the jobs that were *not* stored, and the same job
 -- can legitimately be dropped twice in one run (once as scraped, once as a
 -- stored row the re-filter pass rejected). `rule` names the specific keyword,
--- term or language code that fired — the layer alone was what made a false
--- negative impossible to find in the first place.
+-- seniority term or location case that fired — the layer alone was what made
+-- a false negative impossible to find in the first place.
 --
 -- Pruned to the last N runs by `prune_exclusions`, so it cannot grow forever.
 CREATE TABLE IF NOT EXISTS run_exclusions (
@@ -593,7 +593,8 @@ class JobStore:
         `--rule hybrid` finds both hybrid cases without anyone having to type a
         rule string exactly. Note that each filter matches its own column only:
         the location cases live in `rule`, so `--layer locations` matches
-        nothing — `layer` holds ids like '0-rules'.
+        nothing — `layer` holds ids like '0-rules'. A bare display number
+        never reaches this query at all: the CLI refuses it (WP8i).
         """
         clauses = ["run_id = ?"]
         params: list[Any] = [run_id]

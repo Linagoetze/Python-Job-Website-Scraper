@@ -122,7 +122,7 @@ def _tile_field(row: Any, kinds: tuple[str, ...]) -> str | None:
 
     None and "" mean different things to the caller: None is "this layout does
     not label its fields, fall back to the heuristic", "" is "the field is here
-    and genuinely empty", which WP8f admits at Layer 0 rather than guessing.
+    and genuinely empty", which WP8f admits at Layer 1 rather than guessing.
     """
     for field in row.select(_TILE_FIELD_SELECTOR):
         classes = field.get("class") or ()
@@ -163,7 +163,7 @@ def _read_fields(container: Any, title: str) -> tuple[str, str]:
     ):
         field_location, field_department = reader()
         # One labelled field is enough to identify the layout. The other may be
-        # legitimately absent, and "" is an honest answer WP8f admits at Layer 0.
+        # legitimately absent, and "" is an honest answer WP8f admits at Layer 1.
         if field_location is not None or field_department is not None:
             return field_location or "", field_department or ""
 

@@ -1,6 +1,6 @@
 """LLM scoring of stored job descriptions against the owner's profile (WP7).
 
-Scores every unreviewed job whose Layer 2 description is stored, by sending the
+Scores every unreviewed job whose Layer 5 description is stored, by sending the
 description to the Anthropic API with the owner's rubric (`config/profile.md`)
 as the system prompt. Results land in the `score*` columns of the job store and
 drive the xlsx sort order.
@@ -214,7 +214,7 @@ def score_new_jobs(
     owner will never re-open. A candidate is skipped when its stored score was
     computed from the identical description text (never re-score), or when it
     has no description at all (nothing to judge — typically a pre-WP6 row or a
-    failed Layer 2 fetch).
+    failed Layer 5 fetch).
 
     *client* exists for the tests, which inject a fake; the real client is
     only constructed when there is work to do and ANTHROPIC_API_KEY is set.
