@@ -3171,6 +3171,18 @@ right; it would not be at beta=0.5.
   "Air & Sea Coordinator" arrives without a seniority word, it will fire, and
   this entry is where to look.
 
+**`trainee` (word), removed on the owner's instruction after the fact
+(2026-08-27).** Measured, it changes nothing: no gold-set title contains the
+word at all, so `--compare` reports an identical confusion matrix and "no job
+is treated differently". By this package's own standard that is churn, and it
+is recorded as such rather than dressed up as a gain. The owner's reason is
+out-of-sample and the harness cannot see it: `intern` was removed because it
+cost a wanted job (a UNDP HR internship), and `trainee` is the same
+graduate-entry family — a trainee programme is the kind of posting the gold set
+happens not to contain but the owner does want to see. `internship`,
+`Praktikant` and `Praktikum` are left in place; nothing has been measured about
+them either, and they were not asked for.
+
 **`architect` (word) is replaced, not removed.** Bare "architect" is a job
 family, not a level: 4 of the gold set's 16 architect titles are labelled
 review, and every architect title the owner rejected *on level* already says
