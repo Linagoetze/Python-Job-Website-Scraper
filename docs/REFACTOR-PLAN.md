@@ -3171,17 +3171,36 @@ right; it would not be at beta=0.5.
   "Air & Sea Coordinator" arrives without a seniority word, it will fire, and
   this entry is where to look.
 
-**`trainee` (word), removed on the owner's instruction after the fact
-(2026-08-27).** Measured, it changes nothing: no gold-set title contains the
-word at all, so `--compare` reports an identical confusion matrix and "no job
-is treated differently". By this package's own standard that is churn, and it
-is recorded as such rather than dressed up as a gain. The owner's reason is
-out-of-sample and the harness cannot see it: `intern` was removed because it
-cost a wanted job (a UNDP HR internship), and `trainee` is the same
-graduate-entry family — a trainee programme is the kind of posting the gold set
-happens not to contain but the owner does want to see. `internship`,
-`Praktikant` and `Praktikum` are left in place; nothing has been measured about
-them either, and they were not asked for.
+**The graduate-entry family, removed on the owner's instruction after the
+measured prune (2026-08-27).** Four more entries went, on the owner's judgement
+rather than on harness evidence — `trainee`, `internship`, `Praktikant`,
+`Praktikum`. The list is 106 → 102. What each one actually cost:
+
+| keyword | +wanted | +unwanted | ΔF2 | measured? |
+|---|---|---|---|---|
+| `trainee` (word) | 0 | 0 | 0.000 | no gold-set title contains it |
+| `Praktikant` (word) | 0 | 0 | 0.000 | no gold-set title contains it |
+| `Praktikum` (word) | 0 | 0 | 0.000 | no gold-set title contains it |
+| `internship` (word) | 0 | **+1** | **−0.001** | yes — a small regression |
+
+Three of the four are invisible to the harness. The fourth is not: removing
+`internship` admits *"Supply Chain Internship Roster 2026 … Copenhagen"*, a
+posting **the owner labelled discard**. Precision 0.343 → 0.341, F2 0.664 →
+0.663, recall unchanged. That is a real if tiny cost, recorded rather than
+rounded away.
+
+The reasoning is out-of-sample and the gold set cannot see it: `intern` was
+removed on evidence (it cost a wanted UNDP HR internship), and these four are
+the same graduate-entry family. The owner has said they may revisit this.
+**To reverse it, restore these four lines to
+`config/title_exclude_keywords.csv`** — `trainee,word`, `internship,word`,
+`Praktikant,word`, `Praktikum,word` — and re-run `python -m job_scraper.eval`;
+the expected numbers are precision 0.343, recall 0.868, F2 0.664. Note the file
+is CRLF-terminated.
+
+`Ausbildung` (prefix), `Aushilfe` (prefix), `Student` (prefix) and
+`Werkstudent` (prefix) remain: same broad family, not asked for, and equally
+unmeasured on this set.
 
 **`architect` (word) is replaced, not removed.** Bare "architect" is a job
 family, not a level: 4 of the gold set's 16 architect titles are labelled
