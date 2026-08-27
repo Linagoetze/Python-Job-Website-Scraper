@@ -338,6 +338,27 @@ Record any decision a future session would otherwise have to re-derive.
   at all**; 20 of 21 `\bLead\b` titles are discard and removing it returns 13
   unwanted jobs for zero wanted. Left alone. Do not re-propose it without new
   labelled evidence.
+- **Do not reorder the filter ladder for speed. Measured and rejected
+  (2026-08-27).** The idea is plausible and will be proposed again, so here are
+  the numbers. The whole text ladder costs **79 ms for 8,000 postings**; real
+  runs (10, 11, 12) take **211-238 seconds**. Filtering is ~0.035% of a run —
+  everything else is HTTP. The intuitive reorder, cheap regex before expensive
+  location parsing, is **slower**: 83.8 ms against 79.2 ms, because Layer 0
+  discards 2,057 of the 8,000 up front and the title scan then only sees 5,943.
+  More important than the timing: **order cannot change the outcome.** These
+  layers are conjunctive predicates, so the kept set is an intersection and is
+  order-independent — verified, identical survivors either way. What reordering
+  *does* change is **attribution**, the one thing WP8 spent a package learning
+  to read correctly. It would move the per-layer table and the drop log without
+  changing a single verdict, and make future rows non-comparable with the
+  ~49,000 already stored. Two orderings that matter are already right: Layer 2
+  (detail) is last because it is the only one costing an HTTP request, and
+  Layer 1d runs before it so already-rejected jobs never trigger a fetch
+  (pinned by `test_logging_costs_no_extra_http_request`). Note also that 1a and
+  1 are deliberately fused into one title scan in `apply_combined_title_filter`;
+  separating them to reorder would give that up. **The real performance
+  conversation is WP9** — browser reuse and HTTP caching attack the four
+  minutes, not the 79 milliseconds.
 - **`rules.json` stayed untouched, so WP8 lands in two stages (2026-08-27).**
   The seniority list lives in the gitignored `rules.json`, which CLAUDE.md puts
   on the never-touch list. WP8 therefore committed the keyword CSV and
