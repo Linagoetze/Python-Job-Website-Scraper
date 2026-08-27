@@ -53,7 +53,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8g | ISS location extraction | 2 hr | Sonnet 5 | `think` | done — fetcher bypass fixed in both extractors, `iss.html` + `niras.html` captured, ISS locations and NIRAS titles fixed, DSV department fixed; eval unchanged by design until the labels refresh | `wp8g-iss-location` |
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
-| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | not started | `wp8i-layer-guard` |
+| 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
@@ -3773,6 +3773,98 @@ Leave README.md alone — WP8b owns it and runs next.
 
 Branch wp8i-layer-guard. Commit, do not push. Update the plan file.
 ```
+
+### Result (2026-08-27)
+
+**Done as specified.** `--layer` now refuses an argument that is entirely ASCII
+digits before `JobStore` is opened, with the message on stderr and a non-zero
+exit. Nothing is printed — not an empty table, not a partial one. Every other
+argument reaches the store exactly as it did.
+
+`drops.layer_query_error(value)` is the whole rule: `None` if the argument is
+usable, otherwise the message. It is a pure function of a string, so the refusal
+is testable without a database, and `main` does nothing with it but raise.
+
+**The mapping is derived, not written twice.** `_BY_DISPLAY` inverts `LAYERS` the
+way `_BY_ID` indexes it, so `layer_ordinal` and this guard read the same table.
+The parametrised test walks `drops.LAYERS` rather than listing the five numbers,
+so a future renumbering cannot leave a stale suggestion behind.
+
+**The suggested argument is the stored id with its numeric prefix dropped** —
+`layer_search_hint('1-seniority')` is `seniority` — because that prefix records
+when the filter was *added* and is exactly the thing a display number gets
+confused with. The message names both, so it teaches the mapping rather than
+only refusing: "Did you mean --layer seniority? (layer 3 is stored as
+'1-seniority')". A test pins that each hint survives the digits rule itself and
+matches only its own id; a hint that matched two stored ids would trade one
+wrong answer for another.
+
+**A number outside 1-5 gets the range, not a lookup** ("There is no layer 9; the
+ladder is 1-5"), with the bounds read off the ends of `LAYERS`. `0` lands here
+too, which is right: it used to return Layer 1's rows because `0-rules` contains
+the character.
+
+**Matched with `re.fullmatch(r"[0-9]+", ...)`, not `str.isdigit()`**, which is
+`True` for `'³'` — `int` then raises on it, so the guard would have crashed on
+the one input it exists to handle politely.
+
+**Retired ids needed no special case, as predicted.** `1c` is not all digits, so
+it falls out of the rule; a test records a `1c-non-english` row and runs the CLI
+against it to prove the historical rows are still reachable. `1a`, `seniority`,
+`0-rules`, `refilter/`, `2-detail` and the empty string are all pinned untouched.
+
+**Help text** now states the rule ("It matches the stored id, never the display
+number, so a bare number is refused rather than answered") instead of only
+listing the mapping. `--rule` and `--source` are unchanged: they match other
+columns, where a bare digit is a legitimate search.
+
+Not touched, per scope: `README.md` (WP8b's, and it runs next). Note for WP8b:
+the `--layer` passage it writes must describe the refusal, not just the mapping.
+
+### Review follow-up (2026-08-27)
+
+Three findings from a review session, all fixed in a second commit.
+
+**A stray space defeated the guard.** `--layer " 3"` is not entirely digits, so
+it fell through to the store and printed "recorded no matching exclusions" with
+exit 0 — the exact misleading outcome this package exists to remove, reachable
+by a typo. `layer_query_error` now strips the argument *before* the digits test.
+
+Only the test is stripped; the query still runs on the argument as typed. That
+line is deliberate: trimming the query value too would change what a non-digit
+argument matches (` seniority` would start finding rows), and the package's
+whole scope is "add an error case, change no working input". So a padded
+non-digit is still searched for verbatim and still finds nothing — pinned by
+`test_only_the_digits_test_is_stripped_not_the_query`, so the asymmetry is a
+recorded decision rather than an oversight for a later session to trip over.
+
+**`--layer 03` echoed the padding back**: "layer 03 is stored as '1-seniority'".
+The opening still quotes the argument as typed, since that is what the typist
+has to recognise, but every claim about the ladder after it now uses the parsed
+number. `--layer 007` likewise says "there is no layer 7".
+
+**A test docstring overstated a count**, saying the retired `1c-non-english`
+layer holds "~49,000 historical rows". 212 is that layer's own count; ~49,000 is
+the whole `run_exclusions` table across every id, current ones included (see the
+WP8h measurement above: 48,921 across 6 runs, of which 212 are `1c-non-english`
+and 114 `1b-language`). Comment only, no behaviour.
+
+**Noted, not fixed — pre-existing, and WP8b's to judge.** `layer_display`'s
+docstring in `drops.py` has the same conflation, describing a retired id as
+"still present in ~49,000 historical rows". WP8h wrote it and it is outside this
+package; the true figure for the two retired ids together is 327.
+
+**Verification.** `.venv/bin/pytest`: 414 passed. `.venv/bin/ruff check .`:
+clean. `python -m job_scraper.run --help` works.
+
+**Method note, since it cost a wrong answer.** Run the tools from `.venv/bin`,
+not via `python -m` — a bare `python` here is conda base, which lacks
+`anthropic` and `ruff`. `python -m pytest` therefore fails to *collect*
+`tests/test_scoring.py` with `ModuleNotFoundError: No module named 'anthropic'`,
+which looks like a repo problem and is not one. This session reported that as a
+pre-existing environment gap after already having worked around the identical
+failure for `ruff` one command earlier — the same fact twice, read as two
+different things. The owner caught it.
 
 ---
 
