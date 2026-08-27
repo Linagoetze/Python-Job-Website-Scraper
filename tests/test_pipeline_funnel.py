@@ -55,7 +55,6 @@ _EXTRACTED = [
     _job("Data Analyst", location="Lisbon", slug="wrong-city"),          # rules
     _job("Marketing Analyst", location="Berlin", slug="keyword"),        # title keyword
     _job("Head of Data", location="Berlin", slug="seniority"),           # seniority title
-    _job("Analyst (Dutch speaking)", location="Berlin", slug="lang"),    # language
     _job("Data Analyst", location="Berlin", slug="blocked"),             # review status
     _job("Reporting Analyst", location="Berlin", slug="senior-detail"),  # Layer 2: years
     _job("Research Analyst", location="Berlin", slug="phd"),             # Layer 2: PhD
@@ -155,13 +154,11 @@ def test_funnel_counts_are_internally_consistent(env: Path) -> None:
     assert s.jobs_extracted == len(_EXTRACTED)
     assert 0 <= s.jobs_kept <= s.jobs_extracted
 
-    # The title/language/blocklist chain, exactly as format_summary computes it.
+    # The title/blocklist chain, exactly as format_summary computes it.
     after_blocklist = (
         s.jobs_kept
         - s.jobs_keyword_excluded
         - s.jobs_title_excluded
-        - s.jobs_non_english_excluded
-        - s.jobs_language_excluded
         - s.jobs_blocklist_excluded
     )
     assert after_blocklist >= 0
@@ -191,10 +188,9 @@ def test_each_stage_excluded_the_job_intended_for_it(env: Path) -> None:
     above would still hold trivially with every count at zero."""
     s = _run(env)
 
-    assert s.jobs_kept == 7, "the Lisbon job is the only one Layer 0 should drop"
+    assert s.jobs_kept == 6, "the Lisbon job is the only one Layer 0 should drop"
     assert s.jobs_keyword_excluded == 1
     assert s.jobs_title_excluded == 1
-    assert s.jobs_language_excluded == 1
     assert s.jobs_blocklist_excluded == 1, "the stored 'rejected' job is excluded"
     assert s.jobs_new_checked == 3
     assert s.jobs_detail_excluded == 2
@@ -241,8 +237,6 @@ def test_second_run_stores_nothing_new(env: Path) -> None:
         second.jobs_kept
         - second.jobs_keyword_excluded
         - second.jobs_title_excluded
-        - second.jobs_non_english_excluded
-        - second.jobs_language_excluded
         - second.jobs_blocklist_excluded
     )
     assert after_blocklist == (

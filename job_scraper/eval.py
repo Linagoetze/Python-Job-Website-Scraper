@@ -49,8 +49,6 @@ from job_scraper.config_loader import (
 )
 from job_scraper.drops import (
     LAYER_DETAIL,
-    LAYER_LANGUAGE,
-    LAYER_NON_ENGLISH,
     LAYER_REVIEW_STATUS,
     LAYER_RULES,
     LAYER_SENIORITY,
@@ -61,8 +59,6 @@ from job_scraper.filtering import (
     _HYBRID_PENDING_REASON,
     _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
-    apply_language_filter,
-    apply_non_english_text_filter,
     build_hybrid_pattern,
     build_non_place_pattern,
     load_title_exclude_keywords,
@@ -93,8 +89,6 @@ LADDER: tuple[str, ...] = (
     LAYER_RULES,
     LAYER_TITLE_KEYWORD,
     LAYER_SENIORITY,
-    LAYER_NON_ENGLISH,
-    LAYER_LANGUAGE,
 )
 
 # Layers the harness deliberately does not replay, and why. Both are reported
@@ -331,22 +325,6 @@ class Verdict:
         return self.wanted and not self.kept
 
 
-def _seed_langdetect() -> None:
-    """Make the non-English layer reproducible for the duration of the replay.
-
-    langdetect seeds itself randomly, so the same title can be scored two ways
-    in two runs. That is a real property of the live ladder (and one of WP8's
-    arguments for deleting the layer), but an eval whose numbers move on their
-    own cannot pin a regression. Seeding here affects this process only; the
-    pipeline is untouched and stays as non-deterministic as it always was.
-    """
-    try:
-        from langdetect import DetectorFactory  # type: ignore[import]
-    except ImportError:
-        return
-    DetectorFactory.seed = 0
-
-
 def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
     """Run the replayable ladder over *jobs* and record where each one fell.
 
@@ -354,7 +332,6 @@ def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
     that reimplements the rules measures the harness. The layers run in
     `LADDER` order, which is `run_pipeline`'s order.
     """
-    _seed_langdetect()
     by_key = {job.dedupe_key: job for job in jobs}
     verdicts: list[Verdict] = []
 
@@ -385,13 +362,6 @@ def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
     )
     dropped(keyword_excluded, LAYER_TITLE_KEYWORD)
     dropped(seniority_excluded, LAYER_SENIORITY)
-
-    # Layer 1c — non-English text, then 1b — language-speaker titles.
-    kept, non_english_excluded = apply_non_english_text_filter(kept)
-    dropped(non_english_excluded, LAYER_NON_ENGLISH)
-
-    kept, language_excluded = apply_language_filter(kept)
-    dropped(language_excluded, LAYER_LANGUAGE)
 
     for record in kept:
         reasons = record.get("matched_reasons") or []

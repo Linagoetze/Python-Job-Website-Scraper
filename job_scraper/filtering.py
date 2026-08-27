@@ -3,22 +3,18 @@
 from __future__ import annotations
 
 import csv
-import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from job_scraper import JobRecord
 
-logger = logging.getLogger(__name__)
-
-
 # ---------------------------------------------------------------------------
 # Drop attribution (WP8a)
 # ---------------------------------------------------------------------------
 #
 # Every filter that excludes a job names the specific thing that fired — the
-# keyword, the seniority term, the detected language code — not just its layer.
+# keyword, the seniority term, the location case — not just its layer.
 # A layer name alone answers "how many did I lose?"; only the rule answers "why,
 # and would loosening this one bring back something I wanted?".
 #
@@ -143,79 +139,6 @@ def apply_title_keyword_filter(
         title = str(job.get("title") or "")
         if pattern.search(title):
             excluded.append(_with_rule(job, title_keyword_rule(title, matchers)))
-        else:
-            kept.append(job)
-    return kept, excluded
-
-
-# ---------------------------------------------------------------------------
-# Language filter
-# ---------------------------------------------------------------------------
-
-# Allowlist: only English, German, and the "germ" abbreviation are permitted.
-# Every other WORD[-/ ]speaker or WORD[-/ ]speaking pattern is blocked. The
-# language word is captured so an exclusion can name it.
-_LANGUAGE_PATTERN: re.Pattern[str] = re.compile(
-    r"\b(?!(?:english|german|germ)\b)(\w+)[\s-]+(?:speaker|speaking)\b",
-    re.IGNORECASE,
-)
-
-
-def apply_language_filter(
-    jobs: list[JobRecord],
-) -> tuple[list[JobRecord], list[JobRecord]]:
-    """Split jobs into (kept, excluded) based on language-speaker patterns in the title.
-
-    Excludes any title containing 'WORD speaker/speaking' unless WORD is
-    'English', 'German', or 'Germ'.  Uses an allowlist so unlisted languages
-    (e.g. 'Tagalog speaking') are also blocked automatically.
-    Excluded jobs carry the language word that fired under DROP_RULE_KEY.
-    Returns (kept_jobs, excluded_jobs).
-    """
-    kept: list[JobRecord] = []
-    excluded: list[JobRecord] = []
-    for job in jobs:
-        title = str(job.get("title") or "")
-        match = _LANGUAGE_PATTERN.search(title)
-        if match:
-            excluded.append(_with_rule(job, f"language_speaker: {match.group(1).lower()!r}"))
-        else:
-            kept.append(job)
-    return kept, excluded
-
-
-def apply_non_english_text_filter(
-    jobs: list[JobRecord],
-) -> tuple[list[JobRecord], list[JobRecord]]:
-    """Exclude jobs whose title or description is detected as any non-English language.
-
-    Uses langdetect; keeps the job if detection fails or text is too short (<= 10 chars).
-    Excluded jobs carry the detected language code under DROP_RULE_KEY — the
-    code is the whole diagnosis here, since langdetect on a short snippet is
-    the least trustworthy layer in the ladder.
-    """
-    try:
-        from langdetect import LangDetectException, detect  # type: ignore[import]
-    except ImportError:
-        logger.warning(
-            "langdetect is not installed; non-English text filter is disabled and "
-            "all jobs will pass through. Install it (pip install langdetect) to "
-            "filter out foreign-language listings."
-        )
-        return jobs, []
-
-    kept: list[JobRecord] = []
-    excluded: list[JobRecord] = []
-    for job in jobs:
-        title = str(job.get("title") or "")
-        snippet = str(job.get("raw_snippet") or "")
-        text = (title + " " + snippet).strip()
-        try:
-            lang = detect(text) if len(text) > 50 else "en"
-        except LangDetectException:
-            lang = "en"
-        if lang != "en":
-            excluded.append(_with_rule(job, f"non_english: langdetect {lang!r}"))
         else:
             kept.append(job)
     return kept, excluded

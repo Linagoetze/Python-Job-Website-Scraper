@@ -53,9 +53,7 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         return line
 
     after_keyword = summary.jobs_kept - summary.jobs_keyword_excluded
-    after_title = after_keyword - summary.jobs_title_excluded
-    after_non_english = after_title - summary.jobs_non_english_excluded
-    passed_titles = after_non_english - summary.jobs_language_excluded
+    passed_titles = after_keyword - summary.jobs_title_excluded
     after_blocklist = passed_titles - summary.jobs_blocklist_excluded
     rules_excluded = summary.jobs_extracted - summary.jobs_kept
 
@@ -69,9 +67,7 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         cut("off-criteria (location/keywords)", rules_excluded,
             (summary.jobs_kept, "match your criteria")),
         cut("title keyword", summary.jobs_keyword_excluded),
-        cut("senior-level title", summary.jobs_title_excluded),
-        cut("non-English text", summary.jobs_non_english_excluded),
-        cut("language-speaker", summary.jobs_language_excluded,
+        cut("senior-level title", summary.jobs_title_excluded,
             (passed_titles, "passed title filters")),
         cut("blocklisted (rejected)", summary.jobs_blocklist_excluded,
             (after_blocklist, "after blocklist")),

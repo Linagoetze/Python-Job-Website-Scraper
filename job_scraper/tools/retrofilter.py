@@ -32,10 +32,8 @@ def main() -> None:
     print(f"Marked {counts['title_keywords']} rows rejected by title keywords")
     print(
         f"Marked {counts['rules']} rows rejected by rules, "
-        f"{counts['title']} by seniority, "
-        f"{counts['language']} by language speaker pattern"
+        f"{counts['title']} by seniority"
     )
-    print(f"Marked {counts['non_english_text']} rows rejected for non-English title/description")
     print(f"Total rows marked rejected (kept in the database): {sum(counts.values())}")
 
     write_xlsx(db_path, xlsx_path)

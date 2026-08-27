@@ -31,8 +31,6 @@ from pathlib import Path
 import pytest
 
 from job_scraper.drops import (
-    LAYER_LANGUAGE,
-    LAYER_NON_ENGLISH,
     LAYER_RULES,
     LAYER_SENIORITY,
     LAYER_TITLE_KEYWORD,
@@ -178,17 +176,15 @@ def test_ladder_order_matches_the_pipeline() -> None:
     """Pins the order `eval.replay` runs the layers in.
 
     `run_pipeline` runs rules, then the combined title scan (keyword before
-    seniority), then the non-English filter, then the language filter. The
-    harness duplicates that order; if the pipeline's order changes, this is
-    the test that must be updated deliberately rather than the harness
-    silently measuring a ladder nobody runs.
+    seniority). WP8 deleted the non-English and language-speaker layers that
+    used to follow. The harness duplicates that order; if the pipeline's order
+    changes, this is the test that must be updated deliberately rather than the
+    harness silently measuring a ladder nobody runs.
     """
     assert LADDER == (
         LAYER_RULES,
         LAYER_TITLE_KEYWORD,
         LAYER_SENIORITY,
-        LAYER_NON_ENGLISH,
-        LAYER_LANGUAGE,
     )
 
 
@@ -204,7 +200,6 @@ def test_the_rule_recorded_is_the_filter_s_own_rule_string(gold, config) -> None
     assert by_title["Programme Officer"].rule == RULE_LOC_UNLISTED_CITY
     assert by_title["Graphic Designer"].rule == "title_keyword: 'design' (prefix)"
     assert by_title["Head of Operations"].rule == "seniority: 'Head of' (word)"
-    assert by_title["Danish speaking Customer Agent"].rule == "language_speaker: 'danish'"
 
 
 def test_a_conditional_city_is_kept_but_flagged_for_layer_two(gold, config) -> None:
@@ -235,7 +230,13 @@ def test_an_unresolvable_location_is_kept_but_flagged_for_layer_two(gold, config
 
 
 def test_replay_is_deterministic(gold, config) -> None:
-    """langdetect seeds itself randomly; the harness seeds it so pins can hold."""
+    """Two replays of one config must agree.
+
+    This used to need langdetect seeding: the non-English layer scored the same
+    title two ways in two runs. WP8 deleted that layer, so the ladder is now
+    deterministic by construction — and this test is what would notice if a
+    later layer reintroduced a coin flip.
+    """
     first = [(v.job.dedupe_key, v.layer, v.rule) for v in replay(gold, config)]
     second = [(v.job.dedupe_key, v.layer, v.rule) for v in replay(gold, config)]
     assert first == second
@@ -271,10 +272,10 @@ def test_regression_pins_current_ladder(gold, config) -> None:
         result.confusion.false_positives,
         result.confusion.false_negatives,
         result.confusion.true_negatives,
-    ) == (4, 2, 3, 5)
-    assert result.confusion.precision == pytest.approx(0.6666666666666666)
+    ) == (4, 4, 3, 3)
+    assert result.confusion.precision == pytest.approx(0.5)
     assert result.confusion.recall == pytest.approx(0.5714285714285714)
-    assert result.confusion.fbeta(2.0) == pytest.approx(0.588235294117647)
+    assert result.confusion.fbeta(2.0) == pytest.approx(0.5555555555555556)
     # One of those four true positives is provisional, not won: 'Field Officer'
     # is deferred to Layer 2, which this harness cannot replay and which fails
     # closed. See test_an_unresolvable_location_is_kept_but_flagged_for_layer_two.
@@ -284,12 +285,14 @@ def test_regression_pins_current_ladder(gold, config) -> None:
     # WP8f: 'Office Coordinator' (an empty location field, label 'discard') no
     # longer drops at the rules layer — it is admitted outright, one fewer
     # rules-layer drop and one more job reaching every layer after it.
+    # WP8 deleted layers 1c and 1b. The two fixture rows they used to catch —
+    # 'Danish speaking Customer Agent' and the Swedish-language title — are
+    # kept on purpose: both are labelled discard, so they are now false
+    # positives, and that is exactly the price the deletion was measured at.
     assert [(r.layer, r.reached, r.dropped, r.dropped_wanted) for r in result.layers] == [
         (LAYER_RULES, 14, 2, 1),
         (LAYER_TITLE_KEYWORD, 12, 2, 1),
         (LAYER_SENIORITY, 10, 2, 1),
-        (LAYER_NON_ENGLISH, 8, 1, 0),
-        (LAYER_LANGUAGE, 7, 1, 0),
     ]
 
     assert [(v.job.title, v.layer, v.rule) for v in result.false_negatives] == [
@@ -448,7 +451,8 @@ def test_costly_rules_names_the_rule_to_loosen_first(gold, config) -> None:
         "seniority: 'Head of' (word)",
     ):
         assert rule in text
-    # …and a rule that only ever dropped unwanted jobs is not.
-    assert "language_speaker: 'danish'" not in text.split("Rules that cost wanted jobs")[1].split(
+    # …and a rule that only ever dropped unwanted jobs is not. The seniority
+    # layer drops 'Senior Data Engineer' (discard) without costing anything.
+    assert "seniority: 'Senior' (word)" not in text.split("Rules that cost wanted jobs")[1].split(
         "False negatives"
     )[0]
