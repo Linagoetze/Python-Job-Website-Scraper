@@ -3886,6 +3886,14 @@ and precedes this one — it makes `--layer` refuse a bare display number, which
 changes what the README must say about that flag, so **do not start WP8b until
 WP8i has landed** or you will write the `--layer` passage twice.
 
+**WP8i has landed (2026-08-27, PR #29), and this prompt was audited against the
+code immediately after.** Five corrections went in: the sweep's totals (they
+were undercounted before WP8i, not by it), a third already-correct hit that a
+mechanical pass would break, one passage the sweep's grep cannot reach, the
+README's layer-reference count, and a note that the `--layer` example and the
+error message to quote are the same decision. The line numbers in this prompt
+are dated, not stable — locate by content.
+
 The filter ladder now *displays* as Layer 1-5 in execution order while the
 stored ids in `run_exclusions.layer` keep their historical names. Every user-facing surface was
 converted — the run summary, the drop-log report, the eval report, the `--verbose`
@@ -3984,8 +3992,8 @@ table is the single source of truth; read it first. The mapping is:
 Two retired ids, `1c-non-english` and `1b-language`, exist only in history and
 render as "(retired)". Do not resurrect them in prose.
 
-1. The README's layer table and every layer reference in it (there are about
-   fifteen; `grep -nE 'Layer|layer' README.md` finds them). Renumber to 1-5,
+1. The README's layer table and every layer reference in it (17 as of
+   2026-08-27; `grep -nE 'Layer|layer' README.md` finds them). Renumber to 1-5,
    delete the paragraph apologising that the labels are historical — it no
    longer applies to what a reader sees — and regenerate the sample run-summary
    block, which WP8h reformatted: each dropped-jobs line now carries its ordinal
@@ -3999,18 +4007,20 @@ render as "(retired)". Do not resurrect them in prose.
      stored id (`--layer seniority` reads best) and state the rule in one line:
      `--layer` matches stored ids, never display numbers, and a bare number is
      refused with a message naming the id to use. Run WP8i's error path and
-     quote the real message rather than paraphrasing it.
+     quote the real message rather than paraphrasing it — note that the message
+     itself suggests `--layer seniority`, so quoting it and choosing the
+     replacement example are one decision, not two.
    - `--rule locations` is correct and `--layer locations` is not. WP8h fixed
      three places that advertised the latter; check the README does not too.
 
-3. The comments and docstrings still using the old numbering — 56 lines across
-   eight files, of which 2 are already correct (see the warning below), so
-   about 54 to change. Find them with:
+3. The comments and docstrings still using the old numbering — 57 lines across
+   eight files, of which 3 are already correct (see the warning below), so
+   54 to change. Find them with:
 
        grep -rnE 'Layer (0|1a|1b|1c|1d|1|2)\b' job_scraper/
 
    filtering.py 21, experience_filter.py 11, pipeline.py 11, eval.py 6,
-   scoring.py 2, drops.py 2, extractors/successfactors_html.py 2,
+   scoring.py 2, drops.py 3, extractors/successfactors_html.py 2,
    config/rules.example.json 1 — all relative to job_scraper/, the grep root above.
 
    **`job_scraper/config/rules.example.json` is the one to do first and most
@@ -4028,14 +4038,33 @@ render as "(retired)". Do not resurrect them in prose.
    converted every rendered string; if this grep hits something inside a
    `logger.*` call or a report line, stop and check why before touching it.
 
-   **The grep also matches two already-correct new usages** —
-   `drops.py:195` ("Layer 1: Location and rules (re-filter)", explaining the
-   report's column width) and `eval.py:806` ("Layer 2: Title keywords — ti…",
-   a truncation example). Both are new-scheme labels and must be left exactly
-   as they are. Read every hit rather than sed-ing the tree; this is precisely
-   the kind of rename where a blind pass is worse than no pass.
+   **The grep also matches three already-correct new usages.** Find them by
+   content, not by the line numbers below — WP8i shifted `drops.py` by ~66
+   lines and the next package will shift it again:
 
-4. CLAUDE.md:32 — "experience_filter.py Layer 1 (title) and Layer 2 (detail
+   - `drops.py`, `format_rule_counts` ("Layer 1: Location and rules
+     (re-filter)", explaining the report's column width — was :195 when this
+     was written, :286 after WP8i).
+   - `drops.py`, `layer_sort_key`'s docstring ("printed the ladder as Layer 1,
+     3, 2, 4, 5"). **This is the dangerous one.** It describes the *old* sort
+     bug using *new* display numbers, so it reads like stale text and is not:
+     renumbering it destroys the sentence. WP8h's count missed it, which is
+     why the totals above changed without any package editing the line.
+   - `eval.py:806` ("Layer 2: Title keywords — ti…", a truncation example).
+
+   All three are new-scheme labels and must be left exactly as they are. Read
+   every hit rather than sed-ing the tree; this is precisely the kind of
+   rename where a blind pass is worse than no pass.
+
+4. One passage the grep cannot find, because it never writes "Layer N":
+   `JobStore.exclusions`' docstring in `job_scraper/storage/db.py` (:595 as of
+   2026-08-27) ends "the location cases live in `rule`, so `--layer locations`
+   matches nothing — `layer` holds ids like '0-rules'". Still true, but half
+   the story since WP8i: a bare digit no longer matches nothing, it is refused
+   before the query runs. Add that clause; do not restate the whole rule, which
+   belongs in the CLI's help text.
+
+5. CLAUDE.md:32 — "experience_filter.py Layer 1 (title) and Layer 2 (detail
    page)" is now Layer 3 and Layer 5. CLAUDE.md:51's "There are already five"
    is still true and reads better than ever; leave it.
 
