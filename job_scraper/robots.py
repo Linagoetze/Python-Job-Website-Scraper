@@ -44,6 +44,22 @@ class RobotsDisallowed(RuntimeError):
     """A site's robots.txt forbids the URL we were about to fetch."""
 
 
+def as_origin(value: str) -> str:
+    """A config-supplied host as an origin: `api.example.com` → `https://api.example.com`.
+
+    The override in `sources.yaml` is written by hand, so it accepts what a
+    person would type. A value that already carries a scheme is kept as it is,
+    because http and https are different origins to `host_of` and a site that
+    is exempted on one is not automatically exempted on the other.
+    """
+    value = value.strip()
+    if not value:
+        return ""
+    if "://" not in value:
+        value = f"https://{value}"
+    return host_of(value)
+
+
 def host_of(url: str) -> str:
     """The scheme+netloc a robots.txt applies to ('' for anything unparseable)."""
     parts = urlsplit(url)
@@ -82,10 +98,6 @@ class RobotsPolicy:
         self._guard = threading.Lock()
 
     # -- public ---------------------------------------------------------------
-
-    def exempt(self, url: str) -> bool:
-        """True if this URL's host is one the owner told us not to check."""
-        return host_of(url) in self._overrides
 
     def allows(self, url: str) -> bool:
         """May we fetch *url*? True when exempted, unparseable, or robots.txt is silent."""

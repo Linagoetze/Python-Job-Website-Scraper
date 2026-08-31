@@ -16,12 +16,18 @@
 #             a per-job company in the extracted data — the extractor's value
 #             always wins over this one.
 #   ignore_robots
-#             `true` skips the robots.txt check for this source's host. Every
-#             run reads each host's robots.txt once and skips a source the site
-#             forbids; set this only where that answer is wrong for us — a
-#             blanket `Disallow: /` aimed at search-engine indexing on a page
-#             the employer publishes and links to, say. It exempts the whole
-#             host, so it is a decision about a site, not about one page.
+#             skips the robots.txt check. Every run reads each host's robots.txt
+#             once and skips a source the site forbids; set this only where that
+#             answer is wrong for us — a blanket `Disallow: /` aimed at
+#             search-engine indexing on a page the employer publishes and links
+#             to, say. `true` exempts this source's own host:
+#                 ignore_robots: true
+#             Some extractors read the listing from one host and the postings
+#             from another (SmartRecruiters reads api.smartrecruiters.com), and
+#             `true` would not cover the second. Name the hosts instead:
+#                 ignore_robots: [careers.smartrecruiters.com, api.smartrecruiters.com]
+#             Either way it exempts whole hosts, so it is a decision about a
+#             site, not about one page.
 #
 # The nine entries below are chosen to exercise a different extractor each, so
 # you can see one working example per supported ATS. Add your own employers by

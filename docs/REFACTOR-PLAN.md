@@ -4724,10 +4724,46 @@ rather than the funnel's `−`. A source that shrank is not a filter that fired,
 and `tests/test_source_health.py` asserts the warning lines carry no `L`
 ordinal and no drop marker.
 
+### Follow-up after the owner's first dry run (2026-08-31)
+
+That run turned up three things, one of which was a defect in this package.
+
+**`ignore_robots: true` could not express the case that actually occurred.**
+The OECD source's listing lives on `careers.smartrecruiters.com` and its
+postings on `api.smartrecruiters.com`, whose robots.txt carries the blanket
+`Disallow` an API host usually does. The override exempted only the host in
+`sources.yaml`, so the flag the refusal message told the owner to set would not
+have worked — and the message did not name the host that needed exempting. Both
+fixed: `ignore_robots` now takes `true` *or* a list of hosts
+(`_robots_overrides` in `pipeline.py`), and `RobotsDisallowed` names the host.
+Five tests added. `RobotsPolicy.exempt()` was dead on arrival and is deleted.
+
+**UNDP disallows its job board to everyone**
+(`jobs.undp.org/robots.txt` vs `cj_view_jobs.cfm`). That is not a rule aimed at
+the wrong crawler, it is the site saying no; the source stays skipped. Recorded
+here so nobody re-adds it as a bug later.
+
+**J-PAL's 44 → 9 was real, and is not this package's doing.** Diagnosed offline
+from the WP9 response cache rather than by re-scraping: page 0 returned 9 jobs
+and pager links through `?page=4`, while `?page=1` returned 200 with a 93 KB
+body containing no job nodes and no pager at all, so the extractor stopped after
+two pages. The site's paged responses changed; nothing in WP10 alters what a
+server returns except the User-Agent. **Worth its own package** —
+`extractors/jpal.py` trusts `_last_page` and a page that silently yields nothing.
+
+**Found while investigating, not fixed here (WP9's, not WP10's):** every test
+that calls `run_pipeline` opens `http_cache()` with no path, which resolves to
+the *real* `data/http_cache.sqlite3`. So the suite reads, writes and prunes the
+owner's live response cache — it emptied a 37 MB cache during this session (a
+cache is regenerable, so nothing was lost but a re-download), and a populated
+cache makes the suite four times slower (8 s → 35 s). `run_pipeline` should take
+a cache path the way it takes `out_db_path`, and the tests should point it at
+`tmp_path`.
+
 ### Numbers
 
-- 491 tests pass (443 before), suite still ~8 s. `ruff check .` passes.
-- New: `tests/test_politeness.py` (20), `tests/test_source_health.py` (10),
+- 496 tests pass (443 before), suite ~8 s. `ruff check .` passes.
+- New: `tests/test_politeness.py` (25), `tests/test_source_health.py` (10),
   `tests/test_dry_run.py` (6), `tests/test_tool_front_doors.py` (12).
 - The six existing `run_pipeline` call sites in tests now pass
   `check_robots=False`. Their fetchers are stubs and their hosts do not exist,

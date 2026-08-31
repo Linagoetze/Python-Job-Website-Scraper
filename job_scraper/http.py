@@ -414,9 +414,17 @@ def _check_robots(url: str) -> None:
     if policy is None:
         return
     if not policy.allows(url):
+        # The host is named because it is not always the source's own: an
+        # extractor may read its listing from one host and its postings from
+        # another, and `ignore_robots: true` exempts only the host in
+        # sources.yaml. Telling the owner to set the flag without saying which
+        # host to name is advice that does not work.
+        from job_scraper.robots import host_of
+
         raise RobotsDisallowed(
-            f"robots.txt forbids {url} for this user agent. If the rule is not "
-            "meant for us, set `ignore_robots: true` on that source in sources.yaml."
+            f"robots.txt forbids {url} for this user agent. If that rule is not "
+            f"meant for us, exempt {host_of(url)} by naming it in the source's "
+            "`ignore_robots` list in sources.yaml."
         )
 
 

@@ -656,9 +656,12 @@ site:
 - Check the site's terms of service. `robots.txt` is checked for you: each run
   reads it once per host and skips a source the site disallows, saying so. Where
   that answer is wrong for us — a blanket rule aimed at search engines, on a
-  careers page the employer publishes and links to — set `ignore_robots: true`
-  on that source in `sources.yaml`. It exempts the whole host, so it is a
-  judgement about a site, not about one page.
+  careers page the employer publishes and links to — set `ignore_robots` on that
+  source in `sources.yaml`: `true` for the source's own host, or a list of hosts
+  where the extractor reads from more than one (SmartRecruiters fetches its
+  postings from `api.smartrecruiters.com`, not from the careers host in your
+  config). Either way it exempts whole hosts, so it is a judgement about a site,
+  not about one page. The refusal message names the host you need to list.
 - Requests are capped at **two at a time per host, a second apart**
   (`DEFAULT_PER_HOST_REQUESTS` and `DEFAULT_HOST_DELAY` in
   `job_scraper/http.py`), and a site that states its own longer `Crawl-delay`

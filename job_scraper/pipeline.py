@@ -54,7 +54,7 @@ from job_scraper.http import (
     render_pool,
     user_agent_from_rules,
 )
-from job_scraper.robots import host_of
+from job_scraper.robots import as_origin, host_of
 from job_scraper.storage.db import (
     DEFAULT_HEALTH_DROP,
     JobStore,
@@ -182,6 +182,43 @@ def refilter_stored_jobs(
     return counts, drops
 
 
+def _robots_overrides(sources: list[dict[str, Any]]) -> set[str]:
+    """Hosts exempted from the robots.txt check by `ignore_robots` in sources.yaml.
+
+    `true` exempts the source's own host. That is not always the host the work
+    happens on: the SmartRecruiters extractor reads a listing page on
+    `careers.smartrecruiters.com` and then its postings from
+    `api.smartrecruiters.com`, and an API host commonly carries a blanket
+    `Disallow: /` meant for search-engine crawlers. So the key also accepts the
+    hosts to exempt, written the way a person would type them:
+
+        ignore_robots: true
+        ignore_robots: [careers.smartrecruiters.com, api.smartrecruiters.com]
+
+    Exemptions are collected across all sources and applied by host, because
+    that is the only thing a fetch deep inside an extractor can be matched on —
+    a request does not know which source asked for it.
+    """
+    overrides: set[str] = set()
+    for src in sources:
+        value = src.get("ignore_robots")
+        if value is True:
+            if host := host_of(str(src.get("url") or "")):
+                overrides.add(host)
+        elif isinstance(value, str):
+            if host := as_origin(value):
+                overrides.add(host)
+        elif isinstance(value, list):
+            overrides |= {host for item in value if (host := as_origin(str(item)))}
+        elif value:
+            logger.warning(
+                "Source %r: ignore_robots should be true or a list of hosts, not %r; ignoring it",
+                src.get("name"),
+                value,
+            )
+    return overrides
+
+
 def run_pipeline(
     *,
     sources_path: Path,
@@ -209,15 +246,11 @@ def run_pipeline(
     The third is WP10's `polite_fetching`, which gives the run a User-Agent that
     names the owner, holds every host to `per_host_requests` at a time spaced
     `host_delay` apart, and refuses anything the host's robots.txt forbids.
-    Sources marked `ignore_robots: true` in sources.yaml are exempted from that
-    last check, host by host.
+    Sources marked `ignore_robots` in sources.yaml are exempted from that last
+    check, host by host — see `_robots_overrides`.
     """
     rules = load_rules(rules_path)
-    robots_overrides = {
-        host
-        for src in load_sources(sources_path)
-        if src.get("ignore_robots") and (host := host_of(str(src.get("url") or "")))
-    }
+    robots_overrides = _robots_overrides(load_sources(sources_path))
     with ExitStack() as stack:
         stack.enter_context(
             polite_fetching(

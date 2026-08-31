@@ -328,3 +328,63 @@ def test_ignore_robots_lets_a_source_through(
     )
     assert (summary.sources_processed, summary.sources_skipped) == (1, 0)
     assert extracted == [f"{server.origin}/private/jobs"]
+
+
+# -- exempting a host the source does not itself name ------------------------
+
+
+def test_ignore_robots_true_exempts_the_source_own_host() -> None:
+    from job_scraper.pipeline import _robots_overrides
+
+    assert _robots_overrides(
+        [{"name": "a", "url": "https://careers.example.com/jobs", "ignore_robots": True}]
+    ) == {"https://careers.example.com"}
+
+
+def test_ignore_robots_can_name_the_api_host_an_extractor_reaches_for() -> None:
+    """The OECD case: the listing is on one host, the postings on another.
+
+    `ignore_robots: true` exempts only the host in sources.yaml, so a source
+    whose extractor fetches elsewhere could not be exempted at all until the key
+    accepted a list.
+    """
+    from job_scraper.pipeline import _robots_overrides
+
+    assert _robots_overrides(
+        [
+            {
+                "name": "oecd",
+                "url": "https://careers.smartrecruiters.com/OECD/oecd---en",
+                "ignore_robots": ["careers.smartrecruiters.com", "api.smartrecruiters.com"],
+            }
+        ]
+    ) == {"https://careers.smartrecruiters.com", "https://api.smartrecruiters.com"}
+
+
+def test_a_source_without_the_key_exempts_nothing() -> None:
+    from job_scraper.pipeline import _robots_overrides
+
+    assert _robots_overrides([{"name": "a", "url": "https://a.example/jobs"}]) == set()
+
+
+def test_an_unusable_ignore_robots_value_is_refused_loudly(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Silently exempting nothing would read as "the override does not work"."""
+    from job_scraper.pipeline import _robots_overrides
+
+    with caplog.at_level("WARNING"):
+        overrides = _robots_overrides(
+            [{"name": "a", "url": "https://a.example", "ignore_robots": 7}]
+        )
+    assert overrides == set()
+    assert "should be true or a list of hosts" in caplog.text
+
+
+def test_the_refusal_names_the_host_that_has_to_be_exempted(server: _Server) -> None:
+    """The message is the fix: naming the source is not enough when the host differs."""
+    with http_mod.polite_fetching(user_agent="job-scraper/0.1 (test)", delay=0):
+        with pytest.raises(RobotsDisallowed) as raised:
+            http_mod.fetch_text(f"{server.origin}/private/job/1")
+    assert host_of(server.origin) in str(raised.value)
+    assert "ignore_robots" in str(raised.value)
