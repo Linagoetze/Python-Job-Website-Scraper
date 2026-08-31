@@ -58,6 +58,11 @@ _MAX_DESCRIPTION_CHARS = 20_000
 # render pool and blocks: rendered fetches are capped by _RENDER_WORKERS there,
 # not by this number, because a Chromium cannot be driven from a thread other
 # than the one that launched it.
+# Threads reading detail pages. This is a cap on *us*, not on any one site:
+# since WP10 a host allows only http.DEFAULT_PER_HOST_REQUESTS of these through
+# at a time, spaced by http.DEFAULT_HOST_DELAY, so ten workers means ten
+# different employers making progress at once rather than ten requests landing
+# on one. Threads that queue behind a busy host cost nothing but a wait.
 _DETAIL_WORKERS = 10
 
 

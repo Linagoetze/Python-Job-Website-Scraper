@@ -1,6 +1,10 @@
 {
   "_comment": "Example rules. Copy to rules.json and edit: cp job_scraper/config/rules.example.json job_scraper/config/rules.json — see the README for what every key does.",
 
+  "_contact_comment": "Who is fetching, advertised in the User-Agent on every request. Fill both in: a career site owner who wonders what is reading their pages should be able to find out in one click or one email. They live here rather than in the code because rules.json is gitignored, so your address stays out of the public repo. Left empty, every run warns and identifies itself as 'job-scraper/0.1 (no contact configured)'.",
+  "contact_url": "",
+  "contact_email": "",
+
   "scoring_enabled": false,
 
   "include_keywords": [],
