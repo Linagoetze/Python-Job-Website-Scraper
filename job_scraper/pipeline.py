@@ -39,7 +39,7 @@ from job_scraper.filtering import (
     load_title_exclude_keywords,
     matches_rules,
 )
-from job_scraper.http import fetch_rendered, fetch_text
+from job_scraper.http import fetch_rendered, fetch_text, render_pool
 from job_scraper.storage.db import JobStore, dedupe_key_for_job, job_to_row, utc_now_iso
 
 logger = logging.getLogger(__name__)
@@ -162,6 +162,34 @@ def run_pipeline(
     allow_empty_delist: bool = False,
     delist_after: int = DEFAULT_DELIST_AFTER,
     keep_drop_runs: int = DEFAULT_KEEP_DROP_RUNS,
+) -> RunSummary:
+    """Run one full scrape, holding the run's render pool open for its whole length.
+
+    The pool is scoped to exactly this call: rendered pages cost a browser
+    context rather than a browser process, and the browsers are closed on the
+    way out.
+    """
+    with render_pool():
+        return _run_pipeline(
+            sources_path=sources_path,
+            rules_path=rules_path,
+            out_db_path=out_db_path,
+            title_keywords_path=title_keywords_path,
+            allow_empty_delist=allow_empty_delist,
+            delist_after=delist_after,
+            keep_drop_runs=keep_drop_runs,
+        )
+
+
+def _run_pipeline(
+    *,
+    sources_path: Path,
+    rules_path: Path,
+    out_db_path: Path,
+    title_keywords_path: Path | None,
+    allow_empty_delist: bool,
+    delist_after: int,
+    keep_drop_runs: int,
 ) -> RunSummary:
     run_started_at = utc_now_iso()
     sources = load_sources(sources_path)

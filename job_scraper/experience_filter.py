@@ -52,6 +52,12 @@ _MAX_DESCRIPTION_CHARS = 20_000
 # Parallel detail-page fetches. Every one is a request to somebody else's career
 # site, so lower this if you are scraping a lot of sources or a host starts
 # rate-limiting you.
+#
+# This caps *static* fetches only. A detail page belonging to a dynamic source
+# is rendered, and since WP9 a worker that needs one hands it to http.py's
+# render pool and blocks: rendered fetches are capped by _RENDER_WORKERS there,
+# not by this number, because a Chromium cannot be driven from a thread other
+# than the one that launched it.
 _DETAIL_WORKERS = 10
 
 
