@@ -403,6 +403,19 @@ Record any decision a future session would otherwise have to re-derive.
   with priority 1, and it is the argument to re-check if anyone lengthens the
   TTL or starts caching rendered pages.
 
+- **The 30-minute cache TTL is a considered number, not a default** (WP9, put to
+  the owner and confirmed). Inside the window a run can serve a listing entirely
+  from disk, so `source_health` records a successful scrape of a site that might
+  be down — a bounded, milder cousin of the `stale_if_error` property below, and
+  the one place the cache reports health it did not verify. Kept, on a timing
+  argument: the only runs that hit the cache are ones fired within half an hour
+  of the last, which is the rule-tweaking loop where the owner is at the keyboard
+  and knows what just happened. A scheduled run finds the TTL long expired and
+  revalidates against the site, so the unattended case — the one where a false
+  health record would actually mislead — never reads from the cache at all.
+  `--no-cache` covers the exception (re-running to see whether a site recovered).
+  If anyone lengthens the TTL, that argument is what they are spending.
+
 - **`stale_if_error` is off, and stays off** (WP9, the owner's call). Serving the
   previous copy when a site errors keeps a run going, but it reports a successful
   scrape of an old page into `source_health` — priority 2 wants the broken site
@@ -4460,6 +4473,14 @@ future session cannot delete the retry believing the cache covers it.
 
 **Do not re-propose it.** It looks like free resilience and it is not; it buys
 uptime with the honesty of `source_health`.
+
+**Where the cache does report something it did not check.** Inside the TTL a
+listing comes off disk without the site being touched, so that source goes into
+`source_health` as a successful scrape whether or not it is actually up. This is
+the same shape as `stale_if_error` above, bounded to half an hour and to a copy
+that was fresh when it was taken. Put to the owner explicitly and kept — see the
+decisions log for the timing argument, which is that the runs which hit the cache
+are the attended ones.
 
 **A cache hit cannot lose a job.** It returns the *previous* listing, so stored
 jobs stay sighted and accrue no delisting misses; the worst it can do is delay
