@@ -164,6 +164,28 @@ def test_the_tls_adapter_survives_the_cached_session(tmp_path):
         assert isinstance(session.get_adapter("https://example.org"), http_mod._TLSAdapter)
 
 
+def test_a_zero_ttl_revalidates_every_page_rather_than_caching_none(server, tmp_path, caplog):
+    """`--cache-ttl 0` is not `--no-cache`: nothing is ever *fresh*, but pages are
+    still stored and still revalidated, so a 304 saves the download.
+
+    It is also the setting that catches the classification the hard way. A 304
+    refreshes the entry and then re-applies the zero TTL, so a healthy
+    revalidation comes back flagged expired. Counted on `is_expired` alone, every
+    page here is reported as the site having failed.
+    """
+    with caplog.at_level(logging.WARNING), http_mod.http_cache(
+        path=tmp_path / "c.sqlite3", ttl=0
+    ) as stats:
+        for _ in range(3):
+            assert http_mod.fetch_text(server.url) == server.body
+
+    assert len(server.requests) == 3, "every run goes to the site"
+    assert [r[1] for r in server.requests] == [None, server.etag, server.etag]
+    assert (stats.misses, stats.revalidated) == (1, 2)
+    assert stats.stale == 0, "the site never failed"
+    assert "stale cached copy" not in caplog.text
+
+
 def test_the_cache_file_keeps_the_name_it_was_given(server, tmp_path):
     """requests-cache rewrites an extension-less name to `.sqlite`.
 

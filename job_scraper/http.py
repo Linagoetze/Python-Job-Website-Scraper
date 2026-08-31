@@ -179,18 +179,25 @@ def _record_cache_outcome(url: str, response: requests.Response) -> None:
     expired = bool(getattr(response, "is_expired", False))
     revalidated = bool(getattr(response, "revalidated", False))
 
+    # `revalidated` is tested before `is_expired`, and the order is load-bearing.
+    # A 304 refreshes the entry and *then* re-applies the TTL, so at a very short
+    # one (--cache-ttl 0 above all) a perfectly healthy revalidation comes back
+    # already expired again. Read the other way round, every such page is
+    # announced as "the site failed this run", which is both wrong and the loud
+    # kind of wrong. Only a copy served without any successful revalidation
+    # behind it is stale.
     with _STATS_LOCK:
         if not from_cache:
             _CACHE_STATS.misses += 1
+        elif revalidated:
+            _CACHE_STATS.revalidated += 1
         elif expired:
             # stale_if_error fired: the site failed and a previous copy stood in.
             _CACHE_STATS.stale += 1
-        elif revalidated:
-            _CACHE_STATS.revalidated += 1
         else:
             _CACHE_STATS.hits += 1
 
-    if from_cache and expired:
+    if from_cache and expired and not revalidated:
         logger.warning(
             "Serving a stale cached copy of %s: the site failed this run. "
             "The rows extracted from it are as old as that copy.",

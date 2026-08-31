@@ -102,7 +102,10 @@ Add `-v` for per-source debug logging, including how many jobs each filter layer
 dropped.
 
 The nine example sources take well under a minute. A larger config spends most of
-its time in the Playwright-rendered sources and the layer 5 detail fetches.
+its time in the Playwright-rendered sources and the layer 5 detail fetches. A
+second run inside the cache TTL is much faster, because the plain-HTTP pages come
+off disk rather than the network — on a 50-source config, 365s cold against 132s
+warm. Rendered pages are never cached, so they cost the same every time.
 
 ### Options
 
@@ -116,6 +119,8 @@ its time in the Playwright-rendered sources and the layer 5 detail fetches.
 | `--delist-after` | `2` |
 | `--allow-empty-delist` | off |
 | `--keep-drop-runs` | `10` |
+| `--no-cache` | off |
+| `--cache-ttl` | `1800` (30 minutes) |
 | `--score` | off |
 | `--show-all` | off |
 | `-v`, `--verbose` | off |
@@ -124,7 +129,7 @@ Every default resolves relative to the package, not your shell's working
 directory, so the command works from anywhere. `--help` prints the resolved
 absolute paths.
 
-The four that are not paths:
+The six that are not paths:
 
 - `--delist-after` — how many consecutive successful runs a stored posting must
   go unseen before it is marked delisted. See below.
@@ -132,6 +137,16 @@ The four that are not paths:
   broken selector by default, so its stored postings are left alone. This flag
   delists them instead. Off for a reason: a bad selector would otherwise erase
   real history.
+- `--no-cache` — refetch every page instead of reading any of it from the
+  response cache. Listing pages are cached for half an hour by default, so two
+  runs in quick succession mostly read from disk; pass this when a run has to
+  see the sites as they are this second.
+- `--cache-ttl` — how many seconds a cached page counts as fresh. After that the
+  page is not thrown away: the next run asks the site "has this changed since?"
+  and only downloads it again if the answer is yes. `--cache-ttl 0` is not the
+  same as `--no-cache` — it means nothing is ever fresh, so every page is
+  checked with the site on every run, but an unchanged one still costs a reply
+  rather than a download. Use `--no-cache` to switch the cache off.
 - `--score` — force the optional LLM scoring stage on for this run, overriding
   `scoring_enabled` in `rules.json`. It scores stored descriptions against your
   own rubric in `job_scraper/config/profile.md` (copy `profile.example.md`),
@@ -567,7 +582,8 @@ def extract(
 Return one dict per posting with these keys: `source_name`, `title`, `location`,
 `department`, `listing_url`, `detail_url`, `apply_url`, `raw_snippet`. Use the
 `fetch_text` you were handed rather than calling `requests` yourself — it is what
-routes `dynamic` sources through Playwright.
+routes `dynamic` sources through Playwright, and what puts plain-HTTP fetches
+through the response cache.
 
 `greenhouse.py` is the shortest example at 46 lines (it hits the public Greenhouse
 API instead of parsing HTML). `teamtailor.py` is a representative HTML-parsing
