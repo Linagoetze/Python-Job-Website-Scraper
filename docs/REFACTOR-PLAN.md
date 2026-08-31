@@ -55,7 +55,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
-| 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
+| 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 434 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
@@ -377,6 +377,31 @@ Record any decision a future session would otherwise have to re-derive.
   entry describing something the owner must do by hand is stale the moment they
   do it, and nothing updates it automatically.** Read the file — `rules.json` is
   never-touch for *writes*, and always readable for a check like this.
+
+- **Playwright's sync API cannot share a browser between threads, at all**
+  (WP9, verified rather than inferred). Every object is bound to the greenlet of
+  the thread that made it, so touching a `Browser` from another thread raises
+  "Cannot switch to a different thread" immediately. A context per worker thread
+  therefore means a *browser* per worker thread. That is why rendered fetches
+  left the Layer 5 detail pool for `http.RenderPool`'s own four threads, each
+  owning one browser for the whole run: it is the only shape that bounds the
+  browser count without serialising rendering. `chromium.launch_server()` — the
+  one way to get a single Chromium behind several connections — does not exist
+  on the sync API. Do not re-derive this by trying the shared-browser version.
+
+- **The response cache ignores `no-store` deliberately** (WP9). Six of fourteen
+  sampled listing pages send `no-cache, no-store`; honouring it would re-download
+  them every run, i.e. *more* load on other people's servers, which is backwards
+  for priority 3. `cache_control=False` plus a 30-minute TTL, and conditional
+  requests still go out with a stored ETag or Last-Modified. If a future session
+  wonders why the polite-looking flag is off, this is why — it is the less polite
+  setting here, not the more.
+
+- **A stale cached listing cannot cost a stored job.** It returns the previous
+  page, so stored jobs stay sighted and accrue no delisting misses. The worst
+  case is a new posting found up to one TTL late. This is what makes caching
+  compatible with priority 1, and it is the argument to re-check if anyone
+  lengthens the TTL or starts caching rendered pages.
 
 ---
 
@@ -4267,6 +4292,189 @@ Measure before and after. Report wall-clock time for a full run in the plan file
 
 Branch wp9-fetch-performance. Commit, do not push. Update the plan file.
 ```
+
+### Result
+
+**Wall-clock, full 50-source run, measured on this Mac against a copy of the live
+store** (never the live one — `--output-db` and `--output-xlsx` pointed at a
+scratch copy, which is how WP8b's incident is not repeated):
+
+| Run | What changed | Wall clock | vs before |
+|---|---|---|---|
+| before | `main` at `c9785f7` | **365.1 s** | — |
+| after, cold cache | render pool only, cache 100% miss | **294.8 s** | −19% |
+| after, warm cache | render pool + 390/395 pages cached | **131.6 s** | −64% |
+
+The cold run is the honest measure of part 1 on its own: its cache logged
+`0 hit, 0 revalidated, 395 fetched`, so every one of those 70 seconds came from
+reusing browsers. The warm run is what a re-run inside the TTL now costs — the
+case the owner actually hits when adding a source and running again.
+
+`user` time fell 35.9 s → 25.5 s → 16.3 s, so this is not just less waiting; it
+is less work.
+
+**The funnel is unchanged.** The warm run's summary is identical to the cold
+run's, line for line, down to `Exclusions logged 7,909` — a cached page extracts
+to exactly what the live page extracted. Against the *baseline* the numbers move
+by five jobs in 7,996 (7,996 → 7,991 seen, 449 → 448 still listed), which is
+twenty minutes of real postings being taken down between two runs, not a
+behaviour change: the same 50 sources processed, the same 0 skipped, and a
+byte-identical set of warnings all three times.
+
+---
+
+#### Part 1 — one browser per render thread, not one per page
+
+**The prompt's first option cannot be built.** "Give each worker thread its own
+context" of a shared browser is not available in the sync API. Measured, not
+assumed:
+
+```
+cross-thread use of Browser -> Error: Cannot switch to a different thread
+    Current:  <greenlet.greenlet object at 0x102864bc0 ...>
+    Expected: <greenlet.greenlet object at ...>
+```
+
+Every Playwright object is bound to the greenlet of the thread that created it,
+so a `Browser` touched from another thread raises before it does anything. One
+browser shared by ten detail workers is therefore not a thing that exists, and
+"a context per worker thread" necessarily implies *a browser per worker thread*.
+`chromium.launch_server()`, which would have given one real Chromium process
+behind several connections, is async-API only (`hasattr` is `False` on the sync
+one); `chromium.connect()` exists, so driving a separately-spawned
+`playwright launch-server` would work, and was rejected as a subprocess and a
+websocket of new failure modes for a saving already had more cheaply.
+
+**So: the second option — rendered fetches move off the detail thread pool.**
+`http.RenderPool` owns four dedicated render threads. Callers (the source loop on
+the main thread, the Layer 5 detail workers on theirs) put a URL on a queue and
+block on a `Future`; a render thread that owns its browser from first use until
+`close()` does the work. `render_pool()` is a context manager the pipeline opens
+around the whole run.
+
+Measured on the warm run: **4 browser launches for 15 rendered pages**, against
+15 launches for 15 pages before. Threads start lazily, so a run with no dynamic
+source still launches nothing.
+
+**Per-call cost removed** (`about:blank`, so this is overhead only, no page):
+
+| | before | after |
+|---|---|---|
+| driver start + `chromium.launch()` | 0.17 s **per page** | once per render thread |
+| `new_context()` + `new_page()` + goto | 0.03 s | 0.03 s |
+
+**The ceiling on concurrent rendered fetches drops from 10 to 4, deliberately.**
+`_DETAIL_WORKERS = 10` used to mean ten simultaneous Chromiums during a detail
+pass; four reused ones is a better trade — roughly 150 MB of resident memory
+each — and ten concurrent *launches* contend for CPU in a way one launch does
+not. It is also the direction WP10 is already going (per-host cap of 2).
+`_DETAIL_WORKERS` still governs static fetches; a comment at its definition now
+says so, because the two numbers now mean different things.
+
+**Details that matter for priority 1 and 2:**
+
+- A render error is set on the caller's `Future` and re-raised in the calling
+  thread, so Layer 5's fail-open behaviour is exactly what it was. A dead page
+  costs its own fetch and nothing else: the browser stays up, pinned by a test.
+- A browser that actually crashes is relaunched on next use rather than failing
+  every remaining page on that thread.
+- Shutdown relays **one** sentinel thread-to-thread. Queueing one per thread —
+  the obvious way — lets the idle threads take them all while a fourth is
+  mid-render, and that one then blocks on an empty queue for ever.
+- `close()` drains anything still queued and fails it, so a caller that raced
+  shutdown gets an exception rather than a `Future` nobody will ever set.
+- If the Playwright driver itself will not start, every queued request is failed
+  loudly instead of hanging.
+- **`fetch_rendered()` outside a `render_pool()` block is unchanged** — it
+  launches, renders, tears down, exactly as before. Scripts, tests and
+  `scripts/capture_fixtures.py` needed no edit.
+
+#### Part 2 — response cache
+
+**`requests-cache` 1.3.3**, proposed and approved before adding. It subclasses
+`requests.Session`, so `_TLSAdapter` still mounts and `fetch_text`'s retry and
+curl fallback are untouched — pinned by a test, since a cache that quietly
+dropped the TLS adapter would only show up on the one host that needs it.
+
+Opened by `run_pipeline` for the length of a run, cached at
+`data/http_cache.sqlite3`, TTL **30 minutes**.
+
+**`cache_control` is deliberately off.** Sampling fourteen static listing pages:
+
+| what the site sends | count |
+|---|---|
+| `no-cache, no-store` | 6 |
+| cacheable (`max-age`, `must-revalidate`, or nothing) | 8 |
+| carries an ETag or Last-Modified | 4 |
+
+Honouring `no-store` would mean re-downloading those six every run — *more* load
+on somebody else's server, not less, which is the wrong way round for priority 3.
+It is a blanket CDN default aimed at browsers holding sensitive pages, not a
+statement about a public jobs list, and our own TTL is half an hour. Turning it
+off costs no conditional requests: requests-cache still sends `If-None-Match` /
+`If-Modified-Since` from a stored validator once the TTL lapses, and counts the
+304 as a hit. Both directions are pinned by tests against a local server that
+records the headers it was sent.
+
+**`stale_if_error` is on**, which is the standing answer to the impactpool 500s:
+a cached copy beats a 500. It can never invent data or manufacture an empty
+listing — it returns a page that really was served — and every stale service
+logs at WARNING naming the URL, so it cannot read as a clean fetch.
+
+**A stale cache cannot lose a job.** It returns the *previous* listing, so stored
+jobs stay sighted and accrue no delisting misses; the worst it can do is delay
+discovery of a new posting by up to the TTL, or keep a withdrawn one alive one
+run longer.
+
+**Escape hatches:** `--no-cache` bypasses it entirely (a run started with it
+never constructs a `CachedSession`), `--cache-ttl SECONDS` retunes it. The cache
+is never silent: every run logs `HTTP cache: N hit, N revalidated (304),
+N fetched, N stale-on-error`. Expired rows are pruned on the way out, which is
+what bounds the file — 12.5 MB after a full cold run.
+
+**Rendered pages are not cached, by design.** The cache wraps `fetch_text`;
+`fetch_rendered` goes nowhere near it. ETag and If-Modified-Since are HTTP
+notions with no meaning for a page assembled by JavaScript, and caching rendered
+HTML is a different feature with a different correctness argument. It is why the
+warm run is 131 s rather than lower: 15 rendered pages × the fixed
+`settle_ms = 4_000` is 60 s of deliberate sleeping, 46% of that run. **That fixed
+settle, not browser churn, is now the largest single lever left** — a candidate
+for a later package, and it needs per-source evidence before anyone shortens it.
+
+#### A bug this package introduced and caught
+
+`cache_name` was first passed as `str(path.with_suffix(""))`. requests-cache
+appends `.sqlite` to an extension-less name, so the file landed as
+`data/http_cache.sqlite` — which `.gitignore`'s `data/*.sqlite3` does **not**
+match, and which holds the body of every career page fetched. Caught by looking
+at `data/` after the first run. The path is now passed verbatim, and a test pins
+the filename rather than only the behaviour.
+
+#### Tests
+
+`tests/test_http_fetch.py`, 20 tests, no network: a `http.server` on localhost
+serves the cache tests and a real headless Chromium drives the pool tests
+(mocking Playwright would assert nothing about the threading rules that are the
+whole subject). Covers: no caching without the block; a hit inside the TTL
+costing zero requests; revalidation carrying the stored ETag; the cache
+surviving between blocks; stale-on-error plus its warning; per-block stats; the
+TLS adapter and the session being restored; the filename; one browser serving
+many pages; nothing launched when nothing is rendered; eight concurrent callers
+bounded by four threads; errors reaching the caller; a failure not poisoning the
+pool; nesting; the no-pool path; and the `renders` capability mark.
+
+**Verification.** `.venv/bin/pytest`: 434 passed (414 before). `.venv/bin/ruff
+check .`: clean. `python -m job_scraper.run --help` works.
+
+#### Noted, not fixed — outside this package
+
+- **`probably_good` returns zero rows**, on the baseline run as well as both
+  after-runs, so it predates WP9 and is not caused by it. The source logs the
+  loud zero-row error and correctly declines to delist. Its extractor or the
+  site's markup needs a look.
+- `DEFAULT_USER_AGENT` still says `example.com`. That is WP10's first bullet and
+  it asks the owner for the real value, so it was left alone.
+
 
 ---
 
