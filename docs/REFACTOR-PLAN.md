@@ -56,7 +56,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
-| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 491 tests pass. **One owner action left: fill in `contact_url`/`contact_email` in `rules.json`** | `wp10-politeness` |
+| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 491 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -4663,9 +4663,10 @@ substance:
 owner was asked where the real details should live and chose `rules.json` (the
 repo is public; `rules.json` is gitignored), so `build_user_agent` /
 `user_agent_from_rules` assemble the header from two new keys, documented in
-`rules.example.json`. **The owner still has to paste the real values in** —
-CLAUDE.md forbids this session touching `rules.json`. Until then every run warns
-and identifies itself as `job-scraper/0.1 (no contact configured)`.
+`rules.example.json`. The owner filled the real values into `rules.json` and
+verified them on 2026-08-31 (this session did not touch that file — CLAUDE.md
+forbids it), so runs now identify themselves properly. A clone without those
+keys warns and identifies itself as `job-scraper/0.1 (no contact configured)`.
 
 **The per-host cap.** `HostThrottle` in `http.py`: two requests at a time per
 host, one second between the starts of two requests to the same host, hosts
