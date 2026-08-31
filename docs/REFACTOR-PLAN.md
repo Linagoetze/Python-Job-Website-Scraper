@@ -4525,6 +4525,23 @@ many pages; nothing launched when nothing is rendered; eight concurrent callers
 bounded by four threads; errors reaching the caller; a failure not poisoning the
 pool; nesting; the no-pool path; and the `renders` capability mark.
 
+**CI needed a change, and it was missed until GitHub caught it.** `ci.yml` said
+"no `playwright install`: nothing in the test suite renders a page, so the
+browser binaries would be downloaded on every run for nothing". This package
+made that false and did not update the workflow, so the first push failed with
+`7 failed, 436 passed` — every render-pool test, on `BrowserType.launch:
+Executable doesn't exist`. Lint was clean; it showed as two failures only because
+CI runs on both `push` and `pull_request`. The workflow now installs chromium
+alone, cached on the resolved playwright version, and the comment records why the
+earlier decision was reversed rather than silently deleting it.
+
+The lesson generalises past this package: **a decision recorded as a comment
+because it depended on an invariant is a decision that has to be re-read when the
+invariant changes.** That comment stated its own reasoning plainly and was still
+missed, because nothing in the local loop exercises it — `pytest` passes on a
+machine that ran the README's `playwright install chromium`, which is every
+developer machine and no CI runner.
+
 **Verification.** `.venv/bin/pytest`: 443 passed (414 before). `.venv/bin/ruff
 check .`: clean. `python -m job_scraper.run --help` works.
 
