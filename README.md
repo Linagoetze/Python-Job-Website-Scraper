@@ -127,6 +127,7 @@ is what makes the rendered sources faster; if it is too much for your machine,
 | `--no-cache` | off |
 | `--cache-ttl` | `1800` (30 minutes) |
 | `--score` | off |
+| `--dry-run` | off |
 | `--show-all` | off |
 | `-v`, `--verbose` | off |
 
@@ -134,7 +135,7 @@ Every default resolves relative to the package, not your shell's working
 directory, so the command works from anywhere. `--help` prints the resolved
 absolute paths.
 
-The six that are not paths:
+The seven that are not paths:
 
 - `--delist-after` — how many consecutive successful runs a stored posting must
   go unseen before it is marked delisted. See below.
@@ -158,6 +159,12 @@ The six that are not paths:
   own rubric in `job_scraper/config/profile.md` (copy `profile.example.md`),
   reads the API key from `ANTHROPIC_API_KEY`, and costs API credits — the run
   summary prints the estimate.
+- `--dry-run` — fetch and filter exactly as usual, then write nothing: the store
+  transaction is rolled back, and no spreadsheet, sources csv or drop-log row is
+  produced. The run summary it prints is the one a real run would have printed,
+  which is what makes it useful for seeing what a `rules.json` change would do
+  before it touches the table. Scoring is skipped too, since its verdicts would
+  be discarded and its tokens would not.
 - `--show-all` — put every posting on the xlsx review sheet, not just the
   unreviewed ones.
 
@@ -217,6 +224,24 @@ overrides that judgement.
 
 **"Exclusions logged"** is how many postings the filters dropped this run, each
 recorded with the specific rule that dropped it. See below.
+
+**Source health warnings** appear under the funnel, in a block of their own, and
+only when there is something to say:
+
+```
+────────────────────────────────────────────────────
+!  Source health: 1 source returned far fewer rows than last time
+!  impactpool: 4 rows this run, was 120 (-97%)
+```
+
+A source that breaks loudly already fails and is counted as skipped. This is the
+quieter failure: a selector that still matches *something* returns a short list,
+nothing errors, and the missing postings are simply never seen. Each source's
+row count is compared against its own last **successful** scrape — not against
+the last run, so recovering from an outage is not reported as a collapse — and
+anything that lost more than half is named here. The `!` marker is deliberately
+not an `L` gutter: a shrinking source is not a filter that fired, and it should
+never be read as one.
 
 ### Why was something dropped?
 
@@ -533,12 +558,14 @@ every posting on the Jobs sheet.
 
 ## Maintenance commands
 
-**These two take no flags, and they parse nothing.** Unlike every other command
-here, `retrofilter` and `blocklist_all` have no argument parser, so anything you
-type after the module name — `--help` included — is ignored and the command runs
-immediately against `data/jobs.sqlite3`. Neither deletes a row, but both change
-review state, so do not reach for `--help` to find out what they do. This page
-is the documentation.
+**These two take no flags, but they now read their arguments.** Until WP10 they
+had no argument parser, so anything typed after the module name — `--help`
+included — was ignored and the command ran immediately against
+`data/jobs.sqlite3`; that is how one `blocklist_all --help` lost the record of
+which postings were unreviewed. Both now have a front door with no options in
+it: `--help` prints what the command does and exits, and anything else it does
+not recognise exits non-zero having changed nothing. Neither ever deletes a row,
+but both change review state, so read before running.
 
 ```bash
 python -m job_scraper.tools.retrofilter
@@ -558,8 +585,7 @@ python -m job_scraper.tools.blocklist_all
 **Deprecated** — this is `python -m job_scraper.review --seen-all` under an
 older name: it marks every unreviewed posting as seen and regenerates
 `jobs.xlsx`, which clears the review sheet. Still works, kept until the new
-review flow is confirmed. Prefer `review --seen-all`, which at least refuses
-arguments it does not understand.
+review flow is confirmed. Prefer `review --seen-all`.
 
 ```bash
 bash scripts/scrape_and_blocklist.sh
@@ -614,20 +640,32 @@ registry line.
 python -m pytest -q
 ```
 
-414 tests, no network access required.
+491 tests, no network access required.
 
 ## Scraping responsibly
 
 This tool sends requests to other people's servers. Before pointing it at a new
 site:
 
-- Check the site's terms of service and `robots.txt`.
-- **Edit the User-Agent** in `job_scraper/http.py` — it ships as a placeholder
-  (`contact=you@example.com`). Putting a real contact address there is what lets
-  an administrator reach you instead of just blocking you.
-- Note that layer 5 fetches detail pages with 10 parallel workers
-  (`_DETAIL_WORKERS` in `job_scraper/experience_filter.py`). Lower it if you add a
-  lot of sources or a host starts rate-limiting you.
+- **Fill in `contact_url` and `contact_email` in `rules.json`.** They become the
+  User-Agent every request carries, which is what lets an administrator reach
+  you instead of just blocking you. They live in `rules.json` rather than in the
+  code because `rules.json` is gitignored, so your address stays out of a public
+  repo. Left empty, every run warns and identifies itself as
+  `job-scraper/0.1 (no contact configured)`.
+- Check the site's terms of service. `robots.txt` is checked for you: each run
+  reads it once per host and skips a source the site disallows, saying so. Where
+  that answer is wrong for us — a blanket rule aimed at search engines, on a
+  careers page the employer publishes and links to — set `ignore_robots: true`
+  on that source in `sources.yaml`. It exempts the whole host, so it is a
+  judgement about a site, not about one page.
+- Requests are capped at **two at a time per host, a second apart**
+  (`DEFAULT_PER_HOST_REQUESTS` and `DEFAULT_HOST_DELAY` in
+  `job_scraper/http.py`), and a site that states its own longer `Crawl-delay`
+  gets it. Layer 5's ten detail workers (`_DETAIL_WORKERS` in
+  `job_scraper/experience_filter.py`) are a cap on this tool, not on any one
+  site: they mean ten different employers in parallel, not ten requests landing
+  on one.
 - Run it on a schedule measured in hours, not minutes. Job postings do not change
   that fast.
 
