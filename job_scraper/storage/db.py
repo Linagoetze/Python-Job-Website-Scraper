@@ -17,6 +17,7 @@ filter exclusion per run, naming the rule that fired, pruned to the last N runs.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,22 @@ from typing import Any
 from job_scraper.urlutil import canonical_detail_url, dedupe_key_from_url, normalize_http_url
 
 JOB_STATUSES = ("new", "seen", "shortlisted", "rejected", "delisted")
+
+# How far a source's row count may fall against its last successful scrape
+# before the run says so. Half is loose enough that ordinary churn on a big
+# board stays quiet, and tight enough to catch a selector that now matches only
+# the first page or only one of two job containers.
+DEFAULT_HEALTH_DROP = 0.5
+
+
+@dataclass(frozen=True)
+class SourceDrop:
+    """One source that returned far fewer rows than it did last time."""
+
+    source_name: str
+    previous_rows: int
+    current_rows: int
+
 
 # Statuses a human set (or will set, from WP5b's review commands). Automated
 # passes — delisting, re-filtering — must never overwrite these.
@@ -167,8 +184,13 @@ class JobStore:
     exception, so a crash mid-run can never leave a half-written run behind.
     """
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, dry_run: bool = False) -> None:
         self.path = Path(path)
+        # A dry run (WP10) reads the store exactly as a real run does — it needs
+        # the stored index to tell new jobs from known ones — and then rolls the
+        # whole transaction back on the way out, so the funnel it reports is the
+        # one a real run would produce and not a row is changed by it.
+        self.dry_run = dry_run
         self._conn: sqlite3.Connection | None = None
 
     def __enter__(self) -> JobStore:
@@ -205,7 +227,7 @@ class JobStore:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         assert self._conn is not None
         try:
-            if exc_type is None:
+            if exc_type is None and not self.dry_run:
                 self._conn.commit()
             else:
                 self._conn.rollback()
@@ -249,6 +271,47 @@ class JobStore:
             " (source_name, run_id, rows_found, ok, error) VALUES (?, ?, ?, ?, ?)",
             (source_name, run_id, rows_found, int(ok), error),
         )
+
+    def source_health_regressions(
+        self, run_id: int, threshold: float = DEFAULT_HEALTH_DROP
+    ) -> list[SourceDrop]:
+        """Sources whose row count collapsed against their last successful scrape.
+
+        A source that quietly halves is the failure this project fears most: a
+        selector that still matches *something* returns a shorter list rather
+        than an error, so nothing fails and the missing postings are simply
+        never seen. Compared against the previous run that actually succeeded —
+        not the previous run — because comparing against a failed run's zero
+        would call every recovery a collapse.
+
+        A source with no earlier successful run is not reported: there is
+        nothing to compare it against, and a first sighting is not a drop.
+        """
+        rows = self._c().execute(
+            """
+            SELECT h.source_name AS name,
+                   h.rows_found  AS current_rows,
+                   (SELECT p.rows_found
+                      FROM source_health p
+                     WHERE p.source_name = h.source_name
+                       AND p.ok = 1
+                       AND p.run_id < h.run_id
+                     ORDER BY p.run_id DESC
+                     LIMIT 1) AS previous_rows
+              FROM source_health h
+             WHERE h.run_id = ? AND h.ok = 1
+             ORDER BY h.source_name
+            """,
+            (run_id,),
+        ).fetchall()
+        drops: list[SourceDrop] = []
+        for row in rows:
+            previous = row["previous_rows"]
+            if previous is None or previous <= 0:
+                continue
+            if row["current_rows"] < previous * (1.0 - threshold):
+                drops.append(SourceDrop(row["name"], int(previous), int(row["current_rows"])))
+        return drops
 
     # -- jobs -----------------------------------------------------------------
 
