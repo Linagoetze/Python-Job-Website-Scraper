@@ -23,6 +23,7 @@ from job_scraper.drops import (
     LAYER_TITLE_KEYWORD,
     layer_ordinal,
 )
+from job_scraper.http import DEFAULT_CACHE_TTL
 from job_scraper.pipeline import (
     DEFAULT_DELIST_AFTER,
     DEFAULT_KEEP_DROP_RUNS,
@@ -33,6 +34,25 @@ from job_scraper.scoring import ScoringSummary, score_new_jobs
 from job_scraper.storage.xlsx_store import write_xlsx
 
 _RULE = "─" * 52
+
+
+def _cache_ttl_seconds(value: str) -> int:
+    """Parse `--cache-ttl`, refusing a negative TTL.
+
+    requests-cache reads -1 as NEVER_EXPIRE, so `--cache-ttl -1` — which is the
+    obvious guess for "turn it off" — is the single input that turns the cache on
+    permanently and quietly stops the run discovering new postings. Every other
+    negative is merely meaningless, so the whole range is refused and the message
+    names the flag the typist actually wanted.
+    """
+    ttl = int(value)
+    if ttl < 0:
+        raise argparse.ArgumentTypeError(
+            f"must be zero or more seconds, not {ttl}. Use --no-cache to switch "
+            "the cache off; a negative TTL means 'never expire', which would "
+            "serve every page from disk for ever."
+        )
+    return ttl
 
 
 def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -> str:
@@ -194,6 +214,28 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        dest="no_cache",
+        help=(
+            "Bypass the HTTP response cache and refetch every page. The cache "
+            f"holds listing pages for {DEFAULT_CACHE_TTL // 60} minutes by default "
+            "(and revalidates with ETag / If-Modified-Since after that), so use "
+            "this when a run must see the sites as they are this second."
+        ),
+    )
+    parser.add_argument(
+        "--cache-ttl",
+        type=_cache_ttl_seconds,
+        default=DEFAULT_CACHE_TTL,
+        dest="cache_ttl",
+        metavar="SECONDS",
+        help=(
+            "How long a cached page stays fresh before it is revalidated "
+            f"(default: {DEFAULT_CACHE_TTL} seconds)."
+        ),
+    )
+    parser.add_argument(
         "--score",
         action="store_true",
         dest="score",
@@ -234,6 +276,8 @@ def main() -> None:
             allow_empty_delist=args.allow_empty_delist,
             delist_after=args.delist_after,
             keep_drop_runs=args.keep_drop_runs,
+            use_cache=not args.no_cache,
+            cache_ttl=args.cache_ttl,
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show

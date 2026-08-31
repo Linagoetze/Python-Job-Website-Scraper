@@ -6,6 +6,13 @@ pyyaml>=6.0.0
 playwright>=1.40.0
 openpyxl>=3.1.0
 
+# WP9's response cache. Wraps requests.Session, so the TLS adapter and the rest
+# of http.py are untouched; gives us a short TTL plus ETag / If-Modified-Since
+# revalidation without hand-rolling HTTP cache semantics. Only http.py imports
+# it, and only inside `http_cache()` — a run started with --no-cache never
+# constructs a CachedSession at all.
+requests-cache>=1.2.0
+
 # Optional: only used by the LLM scoring stage (job_scraper/scoring.py), which
 # is off by default (rules.json's scoring_enabled). scoring.py imports it
 # lazily, inside score_new_jobs, so it costs nothing at runtime unless

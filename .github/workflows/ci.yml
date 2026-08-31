@@ -28,13 +28,40 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # No `playwright install`: http.py imports playwright lazily and nothing
-      # in the test suite renders a page, so the browser binaries (~400 MB)
-      # would be downloaded on every run for nothing.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      # This used to say "no `playwright install`: nothing in the test suite
+      # renders a page, so the browser binaries would be downloaded on every run
+      # for nothing". WP9 made that false. The render pool keeps one Chromium per
+      # thread for a whole run, and the rules it exists to respect — a Playwright
+      # object cannot cross threads — are the kind a mock would happily let you
+      # break. tests/test_http_fetch.py therefore drives a real headless browser
+      # against a local server, and without this step seven of those tests fail.
+      #
+      # Only chromium, which is all the scraper ever launches, and cached on the
+      # resolved playwright version so the ~400 MB download happens when that
+      # version changes rather than on every run.
+      - name: Resolve the Playwright version for the cache key
+        id: playwright
+        run: |
+          version=$(python -c 'from importlib.metadata import version; print(version("playwright"))')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Chromium build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # --with-deps installs the system libraries the browser needs. Not
+      # cacheable, and it is why this step still costs a few seconds on a cache
+      # hit, but a missing libnss3 fails in a far less obvious way than a
+      # missing browser does.
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
 
       - name: Lint
         run: ruff check .
