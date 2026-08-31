@@ -1,10 +1,10 @@
 """Experience-level filtering.
 
-Layer 1 — title heuristic: excludes jobs whose title contains seniority
+Layer 3 — title heuristic: excludes jobs whose title contains seniority
            signal words (Senior, Lead, Director, etc.). Zero extra HTTP
            requests. Configured via rules.json.
 
-Layer 2 — detail-page parsing: fetches each job's detail_url, strips HTML,
+Layer 5 — detail-page parsing: fetches each job's detail_url, strips HTML,
            and looks for numeric experience requirements. Jobs requiring
            >= 3 years are excluded; jobs with no requirement or <= 2 years
            are kept. Always runs, but only for jobs not already in the store
@@ -39,7 +39,7 @@ from job_scraper.storage.db import utc_now_iso
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Layer 1 — title heuristic
+# Layer 3 — title heuristic
 # ---------------------------------------------------------------------------
 
 _MAX_JUNIOR_YEARS = 2
@@ -55,13 +55,13 @@ _MAX_DESCRIPTION_CHARS = 20_000
 _DETAIL_WORKERS = 10
 
 
-# Layer 2 rule strings for the exclusion log. The years case is formatted with
+# Layer 5 rule strings for the exclusion log. The years case is formatted with
 # the number that fired, so "3+ years" and "8+ years" are separable when the
 # owner asks whether the threshold is set too low.
 RULE_PHD_REQUIRED = "phd: required (not merely preferred)"
 RULE_HYBRID_NOT_HYBRID = "hybrid: conditional city, description is not hybrid"
 RULE_HYBRID_UNVERIFIED = "hybrid: conditional city, could not read the description"
-# WP8d's two, deliberately separate from the location rules Layer 0 owns: a job
+# WP8d's two, deliberately separate from the location rules Layer 1 owns: a job
 # that got this far was never rejected for being in the wrong city, it was read
 # and found to name no listed one.
 RULE_LOCATION_NOT_LISTED = "location: unresolvable field, description names no listed place"
@@ -133,7 +133,7 @@ def apply_combined_title_filter(
     entries: list[tuple[str, str]],
     rules: dict[str, Any],
 ) -> tuple[list[JobRecord], list[JobRecord], list[JobRecord]]:
-    """Run Layer 1a (keyword) and Layer 1 (seniority) in a single title scan.
+    """Run Layer 2 (keyword) and Layer 3 (seniority) in a single title scan.
 
     Keyword exclusion is checked first; seniority second. Excluded jobs carry
     the exact term that fired under DROP_RULE_KEY; the per-term matchers are
@@ -172,7 +172,7 @@ def apply_combined_title_filter(
 
 
 # ---------------------------------------------------------------------------
-# Layer 2 — detail-page experience extraction
+# Layer 5 — detail-page experience extraction
 # ---------------------------------------------------------------------------
 
 _EXPERIENCE_PATTERNS: list[re.Pattern[str]] = [
@@ -323,7 +323,7 @@ def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | No
     Returns the job with its pending marker rewritten to confirmed, or None if it
     must be excluded. Jobs not awaiting a hybrid decision are returned unchanged.
 
-    Unlike the rest of Layer 2 this fails *closed*: a conditional location is out
+    Unlike the rest of Layer 5 this fails *closed*: a conditional location is out
     of range by default, so a job whose description could not be read has not
     earned its exception.
     """
@@ -389,7 +389,7 @@ def apply_detail_filter(
     location field named no place at all: the description must name a listed
     location or the job is dropped — see _resolve_unresolved_location. Unlike
     the hybrid case these jobs *are* an extra HTTP request, because they died at
-    Layer 0 before this package and never reached here at all.
+    Layer 1 before this package and never reached here at all.
     Fetches run in parallel with up to _DETAIL_WORKERS threads.
     Each returned job dict is annotated with description_text and
     description_fetched_at from this fetch (both '' when nothing was fetched),
@@ -463,7 +463,7 @@ def apply_detail_filter(
         min_years, phd_req, failed = signals.min_years, signals.phd_required, signals.fetch_failed
         description_text = signals.description_text
 
-        # The two deferred states, settled in Layer 0's order. Either can drop
+        # The two deferred states, settled in Layer 1's order. Either can drop
         # the job outright; a job carrying neither marker passes both untouched.
         resolved = _resolve_hybrid(job, signals.hybrid_found)
         if resolved is None:

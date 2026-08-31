@@ -346,7 +346,7 @@ def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
             rule = str(record.get(DROP_RULE_KEY) or "") or "unattributed"
             verdicts.append(Verdict(job=by_key[key], layer=layer, rule=rule))
 
-    # Layer 0 — rules (location, include/exclude keywords).
+    # Layer 1 — rules (location, include/exclude keywords).
     kept: list[dict[str, Any]] = []
     for job in jobs:
         record = job.as_record()
@@ -375,12 +375,12 @@ def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
                 job=by_key[str(record.get("dedupe_key") or "")],
                 layer=None,
                 rule=None,
-                # Layer 0 admitted this one from a hybrid-gated city; in a real
-                # run Layer 2 settles it against the description, and can still
+                # Layer 1 admitted this one from a hybrid-gated city; in a real
+                # run Layer 5 settles it against the description, and can still
                 # drop it. Counted as kept, flagged as provisional.
                 pending_hybrid=_HYBRID_PENDING_REASON in reasons,
                 # Same again for WP8d's unresolvable location field, and the
-                # flag matters more here: Layer 2 fails closed, so a recall
+                # flag matters more here: Layer 5 fails closed, so a recall
                 # gain reported over these jobs is an upper bound, not a
                 # result. Without the flag the harness would credit the ladder
                 # with every job it merely deferred.
@@ -539,7 +539,7 @@ class EvalResult:
         """The provisional jobs that were labelled `review`.
 
         The number worth quoting when this package is measured: the most recall
-        WP8d can hand back, if Layer 2 confirms every one of them.
+        WP8d can hand back, if Layer 5 confirms every one of them.
         """
         return [v for v in self.pending_location if v.wanted]
 

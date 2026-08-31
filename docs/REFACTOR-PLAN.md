@@ -54,7 +54,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8 | Trim the ladder, prune the keywords | 2.5 hr | Opus 5 | `think hard` | done — layers 1c/1b deleted, 8 keywords pruned, `Architect` narrowed; recall 0.647 → 0.868 live (owner's `rules.json` edit made and verified 2026-08-27), precision up too | `wp8-trim-ladder` |
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
-| 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | not started | `wp8b-readme` |
+| 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | not started | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
 
@@ -4080,6 +4080,164 @@ where they came from or mark it illustrative.
 Branch wp8b-readme. Commit, do not push. Update the plan file.
 ```
 
+### Result (2026-08-27)
+
+414 tests pass, `ruff check .` clean, `python -m job_scraper.run --help` works.
+Two commits, as the prompt asked: the mechanical renumbering sweep first, then
+the README rewrite.
+
+**Read the incident section at the end of this before anything else.** A command
+in this session modified `data/jobs.sqlite3` and `data/jobs.xlsx`. It is not a
+documentation problem and it needs a decision from the owner.
+
+**The sweep.** All 54 lines renumbered; the three already-correct hits the
+prompt named were located by content and left alone (`format_rule_counts`'s
+column-width note, `layer_sort_key`'s docstring, `eval.format_comparison`'s
+truncation example). Verified afterwards by re-running the grep: every remaining
+`Layer N` in `job_scraper/` is a new-scheme number.
+
+Four judgement calls inside what the prompt called a mechanical rename:
+
+1. **Old "Layer 1" did not always mean the seniority layer.** In
+   `filtering.py`'s hybrid and unresolvable-location comments, and in
+   `experience_filter.py`'s `apply_detail_filter` docstring, "Layer 1" was used
+   loosely for "the stage that reads the listing text" — but the code doing that
+   reading is `matches_rules`, which was Layer 0. Those references are *correct
+   unchanged* under the new scheme, since the rules layer is now Layer 1. They
+   look untouched in the diff and are not: renumbering them to 3 would have been
+   the wrong answer twice over.
+2. `filtering.py`'s "keyword and seniority filters never get a turn; they die
+   before Layer 1" *is* the ladder sense, and became "before Layer 2" — the
+   keyword layer is the first of the two it names.
+3. `drops.py`'s module docstring said "layers 1a to 1c returned excluded lists".
+   Two of those ids are retired and the prompt forbids resurrecting them in
+   prose, so it is now "the layers after it", which is true and names nothing
+   dead.
+4. `rules.example.json` was done first and alone, as instructed, and the JSON
+   re-parsed afterwards. **The owner may want to copy the new wording into their
+   own gitignored `rules.json` by hand** — it is on CLAUDE.md's never-touch list
+   and was not touched.
+
+Two extra prose corrections went into the sweep commit, both handed over by
+earlier packages and both one-liners in text already being edited:
+`layer_display`'s docstring credited the two retired layers with ~49,000
+historical rows (that is the whole table; the two of them hold 327), and
+`db.py`'s `run_exclusions` comment still said `rule` can name "a language code",
+which it has not been able to do since WP8 deleted both language layers. That
+one is the same drift as the README bullet, in a file the sweep's grep cannot
+reach because it never writes "Layer N".
+
+**`--layer`: the prompt's prediction about the error message was wrong, and the
+choice it was meant to settle still comes out the same.** The prompt says to
+quote the real refusal and notes that "the message itself suggests `--layer
+seniority`, so quoting it and choosing the replacement example are one
+decision". It is one decision, but not that one: the stale README example was
+`--layer 2`, and `--layer 2` suggests `--layer title-keyword` — layer 2 is the
+title-keyword layer. `--layer seniority` is what `--layer 3` suggests. Since
+`--layer seniority` does read best, the README demonstrates the refusal with
+`--layer 3` and quotes that message verbatim, so the quoted suggestion and the
+worked example agree. Both messages were run rather than reconstructed.
+
+**The run-summary block was regenerated by `format_summary`, with illustrative
+counts, and the README says so.** The prompt asks for real output. A real run
+means fetching nine third-party career pages, and `http.py` still ships the
+placeholder `contact=you@example.com` user agent that the README's own
+"Scraping responsibly" section tells you to replace — so putting live traffic on
+other people's servers to produce a sample block was the wrong trade. The
+alternative the prompt allows was taken instead: the *rendering* is genuine
+(built by calling `format_summary` on a `RunSummary`, so the gutter, the column
+widths and the three Layer 5 lines are exactly what the code emits), and the
+counts are a coherent invented run, labelled as such in the README. The shape is
+modelled on the real measurements recorded in the decisions log — 8,000
+postings, ~2,000 dropped at Layer 1 — so it reads like a mature store rather
+than the empty-table first run the old block showed.
+
+**Drift the prompt did not list, found by checking the file against `--help`.**
+The prompt's "check the whole file against the current CLI" turned up more than
+the four missing flags:
+
+- The xlsx Jobs sheet has had nine columns since WP7, not the six the README
+  listed — `score`, `score_reasoning` and `score_flags` were never documented,
+  nor was the fact that the sheet sorts best-score-first once they are filled.
+- Nothing documented the scoring stage at all, so `--score` could not be added
+  to the options table without a sentence on `profile.md` and
+  `ANTHROPIC_API_KEY`. Both are now named.
+- "Deleting `data/` costs you the run history and the dedupe state, nothing
+  else" was written when the store was a regenerable CSV. It now also costs
+  every review decision the owner has ever recorded.
+- The layout table's `data/curated/` row predated WP8c's `labels.csv`, and its
+  `scripts/` row said "shell automation" for a directory that is now mostly
+  Python.
+- `requirements.txt` has installed `ruff` since WP2; the setup section still
+  said it gets you `pytest`.
+
+**Layer 4's name.** The README called it "Blocklist — postings you have already
+rejected by hand". `drops.LAYERS` calls it Review status, and it fires on any
+stored `rejected` row, including ones a tightened rule rejected rather than the
+owner. The table now uses the real name.
+
+### The incident: the live store was modified (2026-08-27)
+
+**What happened.** Verifying the prompt's instruction that "every flag
+documented should exist", this session ran `--help` against all seven commands
+the README names, in one loop. `retrofilter` and `blocklist_all` have **no
+argument parser**: `main()` reads no `sys.argv` at all, so `--help` is not a
+flag they reject, it is text they never look at. Both ran against
+`data/jobs.sqlite3`.
+
+**The damage.** `blocklist_all` ran first and called `mark_all_new_seen()`,
+flipping every `new` job to `seen`, then regenerated `jobs.xlsx` — which emptied
+the review sheet and, with it, the `export_rows` table the review commands
+address. `retrofilter` ran after it and therefore found no `new` rows: it marked
+nothing rejected, and only regenerated the xlsx a second time. So the loss is
+one thing, not two: **the record of which postings were unreviewed.** No row was
+deleted, no review decision the owner had actually made was altered
+(`mark_all_new` touches `new` only, never `shortlisted` or `rejected`), and the
+archive sheet still holds every posting.
+
+**What the store looks like now**, read-only: 370 rejected, 212 delisted, 190
+seen, 2 shortlisted, 0 new, `export_rows` empty.
+
+**Recovered and closed (2026-08-31). Nothing below is a to-do.** The owner
+backed up the store, flipped the 117 rows identified here back to `new`,
+reviewed them and rejected them. All 222 postings first stored on 2026-08-27
+are now `rejected` (220) or `delisted` (2), with none left `seen`; run 15 has
+since scraped normally. **The table below is a record of how the set was
+identified, not an instruction to act on** — re-running its query against the
+store today matches nothing, because the rows it describes have moved on.
+
+**How the set was reconstructed.** Nothing records *when* a row became
+`seen`, so the flipped set could not be recovered exactly. The best available
+proxy was `first_seen`: 117 of the 190 seen rows were first stored by that
+day's runs 12, 13 and 14, and those were the likely unreviewed population —
+
+| first_seen | run | rows |
+|---|---|---|
+| 2026-08-27T14:29:18Z | 14 | 4 |
+| 2026-08-27T07:51:05Z | 13/14 | 7 |
+| 2026-08-27T06:40:12Z | 13/14 | 106 |
+
+The remaining 73 seen rows were first stored on 2026-08-24 or earlier and were
+most likely already reviewed; 57 of them appear in the pre-cutover
+`blocklist.csv`, which corroborates the boundary from a second direction. There
+was no backup to check against: `tmutil destinationinfo` reported no
+destinations configured, there were no local APFS snapshots beyond OS updates,
+and no other copy of the store or the spreadsheet existed on the machine. The
+reconstruction was therefore the only route, and it is the one that was taken.
+
+**The lesson, and it is not "be careful".** `--help` is safe on every other
+command in this project because they all use argparse. It is unsafe on exactly
+the two that do not, and nothing about typing it says so. CLAUDE.md's never-touch
+rule was followed for file edits and defeated by a command that looked like a
+query. Two consequences, one taken and one not:
+
+- **Taken:** the README's maintenance section now warns, above both commands,
+  that they parse nothing and that `--help` runs them.
+- **Not taken, and worth a package:** give both tools an `argparse` front door,
+  even one with no options, so an unrecognised argument exits non-zero without
+  doing anything. That is a behaviour change and WP8b was scoped docs-only. See
+  the note under WP10.
+
 ---
 
 ## WP9 — Playwright reuse and HTTP caching
@@ -4132,6 +4290,12 @@ These are other people's career sites and the current code is not a good guest.
   source whose row count dropped by more than 50% against its previous
   successful run.
 - Add --dry-run that fetches and filters but writes nothing.
+- Give `tools/retrofilter.py` and `tools/blocklist_all.py` an argparse front
+  door, even one with no options. Neither parses `sys.argv` today, so an
+  argument is not rejected — it is never read, and the command runs. WP8b lost
+  the owner's unreviewed-job set to `blocklist_all --help`; see the incident
+  section there. `--help` should print the docstring and exit 0, and anything
+  unrecognised should exit non-zero having changed nothing.
 
 Two notes before you touch run.py's output, both from WP8h:
 

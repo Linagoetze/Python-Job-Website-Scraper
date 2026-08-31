@@ -127,9 +127,9 @@ def refilter_stored_jobs(
     for job in jobs:
         # A stored conditional-city job re-enters matches_rules without its
         # matched_reasons; the pending reason it gets passes, so the persisted
-        # hybrid_confirmed flag is not needed here — Layer 2 owns that check.
+        # hybrid_confirmed flag is not needed here — Layer 5 owns that check.
         # A stored job with an unresolvable location field passes the same way,
-        # and for the same reason: Layer 2 already settled it once, and a
+        # and for the same reason: Layer 5 already settled it once, and a
         # re-filter pass has no description to settle it against.
         ok, reasons = matches_rules(
             job, rules, hybrid_pattern, non_place_pattern=non_place_pattern
@@ -285,7 +285,7 @@ def run_pipeline(
     )
     if unresolved_admits:
         # Every one of these is a detail fetch this run would not have made
-        # before WP8d, and most will fail closed at Layer 2. Logged so the cost
+        # before WP8d, and most will fail closed at Layer 5. Logged so the cost
         # is visible in the run rather than inferred from the drop log.
         logger.debug(
             "%s (rules): %d jobs admitted with an unresolvable location field, "
@@ -300,7 +300,7 @@ def run_pipeline(
         if _LOCATION_EMPTY_ADMITTED_REASON in (j.get("matched_reasons") or [])
     )
     if empty_location_admits:
-        # Unlike the two counts above, this is not a Layer 2 cost — see
+        # Unlike the two counts above, this is not a Layer 5 cost — see
         # _LOCATION_EMPTY_ADMITTED_REASON's comment in filtering.py. Logged
         # anyway, so the volume WP8f admits is as visible as what WP8d defers.
         logger.debug(
@@ -319,7 +319,7 @@ def run_pipeline(
         writer.writerows(processed_sources)
     logger.info("Wrote %d sources to %s", len(processed_sources), sources_csv_path)
 
-    # Layer 1a + Layer 1 — combined title pass (keyword exclusions and seniority)
+    # Layer 2 + Layer 3 — combined title pass (keyword exclusions and seniority)
     kept_rows, keyword_excluded, title_excluded = apply_combined_title_filter(
         kept_rows, title_keywords, rules
     )
@@ -361,7 +361,7 @@ def run_pipeline(
 
         stored = store.job_index()
 
-        # Layer 1d — review-status exclusion, replacing the CSV blocklist: a
+        # Layer 4 — review-status exclusion, replacing the CSV blocklist: a
         # stored job the owner (or a filter change) rejected stays out of the
         # funnel and costs no detail fetch, but its row is never deleted.
         blocked_jobs = [
@@ -382,8 +382,8 @@ def run_pipeline(
                 jobs_blocklist_excluded,
             )
 
-        # Layer 2 — detail-page experience extraction.
-        # Skip jobs already stored: they passed Layer 2 in a prior run. A
+        # Layer 5 — detail-page experience extraction.
+        # Skip jobs already stored: they passed Layer 5 in a prior run. A
         # conditional-city job whose hybrid arrangement was confirmed from a
         # detail page has that recorded in hybrid_confirmed, so it is skipped
         # like any other stored job; only a stored conditional job that has
@@ -470,11 +470,11 @@ def run_pipeline(
         rows_written, refreshed = store.upsert_jobs(upserts, run_id)
         logger.debug("Store: %d rows inserted, %d refreshed", rows_written, refreshed)
 
-        # Jobs Layer 2 excluded also get stored, as 'rejected', description
+        # Jobs Layer 5 excluded also get stored, as 'rejected', description
         # included — otherwise nothing records that they were already judged
         # and the detail page is re-fetched on every subsequent run. Once
-        # stored, the existing Layer 1d review-status check picks them up on
-        # the next run and Layer 2 never sees them again, the same as any
+        # stored, the existing Layer 4 review-status check picks them up on
+        # the next run and Layer 5 never sees them again, the same as any
         # other rejected job.
         #
         # Exception: a job dropped by one of the two fail-closed deferred

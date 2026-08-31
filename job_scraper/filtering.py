@@ -23,7 +23,7 @@ from job_scraper import JobRecord
 # (which copies named columns only), so it never reaches the store's jobs table.
 DROP_RULE_KEY = "drop_rule"
 
-# Layer 0 rule strings. The location cases are split finely on purpose: the
+# Layer 1 rule strings. The location cases are split finely on purpose: the
 # location rules reject the overwhelming majority of everything scraped, and
 # "off-criteria" is not a diagnosis.
 RULE_INCLUDE_NO_MATCH = "include_keywords: no match"
@@ -180,19 +180,19 @@ _LETTER = re.compile(r"[^\W\d_]")
 #
 # Cities in `conditional_locations` are too far to commute to daily, so they only
 # qualify when the role is hybrid. "hybrid" may appear in the title (visible at
-# Layer 1) or only in the job description (visible at Layer 2, which is the sole
+# Layer 1) or only in the job description (visible at Layer 5, which is the sole
 # place the detail-page body text is ever fetched). So the check is two-stage and
 # these two reason strings are the contract between the stages:
 #
-#   PENDING   — Layer 1 admitted the job provisionally; Layer 2 must confirm it
+#   PENDING   — Layer 1 admitted the job provisionally; Layer 5 must confirm it
 #               against the description, and drops it if it cannot.
-#   CONFIRMED — hybrid was seen, either in the Layer 1 text or by Layer 2.
+#   CONFIRMED — hybrid was seen, either in the Layer 1 text or by Layer 5.
 #
 # A confirmation earned from a detail page is persisted as the store's
 # hybrid_confirmed column (WP5), so a stored conditional-city job skips the
 # re-fetch on later runs like any other stored job. The reason strings remain
 # the in-run contract between the two stages; refilter_stored_jobs sees a
-# stored conditional-city row as PENDING and keeps it — correct, since Layer 2
+# stored conditional-city row as PENDING and keeps it — correct, since Layer 5
 # is what put it there in the first place.
 _HYBRID_PENDING_REASON = "locations: conditional (hybrid unconfirmed)"
 _HYBRID_CONFIRMED_REASON = "locations: conditional (hybrid confirmed)"
@@ -202,13 +202,13 @@ _HYBRID_CONFIRMED_REASON = "locations: conditional (hybrid confirmed)"
 # Unresolvable locations (WP8d)
 # ---------------------------------------------------------------------------
 #
-# The third state a location field can be in. Layer 0 used to know two: empty,
+# The third state a location field can be in. Layer 1 used to know two: empty,
 # or naming a specific city. A field that is present but names no place at all
 # — "2 Locations", "Home base - EMEA", a bare country — fell into the second
 # and died against a list it was never going to match, having never been read.
 #
 # It is now treated exactly as a hybrid-gated city is: admitted provisionally,
-# then settled at Layer 2 against the fetched description, and dropped if the
+# then settled at Layer 5 against the fetched description, and dropped if the
 # description names nothing on the list. Same two-stage contract, same failure
 # direction — see `_resolve_unresolved_location` in experience_filter.py.
 #
@@ -225,19 +225,19 @@ _UNRESOLVED_CONFIRMED_REASON = "locations: unresolvable field (place confirmed)"
 # Empty locations (WP8f)
 # ---------------------------------------------------------------------------
 #
-# The fourth Layer 0 outcome. An empty location field is not a placeholder
+# The fourth Layer 1 outcome. An empty location field is not a placeholder
 # that might name a place once read (WP8d's third state) and it is not a
 # conditional city awaiting a hybrid check — it is an extractor or listing
 # page that never had a location to give, and WP8e confirmed real postings
 # die here for want of one nobody ever had. Keyword and seniority filters
-# never get a turn to judge these jobs today; they die before Layer 1.
+# never get a turn to judge these jobs today; they die before Layer 2.
 #
 # Unlike the two pending states above, this is settled here and permanently:
 # no description is going to retroactively supply a location that was never
-# on the listing, so there is nothing for Layer 2 to confirm. This reason is
+# on the listing, so there is nothing for Layer 5 to confirm. This reason is
 # therefore *not* wired into `_resolve_hybrid`/`_resolve_unresolved_location`
 # or `UNVERIFIED_KEY` — a job carrying it must not cost a detail fetch it
-# would not otherwise need, and must not be mistaken by Layer 2 for a marker
+# would not otherwise need, and must not be mistaken by Layer 5 for a marker
 # it is meant to settle.
 _LOCATION_EMPTY_ADMITTED_REASON = "locations: no location given (admitted)"
 
@@ -261,7 +261,7 @@ def build_non_place_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
 
 
 def build_location_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
-    """Compile `locations` for searching a *description* (Layer 2's copy).
+    """Compile `locations` for searching a *description* (Layer 5's copy).
 
     Whole-word, unlike `matches_rules`'s substring test against the location
     field: a city name loose in a page of prose needs the tighter match, or
@@ -332,7 +332,7 @@ def _location_names_no_place(
     The third state (WP8d): present, but unresolvable from the listing page —
     "2 Locations", "Home base - EMEA", a bare country. Distinct from an empty
     field, which is WP8f's fourth state and is admitted outright rather than
-    deferred to Layer 2.
+    deferred to Layer 5.
 
     A segment is judged by striking out every term that names no place — the
     remote keywords, the generic tokens, the configured `non_place_locations` —
@@ -351,7 +351,7 @@ def _location_names_no_place(
     remote_cf = [_lower(rk) for rk in remote_keywords]
     # A field made only of remote keywords is "remote", a state the location
     # rules already have an answer for — it must not be re-labelled
-    # unresolvable and sent to Layer 2 for a fetch. That distinction is
+    # unresolvable and sent to Layer 5 for a fetch. That distinction is
     # invisible under `match_in: title_and_description`, where the location
     # field is part of the haystack and `remote_ok` settles such a job before
     # this function is reached, and it is the whole story under `title_only`,
@@ -432,14 +432,14 @@ def matches_rules(
     - `conditional_locations` match the `location` field like `locations`, but only
       admit the job when a `conditional_location_keywords` term (e.g. "hybrid") is
       present. If the keyword is not visible at this layer the job passes with
-      `_HYBRID_PENDING_REASON` for Layer 2 to confirm against the description.
+      `_HYBRID_PENDING_REASON` for Layer 5 to confirm against the description.
     - A field that is present but names no place (WP8d: "2 Locations",
       "Home base - EMEA", a bare country) is not a city that failed to match.
-      It passes with `_UNRESOLVED_PENDING_REASON`, again for Layer 2 to settle
+      It passes with `_UNRESOLVED_PENDING_REASON`, again for Layer 5 to settle
       against the description.
     - A field that is empty (WP8f: no location was ever given, an extractor or
       listing-page gap rather than a placeholder) is not the same failure as
-      an unresolvable one — there is no page for Layer 2 to read it off, so it
+      an unresolvable one — there is no page for Layer 5 to read it off, so it
       is admitted outright with `_LOCATION_EMPTY_ADMITTED_REASON` rather than
       deferred. This is settled here, permanently.
 
@@ -498,7 +498,7 @@ def matches_rules(
             _lower(loc) in loc_field for loc in conditional_locations
         ):
             # A hybrid-gated city. Confirm from a marker already on the job, else
-            # from the Layer 1 text, else defer to Layer 2's detail fetch.
+            # from the Layer 1 text, else defer to Layer 5's detail fetch.
             # (With no conditional_location_keywords configured the gate can never
             # be satisfied, so the whole conditional list stays inert.)
             if _has_confirmed_hybrid(job) or hybrid_pattern.search(hay):
@@ -510,10 +510,10 @@ def matches_rules(
         ):
             # Present, but naming no place this layer can resolve. Judging it
             # against the list would be judging a placeholder, so defer to
-            # Layer 2 and let the description decide (it fails closed there).
+            # Layer 5 and let the description decide (it fails closed there).
             #
             # Only worth deferring when there *is* a list: with `locations`
-            # empty, Layer 2 has nothing to search the description for, so
+            # empty, Layer 5 has nothing to search the description for, so
             # every deferred job would come back unverifiable — dropped for the
             # run, never stored, and re-fetched on every run after it. Defer
             # only what can actually be settled.
@@ -523,7 +523,7 @@ def matches_rules(
             # names no place" — the branch above already refuses that case for
             # an empty field, so this is reached only when the field truly has
             # nothing in it. Settled here, permanently: see the reason's own
-            # comment for why this must not become a Layer 2 pending marker.
+            # comment for why this must not become a Layer 5 pending marker.
             reasons.append(_LOCATION_EMPTY_ADMITTED_REASON)
         else:
             return False, [

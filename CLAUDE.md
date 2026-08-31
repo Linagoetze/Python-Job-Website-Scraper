@@ -28,8 +28,8 @@ job_scraper/
   pipeline.py         Orchestration: fetch -> extract -> filter -> store
   http.py             requests + Playwright fetchers
   config_loader.py    Path defaults, YAML/JSON loading
-  filtering.py        Rules, location, language, title keywords
-  experience_filter.py Layer 1 (title) and Layer 2 (detail page)
+  filtering.py        Rules, location, title keywords
+  experience_filter.py Layer 3 (title) and Layer 5 (detail page)
   urlutil.py          URL normalisation and dedupe keys
   blocklist.py        Permanently rejected postings
   extractors/         One module per ATS or site, registry.py maps names

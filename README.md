@@ -16,26 +16,26 @@ filters:
 
 | Layer | Filter | Drops |
 | --- | --- | --- |
-| — | Rules | Postings outside your locations, or missing your keywords |
-| 1a | Title keywords | Role types you never want (`design`, `sales`, …) |
-| 1 | Seniority | Titles containing `Senior`, `Lead`, `Director`, … |
-| 1c | Non-English text | Postings written in another language |
-| 1b | Language-speaker | `"Dutch-speaking Account Manager"` and similar |
-| 1d | Blocklist | Postings you have already rejected by hand |
-| 2 | Detail page | Roles requiring 3+ years of experience, or a PhD |
+| 1 | Location and rules | Postings outside your locations, or missing your keywords |
+| 2 | Title keywords | Role types you never want (`design`, `sales`, …) |
+| 3 | Seniority | Titles containing `Senior`, `Lead`, `Director`, … |
+| 4 | Review status | Postings you have already rejected |
+| 5 | Detail page | Roles requiring 3+ years of experience, or a PhD |
 
-The table is in execution order. The layer *labels* are historical — they record
-the order the filters were added, not the order they run — which is why 1c comes
-before 1b.
+The numbers are each layer's position in execution order, and they are what the
+run summary and the drop log print. The log *stores* an older set of layer ids
+recording the order the filters were added, which is why `--layer` takes a name
+rather than one of these numbers — see
+[Why was something dropped?](#why-was-something-dropped).
 
-Layers 1a through 1d are pure text matching on data already fetched, so they are
-effectively free. **Layer 2 is the only one that costs an extra HTTP request per
+Layers 1 to 4 are pure text matching on data already fetched, so they are
+effectively free. **Layer 5 is the only one that costs an extra HTTP request per
 job** — it opens each posting's detail page to look for an experience
-requirement. Postings already stored in `jobs.csv` skip layer 2 entirely, since
-they passed it on an earlier run. Layer 1d runs before layer 2 for the same
-reason: blocklisted jobs should never cost a request.
+requirement. Postings already in the store skip layer 5 entirely, since they
+passed it on an earlier run. Layer 4 runs before layer 5 for the same reason: a
+posting you have already rejected should never cost a request.
 
-Layer 2 fails open — if a detail page can't be fetched or parsed, the job is kept
+Layer 5 fails open — if a detail page can't be fetched or parsed, the job is kept
 rather than silently dropped.
 
 ## Requirements
@@ -81,7 +81,8 @@ cp job_scraper/config/rules.example.json job_scraper/config/rules.json
 Both are gitignored, so your personal search never ends up in a commit. Edit them
 freely — see [Input files](#input-files).
 
-`requirements.txt` includes `pytest`, so this also sets you up to run the tests.
+`requirements.txt` includes `pytest` and `ruff`, so this also sets you up to run
+the tests and the linter.
 
 ## Running
 
@@ -101,7 +102,7 @@ Add `-v` for per-source debug logging, including how many jobs each filter layer
 dropped.
 
 The nine example sources take well under a minute. A larger config spends most of
-its time in the Playwright-rendered sources and the layer 2 detail fetches.
+its time in the Playwright-rendered sources and the layer 5 detail fetches.
 
 ### Options
 
@@ -112,38 +113,70 @@ its time in the Playwright-rendered sources and the layer 2 detail fetches.
 | `--title-keywords` | `job_scraper/config/title_exclude_keywords.csv` |
 | `--output-db` | `data/jobs.sqlite3` |
 | `--output-xlsx` | `data/jobs.xlsx` |
+| `--delist-after` | `2` |
+| `--allow-empty-delist` | off |
 | `--keep-drop-runs` | `10` |
+| `--score` | off |
+| `--show-all` | off |
 | `-v`, `--verbose` | off |
 
 Every default resolves relative to the package, not your shell's working
 directory, so the command works from anywhere. `--help` prints the resolved
 absolute paths.
 
+The four that are not paths:
+
+- `--delist-after` — how many consecutive successful runs a stored posting must
+  go unseen before it is marked delisted. See below.
+- `--allow-empty-delist` — a source that returns zero rows is treated as a
+  broken selector by default, so its stored postings are left alone. This flag
+  delists them instead. Off for a reason: a bad selector would otherwise erase
+  real history.
+- `--score` — force the optional LLM scoring stage on for this run, overriding
+  `scoring_enabled` in `rules.json`. It scores stored descriptions against your
+  own rubric in `job_scraper/config/profile.md` (copy `profile.example.md`),
+  reads the API key from `ANTHROPIC_API_KEY`, and costs API credits — the run
+  summary prints the estimate.
+- `--show-all` — put every posting on the xlsx review sheet, not just the
+  unreviewed ones.
+
 ### Reading the run summary
 
-Each run ends with a funnel printed to stderr. This is a real first run against
-the example config, starting from an empty table:
+Each run ends with a funnel printed to stderr. The layout below is the real
+thing — it was rendered by the summary code itself — but the counts are
+illustrative rather than from any one run, since a real store's numbers are
+personal. Yours will differ; the shape will not:
 
 ```
-Sources           9 / 9 processed  (0 skipped)
+Run summary
+────────────────────────────────────────────────────
+Sources           30 / 30 processed  (0 skipped)
 
-Jobs seen (all pages, dupes incl.)         435
-  − off-criteria (location/keywords)      −418   →    17 match your criteria
-  − title keyword                          −13
-  − senior-level title                      −0
-  − non-English text                        −0
-  − language-speaker                        −0   →     4 passed title filters
-  − blocklisted (rejected)                  −0   →     4 after blocklist
-      already in table (skipped)             0
-      new, detail-checked                    4
-  − needs 3+ yrs / PhD (0 PhD)              −0   →     4 new jobs kept
-────────────────────────────────────────────────
-New rows written                             4
-Marked delisted                              0
-Still listed this run                        4
-Unreviewed jobs in table                     4
-Exclusions logged                          431
+Jobs seen (all pages, dupes incl.)             8,000
+  L1  − off-criteria (location/keywords)      −2,057   → 5,943 match your criteria
+  L2  − title keyword                         −1,450
+  L3  − senior-level title                      −520   → 3,973 passed title filters
+  L4  − blocklisted (rejected)                −3,800   →   173 after blocklist
+        already in table (skipped)               140
+        stored, hybrid recheck                     3
+        new, detail-checked                       30
+  L5  − needs 3+ yrs / PhD (1 PhD)                −6
+  L5  − non-hybrid (distant city)                 −2
+  L5  − location unresolvable in the text         −5   →    20 new jobs kept
+────────────────────────────────────────────────────
+New rows written                                  20
+Marked delisted                                    4
+Still listed this run                            620
+Unreviewed jobs in table                          20
+Exclusions logged                              7,840
 ```
+
+The `L1`–`L5` gutter is the filter ladder from [How it works](#how-it-works);
+the three `L5` lines are the detail-page layer's three ways of dropping a job.
+Each `→` carries the running total forward, so you can read down the right-hand
+side to see what survived each stage. The three indented lines are not drops —
+they split the postings that reached layer 5 into the ones it could skip and the
+ones that cost a fetch.
 
 **"Still listed this run" and "Unreviewed jobs in table" are different questions,
 and they diverge.** The first counts every stored job this run found still on its
@@ -157,7 +190,9 @@ career page — filled or withdrawn — after it has been missing for
 `--delist-after` consecutive successful scrapes. Nothing is deleted: the row
 keeps its history and moves to the archive sheet. This only happens for sources
 that were scraped successfully; if a source errors out, or returns zero rows, its
-stored jobs are left alone rather than being wrongly treated as delisted.
+stored jobs are left alone rather than being wrongly treated as delisted — a
+zero-row source is usually a broken selector, and `--allow-empty-delist` is what
+overrides that judgement.
 
 **"Exclusions logged"** is how many postings the filters dropped this run, each
 recorded with the specific rule that dropped it. See below.
@@ -166,8 +201,8 @@ recorded with the specific rule that dropped it. See below.
 
 Filtering 8,000 postings down to a handful is only trustworthy if you can check
 what went in the bin. Every exclusion is recorded — the job, the layer, and the
-exact rule that fired, down to which keyword, which seniority term, which
-language code, or which of the location cases:
+exact rule that fired, down to which keyword, which seniority term, or which of
+the location cases:
 
 ```bash
 python -m job_scraper.drops
@@ -182,13 +217,68 @@ python -m job_scraper.drops --show-drops
 ```
 
 `--layer`, `--rule` and `--source` narrow either view; they match on a
-case-insensitive substring, so `--rule locations` and `--layer 2` both work.
-`--drops-csv PATH` writes the matching rows out for a spreadsheet.
+case-insensitive substring, so `--rule locations` and `--layer seniority` both
+work. `--drops-csv PATH` writes the matching rows out for a spreadsheet.
+
+`--layer` matches the layer ids the log *stores*, never the display numbers the
+reports print, so a bare number is refused rather than answered:
+
+```
+$ python -m job_scraper.drops --layer 3
+--layer 3 is a display number, not a stored layer name. Did you mean --layer seniority? (layer 3 is stored as '1-seniority')
+```
+
+`python -m job_scraper.drops --help` lists all five pairs. The location cases
+are named by their rule rather than their layer, so narrowing to those is
+`--rule locations`, not `--layer locations`.
 
 Reading the log costs nothing and neither does writing it: it is built entirely
 from titles and metadata already fetched during the run, and never opens a
 detail page. The log keeps the last `--keep-drop-runs` runs (default 10) so it
 cannot grow forever.
+
+### Would loosening that rule help?
+
+The drop log says what a rule *did*. Whether changing it would be an improvement
+is a different question, and guessing at it is how a filter ladder quietly stops
+matching what you want. Label a set of postings by hand and replay the ladder
+over them:
+
+```bash
+python -m job_scraper.eval
+```
+
+Read-only and entirely offline — it opens no detail page and makes no HTTP
+request of any kind. It reads a gold set from `data/curated/labels.csv` (columns
+`dedupe_key, title, company, source_name, location, label`, where `label` is
+`review` or `discard`; the file is yours to build and is gitignored), replays the
+same filter functions the pipeline uses, and
+reports precision, recall and F-beta (weighted towards recall by default), a
+confusion matrix, a per-layer table, and **every posting you wanted that a rule
+dropped**, named, with the rule that killed it.
+
+```bash
+python -m job_scraper.eval --compare job_scraper/config /path/to/edited/config
+```
+
+Scores two config directories and diffs them: which postings change side, which
+rule used to fire, and the precision/recall delta. The workflow is to copy
+`job_scraper/config/`, edit the copy, and compare — never to edit the live rules
+and hope you remember the old numbers.
+
+**The "rules that cost wanted jobs" table reports attribution, not marginal
+cost.** A rule is credited with a drop when it is the *first* one to match, so
+removing it changes nothing at all if something further down the ladder catches
+the same posting anyway. Measured properly — remove one keyword, re-run, diff —
+only 38 of the 112 keywords on the pre-prune list changed any verdict, and three
+of the ones the table named as expensive changed none. Two rules can also mask
+each other exactly, so that removing either one alone measures zero and removing
+both measures the real cost. **Never prune straight from the printed table.**
+Remove the rule, re-run, and diff.
+
+Layers 4 and 5 are not replayed — one is review history rather than a rule, the
+other needs a detail page the harness will not fetch — so the recall it reports
+is an upper bound.
 
 ## Input files
 
@@ -246,7 +336,7 @@ it.
 | `remote_keywords` | Words that mark a job as location-independent — see the caveat below. |
 | `non_place_locations` | Regions and bare country names that name no specific place — see below. Empty or absent = only the shapes recognised in code. |
 | `match_in` | `title_and_description` (title, snippet, department and location) or `title_only`. |
-| `seniority_filter_enabled` | Turns layer 1 on or off. |
+| `seniority_filter_enabled` | Turns layer 3 on or off. |
 | `seniority_exclude_titles` | Whole-word matches against the title. `"Lead"` will not match `"Leadership"`. |
 
 **Conditional locations.** For a city that is too far to commute to daily but
@@ -254,18 +344,19 @@ workable a couple of days a week, put it in `conditional_locations` instead of
 `locations`. Such a job is admitted only if a `conditional_location_keywords`
 term appears in its title *or its description*. Since extractors never see the
 description, the check runs in two stages: the location filter admits the job
-provisionally, and layer 2 — which already fetches the detail page — confirms it
+provisionally, and layer 5 — which already fetches the detail page — confirms it
 against the body text, so no extra HTTP requests are made. Unlike the rest of
-layer 2 this **fails closed**: if the description can't be fetched, the job is
-dropped, because a conditional location is out of range by default. Jobs from
-these cities are re-checked on every run rather than served from the table cache
-(the provisional marker isn't stored in `jobs.csv`).
+layer 5 this **fails closed**: if the description can't be fetched, the job is
+dropped, because a conditional location is out of range by default. A
+confirmation earned from a detail page is stored on the posting's own row, so a
+confirmed posting is skipped on later runs like any other stored one; only a
+conditional-city posting that has never been confirmed is re-checked.
 
 **Unresolvable locations.** Plenty of listing pages never name the duty station:
 the field says `2 Locations`, `Multiple locations`, `Home base - EMEA`, or just a
 country. That is not a city that failed to match your list — there is nothing on
 the page to match — so judging it against `locations` throws the job away
-unread. Such a field is instead admitted provisionally and settled by layer 2
+unread. Such a field is instead admitted provisionally and settled by layer 5
 against the fetched description, exactly as a conditional location is, and it
 **fails closed** in the same way: if the description names none of your
 `locations`, the job is dropped. The `"N locations"` and `"Multiple locations"`
@@ -305,56 +396,62 @@ tax,word
 
 Anything other than `prefix` is treated as `word`.
 
-### `data/curated/blocklist.csv`
+### `data/curated/blocklist.csv` — legacy, not read
 
-Postings you have permanently rejected. They are filtered out of every future run
-even though they are still live on the employer's site.
-
-```csv
-dedupe_key,source_name,company,title,detail_url
-```
-
-Only `dedupe_key` is read by the filter; the other four columns are there so the
-file can be reviewed by hand. **Delete a line to un-block that posting.**
-
-The blocklist is personal by nature, so this repo ships only a template:
+**Nothing reads this file any more.** A posting you have rejected is recorded on
+its own row in the store, and layer 4 keeps it out of every future run from
+there — see [Reviewing what it found](#reviewing-what-it-found). This CSV is how
+that was recorded before the store existed, and it is kept only so an existing
+one can be carried across, once:
 
 ```bash
-cp data/curated/blocklist.example.csv data/curated/blocklist.csv
+python -m job_scraper.tools.import_blocklist
 ```
 
-That step is optional — with no blocklist present the filter is simply a no-op,
-and the maintenance commands below create the file when they first need it.
+The routine that wrote it blocklisted *every* posting it surfaced, so a row here
+means "already seen" rather than "rejected", and that is the status each row is
+imported as. The file is only ever read, never modified, and re-running the
+import changes nothing once the rows are in. With no such file, skip this
+entirely — a fresh setup has nothing to import.
 
 ## Output files
 
-Everything under `data/` is generated and gitignored. Deleting it costs you the
-run history and the dedupe state, nothing else.
+Everything under `data/` is generated and gitignored, apart from `data/curated/`,
+which is hand-maintained. Deleting `data/curated/` costs you nothing the scraper
+needs; deleting the rest costs you the run history, the dedupe state and every
+review decision you have recorded.
+
+### `data/jobs.sqlite3`
+
+The store, and the one file here that nothing can regenerate. It holds one row
+per posting, keyed on a canonical form of its URL, plus the run history, each
+source's health per run, the drop log, and the row numbers of the last export.
+
+Nothing is ever deleted from it. A posting you reject keeps its row and its
+history, and a posting that has disappeared from its career page is marked
+`delisted` rather than removed — that is what lets the archive sheet below show
+you everything the scraper has ever seen.
 
 ### `data/jobs.csv`
 
-The store. Rows accumulate across runs and are deduplicated by canonical URL.
-
-```csv
-source_name,title,company,location,detail_hyperlink,apply_hyperlink,run_id
-```
-
-`detail_hyperlink` and `apply_hyperlink` hold `=HYPERLINK("…")` formulas so the
-file is clickable when opened directly in Excel. `run_id` increments by one each
-run, so it doubles as a "when did this first show up" marker. The file is sorted
-by `source_name`, newest first within each source.
+Frozen. This is the pre-SQLite store, left behind by the cutover; nothing reads
+or writes it any more. If you have one, it is an archive of what the scraper
+knew before the migration, and it is safe to delete once you are satisfied the
+migration carried everything across. A fresh setup never creates it.
 
 ### `data/jobs.xlsx`
 
 The one you actually read. Two sheets:
 
-- **Jobs** — the postings you have not reviewed yet, and nothing else. Six
-  columns: `#`, `source_name`, `title`, `location`, `detail_url`, `apply_url`,
-  with a frozen header row, real clickable links, and rows from the **two most
-  recent runs filled light green** so new postings stand out. The `#` column is
-  the row number the review commands take (see below); it is the same number
-  Excel shows down the left-hand side, and unlike Excel's it stays with its
-  posting if you sort the table.
+- **Jobs** — the postings you have not reviewed yet, and nothing else:
+  `#`, `source_name`, `title`, `location`, `score`, `score_reasoning`,
+  `score_flags`, `detail_url` and `apply_url`, with a frozen header row, real
+  clickable links, and rows from the **two most recent runs filled light green**
+  so new postings stand out. The three `score` columns stay empty unless you
+  run the optional scoring stage; when they are filled, the sheet is sorted
+  best score first. The `#` column is the row number the review commands take
+  (see below); it is the same number Excel shows down the left-hand side, and
+  unlike Excel's it stays with its posting if you sort the table.
 - **Archive** — every posting ever stored, whatever its status, with
   `first_seen` and `last_seen`. Nothing is hidden from you: a posting that has
   left the Jobs sheet is here.
@@ -415,20 +512,33 @@ every posting on the Jobs sheet.
 
 ## Maintenance commands
 
+**These two take no flags, and they parse nothing.** Unlike every other command
+here, `retrofilter` and `blocklist_all` have no argument parser, so anything you
+type after the module name — `--help` included — is ignored and the command runs
+immediately against `data/jobs.sqlite3`. Neither deletes a row, but both change
+review state, so do not reach for `--help` to find out what they do. This page
+is the documentation.
+
 ```bash
 python -m job_scraper.tools.retrofilter
 ```
 
-Re-applies the current filters to the existing `jobs.csv` without scraping. Run
-this after editing `rules.json` or `title_exclude_keywords.csv` to clear out rows
-that no longer qualify.
+Re-applies the current filters to the unreviewed postings already in the store,
+without scraping. Run it after editing `rules.json` or
+`title_exclude_keywords.csv` to clear out rows that no longer qualify. Failing
+rows are marked `rejected`, never deleted, and postings you have already
+reviewed are left alone — a rule change must not silently rewrite a decision you
+made. `jobs.xlsx` is regenerated afterwards.
 
 ```bash
 python -m job_scraper.tools.blocklist_all
 ```
 
 **Deprecated** — this is `python -m job_scraper.review --seen-all` under an
-older name. Still works, kept until the new review flow is confirmed.
+older name: it marks every unreviewed posting as seen and regenerates
+`jobs.xlsx`, which clears the review sheet. Still works, kept until the new
+review flow is confirmed. Prefer `review --seen-all`, which at least refuses
+arguments it does not understand.
 
 ```bash
 bash scripts/scrape_and_blocklist.sh
@@ -482,7 +592,7 @@ registry line.
 python -m pytest -q
 ```
 
-81 tests, no network access required.
+414 tests, no network access required.
 
 ## Scraping responsibly
 
@@ -493,7 +603,7 @@ site:
 - **Edit the User-Agent** in `job_scraper/http.py` — it ships as a placeholder
   (`contact=you@example.com`). Putting a real contact address there is what lets
   an administrator reach you instead of just blocking you.
-- Note that layer 2 fetches detail pages with 10 parallel workers
+- Note that layer 5 fetches detail pages with 10 parallel workers
   (`_DETAIL_WORKERS` in `job_scraper/experience_filter.py`). Lower it if you add a
   lot of sources or a host starts rate-limiting you.
 - Run it on a schedule measured in hours, not minutes. Job postings do not change
@@ -503,14 +613,14 @@ site:
 
 | Path | What's in it |
 | --- | --- |
-| `job_scraper/` | `run.py` (CLI), `pipeline.py` (the run), the filter modules, `http.py`, `urlutil.py` |
-| `job_scraper/config/` | your `sources.yaml` and `rules.json` (both gitignored, created from the `.example` files), plus `title_exclude_keywords.csv` |
+| `job_scraper/` | `run.py` (CLI), `pipeline.py` (the run), the filter modules, `http.py`, `urlutil.py`, plus the commands you run between scrapes: `review.py`, `drops.py`, `eval.py`, and `scoring.py` for the optional LLM stage |
+| `job_scraper/config/` | your `sources.yaml`, `rules.json` and (for scoring) `profile.md` — all gitignored, created from the `.example` files — plus `title_exclude_keywords.csv` |
 | `job_scraper/extractors/` | one module per site or ATS platform, wired up in `registry.py` |
-| `job_scraper/storage/` | CSV store (dedupe, schema migration) and the xlsx writer |
+| `job_scraper/storage/` | the SQLite job store (`db.py`) and the xlsx writer |
 | `job_scraper/tools/` | maintenance commands |
-| `data/` | generated output — safe to delete |
-| `data/curated/` | hand-maintained, not regenerable: your `blocklist.csv` (gitignored; `blocklist.example.csv` is the template) |
-| `scripts/` | shell automation |
+| `data/` | generated output: `jobs.sqlite3` (the store), `jobs.xlsx`, `jobs_sources.csv`. All regenerable from a scrape except the store's own review history |
+| `data/curated/` | hand-maintained, not regenerable and all gitignored: the `labels.csv` gold set the eval harness reads, and the legacy `blocklist.csv` (`blocklist.example.csv` is the tracked template) |
+| `scripts/` | the deprecated scrape-and-blocklist wrapper, and the fixture-capture helper the tests are built from |
 | `tests/` | pytest suite |
 
 ## License

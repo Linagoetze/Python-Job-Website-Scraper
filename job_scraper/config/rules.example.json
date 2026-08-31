@@ -20,7 +20,7 @@
 
   "conditional_location_keywords": ["hybrid"],
 
-  "_non_place_locations_comment": "Terms that name no specific place. A location field made only of these (\"Home base - EMEA\", a bare country, \"2 Locations\") is not judged against `locations` at all: it passes Layer 0 provisionally and Layer 2 settles it against the job description, dropping it if no listed location is named there. Matched whole-word and casefolded; extend it from your own drop log.",
+  "_non_place_locations_comment": "Terms that name no specific place. A location field made only of these (\"Home base - EMEA\", a bare country, \"2 Locations\") is not judged against `locations` at all: it passes Layer 1 provisionally and Layer 5 settles it against the job description, dropping it if no listed location is named there. Matched whole-word and casefolded; extend it from your own drop log.",
   "non_place_locations": [
     "home base", "EMEA", "APAC", "Americas", "Worldwide",
     "Global", "International", "Europe", "Africa", "Asia",

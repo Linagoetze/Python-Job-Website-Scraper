@@ -1,8 +1,8 @@
 """Read the drop log: what each filter layer excluded, and which rule fired.
 
-Every filter exclusion used to be invisible. Layer 0 called `continue` on a
-failing job and wrote nothing; layers 1a to 1c returned excluded lists that
-were counted for the run summary and then discarded. So a false negative — a
+Every filter exclusion used to be invisible. Layer 1 called `continue` on a
+failing job and wrote nothing; the layers after it returned excluded lists
+that were counted for the run summary and then discarded. So a false negative — a
 job worth seeing that a rule quietly ate — could not be found at all, and a
 rule change could not be shown to have helped.
 
@@ -139,8 +139,9 @@ def layer_display(stored_id: str) -> str:
     Handles both edge cases a raw stored id can carry: a `refilter/` prefix
     (WP8a's re-filter pass over stored jobs, same layer, different population)
     is kept visible rather than swallowed, and a stored id absent from
-    `LAYERS` — one of WP8's retired layers, still present in ~49,000 historical
-    rows — renders as retired instead of raising, so old rows stay readable.
+    `LAYERS` — one of WP8's retired layers, still present in 327 historical
+    rows (~49,000 is the whole table, every id included) — renders as retired
+    instead of raising, so old rows stay readable.
     """
     is_refilter = stored_id.startswith(REFILTER_PREFIX)
     base_id = stored_id[len(REFILTER_PREFIX) :] if is_refilter else stored_id
