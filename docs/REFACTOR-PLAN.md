@@ -4198,10 +4198,18 @@ archive sheet still holds every posting.
 **What the store looks like now**, read-only: 370 rejected, 212 delisted, 190
 seen, 2 shortlisted, 0 new, `export_rows` empty.
 
-**Reconstruction, if the owner wants it.** Nothing records *when* a row became
-`seen`, so the flipped set cannot be recovered exactly. The best available
-proxy is `first_seen`: 117 of the 190 seen rows were first stored by today's
-runs 12, 13 and 14, and those are the likely unreviewed population —
+**Recovered and closed (2026-08-31). Nothing below is a to-do.** The owner
+backed up the store, flipped the 117 rows identified here back to `new`,
+reviewed them and rejected them. All 222 postings first stored on 2026-08-27
+are now `rejected` (220) or `delisted` (2), with none left `seen`; run 15 has
+since scraped normally. **The table below is a record of how the set was
+identified, not an instruction to act on** — re-running its query against the
+store today matches nothing, because the rows it describes have moved on.
+
+**How the set was reconstructed.** Nothing records *when* a row became
+`seen`, so the flipped set could not be recovered exactly. The best available
+proxy was `first_seen`: 117 of the 190 seen rows were first stored by that
+day's runs 12, 13 and 14, and those were the likely unreviewed population —
 
 | first_seen | run | rows |
 |---|---|---|
@@ -4210,12 +4218,12 @@ runs 12, 13 and 14, and those are the likely unreviewed population —
 | 2026-08-27T06:40:12Z | 13/14 | 106 |
 
 The remaining 73 seen rows were first stored on 2026-08-24 or earlier and were
-most likely already reviewed. Flipping those 117 back to `new` errs in the safe
-direction — the worst case is being shown a posting twice — but it is the
-owner's call and nothing here has been changed. `tmutil listlocalsnapshots /`
-shows only OS-update snapshots, so there is no local snapshot to restore from; a
-Time Machine backup on an external disk, if one exists, would be exact where
-this is a guess.
+most likely already reviewed; 57 of them appear in the pre-cutover
+`blocklist.csv`, which corroborates the boundary from a second direction. There
+was no backup to check against: `tmutil destinationinfo` reported no
+destinations configured, there were no local APFS snapshots beyond OS updates,
+and no other copy of the store or the spreadsheet existed on the machine. The
+reconstruction was therefore the only route, and it is the one that was taken.
 
 **The lesson, and it is not "be careful".** `--help` is safe on every other
 command in this project because they all use argparse. It is unsafe on exactly
