@@ -397,11 +397,19 @@ Record any decision a future session would otherwise have to re-derive.
   wonders why the polite-looking flag is off, this is why — it is the less polite
   setting here, not the more.
 
-- **A stale cached listing cannot cost a stored job.** It returns the previous
-  page, so stored jobs stay sighted and accrue no delisting misses. The worst
-  case is a new posting found up to one TTL late. This is what makes caching
-  compatible with priority 1, and it is the argument to re-check if anyone
-  lengthens the TTL or starts caching rendered pages.
+- **A cached listing cannot cost a stored job.** It returns the previous page,
+  so stored jobs stay sighted and accrue no delisting misses. The worst case is
+  a new posting found up to one TTL late. This is what makes caching compatible
+  with priority 1, and it is the argument to re-check if anyone lengthens the
+  TTL or starts caching rendered pages.
+
+- **`stale_if_error` is off, and stays off** (WP9, the owner's call). Serving the
+  previous copy when a site errors keeps a run going, but it reports a successful
+  scrape of an old page into `source_health` — priority 2 wants the broken site
+  to fail, and a WARNING is not a failure. The flaky-500s case it was proposed
+  for belongs to `fetch_text`'s 5xx retry, which is still there and is pinned by
+  the same test. It will look like free resilience to a future session; it is
+  not, and this is the entry saying so.
 
 ---
 
@@ -4416,12 +4424,27 @@ off costs no conditional requests: requests-cache still sends `If-None-Match` /
 304 as a hit. Both directions are pinned by tests against a local server that
 records the headers it was sent.
 
-**`stale_if_error` is on**, which is the standing answer to the impactpool 500s:
-a cached copy beats a 500. It can never invent data or manufacture an empty
-listing — it returns a page that really was served — and every stale service
-logs at WARNING naming the URL, so it cannot read as a clean fetch.
+**`stale_if_error` is off** — turned on in this package, then turned off at the
+owner's instruction the same session, and the reasoning is worth keeping.
 
-**A stale cache cannot lose a job.** It returns the *previous* listing, so stored
+It hands back the previous copy when a site errors. The argument for it was the
+impactpool 500s: a cached page beats a failed source, it can never invent data,
+and every stale service logged at WARNING. The argument against it won: a run
+that serves an hours-old page still reports a *successful* scrape of that source
+into `source_health`, and priority 2 says a broken site must fail rather than be
+papered over. A warning is not the same as a failure.
+
+Nothing is lost by removing it. The flaky-500s case is handled where it belongs,
+by `fetch_text`'s existing 5xx retry ladder (five attempts, backing off 2s to
+8s); what that retry cannot rescue is a genuine outage, and a genuine outage is
+exactly the thing the owner wants to see. A test pins it: a cached copy exists,
+is findable, and the 500 still raises — and it also asserts the retry ran, so a
+future session cannot delete the retry believing the cache covers it.
+
+**Do not re-propose it.** It looks like free resilience and it is not; it buys
+uptime with the honesty of `source_health`.
+
+**A cache hit cannot lose a job.** It returns the *previous* listing, so stored
 jobs stay sighted and accrue no delisting misses; the worst it can do is delay
 discovery of a new posting by up to the TTL, or keep a withdrawn one alive one
 run longer.
@@ -4429,7 +4452,7 @@ run longer.
 **Escape hatches:** `--no-cache` bypasses it entirely (a run started with it
 never constructs a `CachedSession`), `--cache-ttl SECONDS` retunes it. The cache
 is never silent: every run logs `HTTP cache: N hit, N revalidated (304),
-N fetched, N stale-on-error`. Expired rows are pruned on the way out, which is
+N fetched`. Expired rows are pruned on the way out, which is
 what bounds the file — 12.5 MB after a full cold run.
 
 **Rendered pages are not cached, by design.** The cache wraps `fetch_text`;
@@ -4457,7 +4480,8 @@ serves the cache tests and a real headless Chromium drives the pool tests
 (mocking Playwright would assert nothing about the threading rules that are the
 whole subject). Covers: no caching without the block; a hit inside the TTL
 costing zero requests; revalidation carrying the stored ETag; the cache
-surviving between blocks; stale-on-error plus its warning; per-block stats; the
+surviving between blocks; a failing site raising even with a cached copy to
+hand; a zero TTL revalidating rather than caching nothing; per-block stats; the
 TLS adapter and the session being restored; the filename; one browser serving
 many pages; nothing launched when nothing is rendered; eight concurrent callers
 bounded by four threads; errors reaching the caller; a failure not poisoning the

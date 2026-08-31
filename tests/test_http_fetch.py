@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 import pytest
+import requests
 
 from job_scraper import http as http_mod
 
@@ -134,19 +135,35 @@ def test_cache_survives_the_block_and_is_reused_by_the_next_run(server, tmp_path
     assert stats.hits == 1
 
 
-def test_a_failing_site_is_covered_by_the_stale_copy_and_says_so(server, tmp_path, caplog):
-    """stale_if_error must never look like a clean fetch — priority 2, fail loudly."""
+def test_a_failing_site_still_fails_even_with_a_cached_copy_to_hand(
+    server, tmp_path, monkeypatch
+):
+    """Priority 2. The cache must never stand in for a site that is down.
+
+    requests-cache will happily serve the previous copy when the origin errors
+    (`stale_if_error`), which keeps a run going at the cost of reporting a
+    successful scrape of a page that is minutes old. That is off, and this is the
+    test that says so: a cached copy exists, is findable, and is *not* used.
+    """
+    # Two attempts rather than the real five: the retry ladder sleeps 2s, 4s, 6s,
+    # 8s between them, and this test is about what happens once they run out.
+    monkeypatch.setattr(http_mod, "_RETRY_ATTEMPTS", 2)
+
     path = tmp_path / "c.sqlite3"
     with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
         http_mod.fetch_text(server.url)
     time.sleep(_BRIEF_TTL + 0.2)
 
     server.status = 500
-    with caplog.at_level(logging.WARNING), http_mod.http_cache(path=path, ttl=_BRIEF_TTL) as stats:
-        assert http_mod.fetch_text(server.url) == server.body
+    attempts_before = len(server.requests)
+    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
+        with pytest.raises(requests.HTTPError) as exc:
+            http_mod.fetch_text(server.url)
 
-    assert stats.stale == 1
-    assert "stale cached copy" in caplog.text
+    assert exc.value.response.status_code == 500
+    assert len(server.requests) - attempts_before == 2, (
+        "the 5xx retry must still run — it, not the cache, is what covers a flaky 500"
+    )
 
 
 def test_stats_are_scoped_to_one_block(server, tmp_path):
@@ -182,8 +199,7 @@ def test_a_zero_ttl_revalidates_every_page_rather_than_caching_none(server, tmp_
     assert len(server.requests) == 3, "every run goes to the site"
     assert [r[1] for r in server.requests] == [None, server.etag, server.etag]
     assert (stats.misses, stats.revalidated) == (1, 2)
-    assert stats.stale == 0, "the site never failed"
-    assert "stale cached copy" not in caplog.text
+    assert "stale" not in caplog.text, "a healthy 304 is not a site failure"
 
 
 def test_the_cache_file_keeps_the_name_it_was_given(server, tmp_path):

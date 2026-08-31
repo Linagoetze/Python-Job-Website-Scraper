@@ -78,12 +78,11 @@ class CacheStats:
     hits: int = 0  # served from disk, no network at all
     revalidated: int = 0  # conditional request, server answered 304
     misses: int = 0  # fetched in full
-    stale: int = 0  # server errored, a stale copy was served instead
 
     def summary(self) -> str:
         return (
             f"HTTP cache: {self.hits} hit, {self.revalidated} revalidated (304), "
-            f"{self.misses} fetched, {self.stale} stale-on-error"
+            f"{self.misses} fetched"
         )
 
 
@@ -94,9 +93,7 @@ _STATS_LOCK = threading.Lock()
 def cache_stats() -> CacheStats:
     """A snapshot of this run's cache outcomes."""
     with _STATS_LOCK:
-        return CacheStats(
-            _CACHE_STATS.hits, _CACHE_STATS.revalidated, _CACHE_STATS.misses, _CACHE_STATS.stale
-        )
+        return CacheStats(_CACHE_STATS.hits, _CACHE_STATS.revalidated, _CACHE_STATS.misses)
 
 
 def default_http_cache_path() -> Path:
@@ -127,10 +124,14 @@ def _build_cached_session(path: Path, ttl: int) -> requests.Session:
         backend="sqlite",
         expire_after=ttl,
         cache_control=False,
-        # A cached copy beats a 500. impactpool.org intermittently 500s on pages
-        # that succeed moments later; this covers that without inventing data,
-        # and every stale service is logged at WARNING below.
-        stale_if_error=True,
+        # stale_if_error stays OFF, deliberately. It would hand back the previous
+        # copy when a site errors, which keeps a run going but reports a
+        # successful scrape of a page that is minutes or hours old — priority 2
+        # says a broken site must fail, not be papered over. impactpool.org's
+        # intermittent 500s are already handled where they should be, by
+        # fetch_text's 5xx retry; what that retry cannot rescue is a genuine
+        # outage, and a genuine outage is exactly what the owner wants to see.
+        stale_if_error=False,
     )
     session.mount("https://", _TLSAdapter())
     return session
@@ -157,8 +158,7 @@ def http_cache(
     cached = _build_cached_session(path, ttl)
 
     with _STATS_LOCK:
-        _CACHE_STATS.hits = _CACHE_STATS.revalidated = 0
-        _CACHE_STATS.misses = _CACHE_STATS.stale = 0
+        _CACHE_STATS.hits = _CACHE_STATS.revalidated = _CACHE_STATS.misses = 0
     with _SESSION_LOCK:
         previous, _SESSION = _SESSION, cached
     try:
@@ -174,35 +174,26 @@ def http_cache(
 
 
 def _record_cache_outcome(url: str, response: requests.Response) -> None:
-    """Count, and where it matters announce, what the cache did with one response."""
+    """Count what the cache did with one response.
+
+    Note what is *not* here: a stale category. With stale_if_error off, a page
+    the cache hands back is one the site either served this run or confirmed
+    with a 304 this run. A site that is down produces an exception, not a row.
+    """
+    del url  # kept in the signature so a future outcome can be logged per URL
     from_cache = bool(getattr(response, "from_cache", False))
-    expired = bool(getattr(response, "is_expired", False))
     revalidated = bool(getattr(response, "revalidated", False))
 
-    # `revalidated` is tested before `is_expired`, and the order is load-bearing.
-    # A 304 refreshes the entry and *then* re-applies the TTL, so at a very short
-    # one (--cache-ttl 0 above all) a perfectly healthy revalidation comes back
-    # already expired again. Read the other way round, every such page is
-    # announced as "the site failed this run", which is both wrong and the loud
-    # kind of wrong. Only a copy served without any successful revalidation
-    # behind it is stale.
     with _STATS_LOCK:
         if not from_cache:
             _CACHE_STATS.misses += 1
         elif revalidated:
+            # A 304. Deliberately not read off `is_expired`: revalidating
+            # refreshes the entry and then re-applies the TTL, so at a very short
+            # one a perfectly healthy revalidation still looks expired.
             _CACHE_STATS.revalidated += 1
-        elif expired:
-            # stale_if_error fired: the site failed and a previous copy stood in.
-            _CACHE_STATS.stale += 1
         else:
             _CACHE_STATS.hits += 1
-
-    if from_cache and expired and not revalidated:
-        logger.warning(
-            "Serving a stale cached copy of %s: the site failed this run. "
-            "The rows extracted from it are as old as that copy.",
-            url,
-        )
 
 
 def _fetch_text_curl(url: str, *, timeout: int, user_agent: str) -> str:
@@ -244,7 +235,8 @@ def fetch_text(
 
     Inside an `http_cache()` block this may be answered from disk, or with a
     conditional request the site closes with a 304, in which case no body
-    crosses the network. Outside one it is a plain request, as before.
+    crosses the network. Outside one it is a plain request, as before. Either
+    way a site that fails still raises: the cache never stands in for an error.
     """
     headers = {"User-Agent": user_agent}
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
