@@ -1,9 +1,13 @@
 """HTTP fetch helpers.
 
-`render_pool()` keeps one headless Chromium alive per render thread for a whole
-run, rather than launching and tearing one down around every page. It is opened
-by the pipeline for the length of a run and is optional: call `fetch_rendered`
-outside one and it behaves exactly as it did before WP9.
+Two shared, run-scoped resources live here. Both are opened by the pipeline for
+the length of a run and both are optional: call the fetchers without them and
+they behave exactly as they did before WP9.
+
+* `render_pool()` keeps one headless Chromium alive per render thread for the
+  whole run, rather than launching and tearing one down around every page.
+* `http_cache()` puts a short-TTL, ETag-aware cache in front of `fetch_text`,
+  so a re-run inside the TTL costs no network round trip at all.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
 import certifi
 import requests
@@ -55,11 +60,150 @@ def _session() -> requests.Session:
     return s
 
 
-_SESSION = _session()
+# ---------------------------------------------------------------------------
+# Response cache (WP9)
+# ---------------------------------------------------------------------------
+
+# Short by design. The cache exists so that the runs the owner fires in quick
+# succession — add a source, tweak rules.json, run again — do not re-download
+# fifty career pages each time. A scheduled daily run is outside this window and
+# revalidates against the site as usual.
+DEFAULT_CACHE_TTL = 30 * 60  # seconds
+
+
+@dataclass
+class CacheStats:
+    """What the cache did this run, so its effect is never invisible in a log."""
+
+    hits: int = 0  # served from disk, no network at all
+    revalidated: int = 0  # conditional request, server answered 304
+    misses: int = 0  # fetched in full
+    stale: int = 0  # server errored, a stale copy was served instead
+
+    def summary(self) -> str:
+        return (
+            f"HTTP cache: {self.hits} hit, {self.revalidated} revalidated (304), "
+            f"{self.misses} fetched, {self.stale} stale-on-error"
+        )
+
+
+_CACHE_STATS = CacheStats()
+_STATS_LOCK = threading.Lock()
+
+
+def cache_stats() -> CacheStats:
+    """A snapshot of this run's cache outcomes."""
+    with _STATS_LOCK:
+        return CacheStats(
+            _CACHE_STATS.hits, _CACHE_STATS.revalidated, _CACHE_STATS.misses, _CACHE_STATS.stale
+        )
+
+
+def default_http_cache_path() -> Path:
+    """Where the response cache lives. Named `.sqlite3` so `.gitignore` already covers it."""
+    from job_scraper.config_loader import default_data_dir  # local: keep import-time deps thin
+
+    return default_data_dir() / "http_cache.sqlite3"
+
+
+def _build_cached_session(path: Path, ttl: int) -> requests.Session:
+    from requests_cache import CachedSession
+
+    # cache_control is deliberately *off*. Six of the fourteen listing pages
+    # sampled in WP9 answer `no-cache, no-store`, which is a blanket CDN default
+    # aimed at browsers holding sensitive pages, not a statement about a public
+    # jobs list. Honouring it would mean re-downloading those six on every run —
+    # i.e. more load on somebody else's server, not less, which is the wrong way
+    # round for priority 3. Our own short TTL governs freshness instead.
+    #
+    # Turning it off does not cost conditional requests: requests-cache still
+    # sends If-None-Match / If-Modified-Since from a stored ETag or
+    # Last-Modified once the TTL lapses, and counts the 304 as a hit.
+    session = CachedSession(
+        # The path verbatim, suffix and all: requests-cache appends `.sqlite`
+        # to an extension-less name, which would land the file outside
+        # `.gitignore`'s `data/*.sqlite3` and commit somebody's career pages.
+        cache_name=str(path),
+        backend="sqlite",
+        expire_after=ttl,
+        cache_control=False,
+        # A cached copy beats a 500. impactpool.org intermittently 500s on pages
+        # that succeed moments later; this covers that without inventing data,
+        # and every stale service is logged at WARNING below.
+        stale_if_error=True,
+    )
+    session.mount("https://", _TLSAdapter())
+    return session
+
+
+_SESSION_LOCK = threading.Lock()
+_SESSION: requests.Session = _session()
+
+
+@contextmanager
+def http_cache(
+    path: Path | None = None, ttl: int = DEFAULT_CACHE_TTL
+) -> Iterator[CacheStats]:
+    """Route `fetch_text` through an on-disk response cache for the duration of the block.
+
+    Yields the live `CacheStats` so the caller can report what the cache did.
+    Expired rows are pruned on the way out, which is what keeps the file from
+    growing without bound across runs.
+    """
+    global _SESSION
+
+    path = path or default_http_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cached = _build_cached_session(path, ttl)
+
+    with _STATS_LOCK:
+        _CACHE_STATS.hits = _CACHE_STATS.revalidated = 0
+        _CACHE_STATS.misses = _CACHE_STATS.stale = 0
+    with _SESSION_LOCK:
+        previous, _SESSION = _SESSION, cached
+    try:
+        yield _CACHE_STATS
+    finally:
+        with _SESSION_LOCK:
+            _SESSION = previous
+        try:
+            cached.cache.delete(expired=True)  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover - housekeeping must never fail a run
+            logger.debug("Could not prune the response cache: %s", exc)
+        cached.close()
+
+
+def _record_cache_outcome(url: str, response: requests.Response) -> None:
+    """Count, and where it matters announce, what the cache did with one response."""
+    from_cache = bool(getattr(response, "from_cache", False))
+    expired = bool(getattr(response, "is_expired", False))
+    revalidated = bool(getattr(response, "revalidated", False))
+
+    with _STATS_LOCK:
+        if not from_cache:
+            _CACHE_STATS.misses += 1
+        elif expired:
+            # stale_if_error fired: the site failed and a previous copy stood in.
+            _CACHE_STATS.stale += 1
+        elif revalidated:
+            _CACHE_STATS.revalidated += 1
+        else:
+            _CACHE_STATS.hits += 1
+
+    if from_cache and expired:
+        logger.warning(
+            "Serving a stale cached copy of %s: the site failed this run. "
+            "The rows extracted from it are as old as that copy.",
+            url,
+        )
 
 
 def _fetch_text_curl(url: str, *, timeout: int, user_agent: str) -> str:
-    """Fallback when the Python SSL stack cannot negotiate with the host (e.g. old LibreSSL)."""
+    """Fallback when the Python SSL stack cannot negotiate with the host (e.g. old LibreSSL).
+
+    Deliberately uncached: it is the rare escape hatch, not a path worth teaching
+    about ETags.
+    """
     r = subprocess.run(
         [
             "curl",
@@ -90,12 +234,19 @@ def fetch_text(
 
     Transient 5xx responses are retried (some hosts, e.g. impactpool.org,
     intermittently 500 on pages that succeed moments later).
+
+    Inside an `http_cache()` block this may be answered from disk, or with a
+    conditional request the site closes with a 304, in which case no body
+    crosses the network. Outside one it is a plain request, as before.
     """
     headers = {"User-Agent": user_agent}
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        with _SESSION_LOCK:
+            session = _SESSION
         try:
-            r = _SESSION.get(url, headers=headers, timeout=timeout, verify=certifi.where())
+            r = session.get(url, headers=headers, timeout=timeout, verify=certifi.where())
             r.raise_for_status()
+            _record_cache_outcome(url, r)
             r.encoding = r.apparent_encoding or "utf-8"
             return r.text
         except (SSLError, requests.exceptions.Timeout):

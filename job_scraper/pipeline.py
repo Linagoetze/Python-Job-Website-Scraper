@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,7 +40,14 @@ from job_scraper.filtering import (
     load_title_exclude_keywords,
     matches_rules,
 )
-from job_scraper.http import fetch_rendered, fetch_text, render_pool
+from job_scraper.http import (
+    DEFAULT_CACHE_TTL,
+    cache_stats,
+    fetch_rendered,
+    fetch_text,
+    http_cache,
+    render_pool,
+)
 from job_scraper.storage.db import JobStore, dedupe_key_for_job, job_to_row, utc_now_iso
 
 logger = logging.getLogger(__name__)
@@ -162,23 +170,34 @@ def run_pipeline(
     allow_empty_delist: bool = False,
     delist_after: int = DEFAULT_DELIST_AFTER,
     keep_drop_runs: int = DEFAULT_KEEP_DROP_RUNS,
+    use_cache: bool = True,
+    cache_ttl: int = DEFAULT_CACHE_TTL,
 ) -> RunSummary:
-    """Run one full scrape, holding the run's render pool open for its whole length.
+    """Run one full scrape, holding the run's two shared fetch resources open.
 
-    The pool is scoped to exactly this call: rendered pages cost a browser
-    context rather than a browser process, and the browsers are closed on the
-    way out.
+    Both come from WP9 and both are scoped to exactly this call: the render pool
+    keeps a handful of browsers alive instead of one per page, and the response
+    cache spares the sites a re-download when a run is repeated inside the TTL.
+    `use_cache=False` is the owner's `--no-cache`, for when a run must see the
+    sites as they are this second.
     """
-    with render_pool():
-        return _run_pipeline(
-            sources_path=sources_path,
-            rules_path=rules_path,
-            out_db_path=out_db_path,
-            title_keywords_path=title_keywords_path,
-            allow_empty_delist=allow_empty_delist,
-            delist_after=delist_after,
-            keep_drop_runs=keep_drop_runs,
-        )
+    with ExitStack() as stack:
+        stack.enter_context(render_pool())
+        if use_cache:
+            stack.enter_context(http_cache(ttl=cache_ttl))
+        try:
+            return _run_pipeline(
+                sources_path=sources_path,
+                rules_path=rules_path,
+                out_db_path=out_db_path,
+                title_keywords_path=title_keywords_path,
+                allow_empty_delist=allow_empty_delist,
+                delist_after=delist_after,
+                keep_drop_runs=keep_drop_runs,
+            )
+        finally:
+            if use_cache:
+                logger.info("%s", cache_stats().summary())
 
 
 def _run_pipeline(

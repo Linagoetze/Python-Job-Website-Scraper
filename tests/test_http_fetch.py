@@ -1,15 +1,18 @@
-"""WP9: the render pool.
+"""WP9: the response cache and the render pool.
 
-No network: a `http.server` bound to localhost serves the pages, and a real
-headless Chromium renders them. The thing under test is Playwright's threading
-behaviour, and a mock would assert nothing about it.
+No network: every test serves from a `http.server` bound to localhost, so the
+counts below are exact rather than best-effort. The render-pool tests drive a
+real headless Chromium against that same server — the thing under test is
+Playwright's threading behaviour, and a mock would assert nothing about it.
 """
 
 from __future__ import annotations
 
 import http.server
+import logging
 import socketserver
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -76,7 +79,120 @@ def server() -> Iterator[_Server]:
         srv.server_close()
 
 
+# ---------------------------------------------------------------------------
+# Response cache
+# ---------------------------------------------------------------------------
 
+
+def test_no_cache_block_means_every_call_hits_the_site(server, tmp_path):
+    """The default path is unchanged: without http_cache(), nothing is stored."""
+    for _ in range(3):
+        assert "one" in http_mod.fetch_text(server.url)
+    assert len(server.requests) == 3
+
+
+def test_second_fetch_inside_the_ttl_costs_no_request(server, tmp_path):
+    with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=300) as stats:
+        first = http_mod.fetch_text(server.url)
+        second = http_mod.fetch_text(server.url)
+
+    assert first == second == server.body
+    assert len(server.requests) == 1, "the second fetch should never have left the process"
+    assert (stats.misses, stats.hits) == (1, 1)
+
+
+# requests-cache reads expire_after=0 as "do not cache", so a test that wants a
+# stored-but-stale entry has to store one and then outlive its TTL.
+_BRIEF_TTL = 1
+
+
+def test_expired_entry_is_revalidated_with_the_stored_etag(server, tmp_path):
+    """A lapsed TTL sends If-None-Match; a 304 means no body crosses the network."""
+    path = tmp_path / "c.sqlite3"
+    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
+        http_mod.fetch_text(server.url)
+    time.sleep(_BRIEF_TTL + 0.2)
+
+    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL) as stats:
+        again = http_mod.fetch_text(server.url)
+
+    assert again == server.body
+    assert len(server.requests) == 2
+    assert server.requests[0][1] is None, "first request cannot carry a validator"
+    assert server.requests[1][1] == server.etag, "second must carry the stored ETag"
+    assert stats.revalidated == 1
+
+
+def test_cache_survives_the_block_and_is_reused_by_the_next_run(server, tmp_path):
+    path = tmp_path / "c.sqlite3"
+    with http_mod.http_cache(path=path, ttl=300):
+        http_mod.fetch_text(server.url)
+    with http_mod.http_cache(path=path, ttl=300) as stats:
+        assert http_mod.fetch_text(server.url) == server.body
+
+    assert len(server.requests) == 1
+    assert stats.hits == 1
+
+
+def test_a_failing_site_is_covered_by_the_stale_copy_and_says_so(server, tmp_path, caplog):
+    """stale_if_error must never look like a clean fetch — priority 2, fail loudly."""
+    path = tmp_path / "c.sqlite3"
+    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
+        http_mod.fetch_text(server.url)
+    time.sleep(_BRIEF_TTL + 0.2)
+
+    server.status = 500
+    with caplog.at_level(logging.WARNING), http_mod.http_cache(path=path, ttl=_BRIEF_TTL) as stats:
+        assert http_mod.fetch_text(server.url) == server.body
+
+    assert stats.stale == 1
+    assert "stale cached copy" in caplog.text
+
+
+def test_stats_are_scoped_to_one_block(server, tmp_path):
+    with http_mod.http_cache(path=tmp_path / "a.sqlite3", ttl=300):
+        http_mod.fetch_text(server.url)
+    with http_mod.http_cache(path=tmp_path / "b.sqlite3", ttl=300) as stats:
+        assert stats.misses == 0, "a new block starts from zero"
+
+
+def test_the_tls_adapter_survives_the_cached_session(tmp_path):
+    """The cache wraps Session.send, so the https mount must still be in place."""
+    with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=300):
+        with http_mod._SESSION_LOCK:
+            session = http_mod._SESSION
+        assert isinstance(session.get_adapter("https://example.org"), http_mod._TLSAdapter)
+
+
+def test_the_cache_file_keeps_the_name_it_was_given(server, tmp_path):
+    """requests-cache rewrites an extension-less name to `.sqlite`.
+
+    Left to do that, the cache lands in `data/` as `http_cache.sqlite`, which
+    `.gitignore`'s `data/*.sqlite3` does not match — and the file holds the body
+    of every career page fetched. Pin the name, not just the behaviour.
+    """
+    path = tmp_path / "http_cache.sqlite3"
+    with http_mod.http_cache(path=path, ttl=300):
+        http_mod.fetch_text(server.url)
+
+    assert path.exists()
+    assert sorted(f.name for f in tmp_path.glob("*.sqlite")) == []
+
+
+def test_the_default_cache_path_is_one_gitignore_covers():
+    assert http_mod.default_http_cache_path().suffix == ".sqlite3"
+
+
+def test_the_session_is_restored_after_the_block(tmp_path):
+    before = http_mod._SESSION
+    with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=300):
+        assert http_mod._SESSION is not before
+    assert http_mod._SESSION is before
+
+
+# ---------------------------------------------------------------------------
+# Render pool
+# ---------------------------------------------------------------------------
 
 playwright = pytest.importorskip("playwright.sync_api")
 PlaywrightError = playwright.Error
