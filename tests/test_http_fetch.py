@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import pytest
 import requests
@@ -72,7 +73,11 @@ def server() -> Iterator[_Server]:
     srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
     srv.daemon_threads = True
     state.port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    # poll_interval, not a detail: shutdown() blocks until the serve_forever loop
+    # notices, and the 0.5s default was costing half a second per test — about
+    # ten seconds across this file, dwarfing the work being tested.
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01},
+                     daemon=True).start()
     try:
         yield state
     finally:
@@ -109,19 +114,19 @@ _BRIEF_TTL = 1
 
 def test_expired_entry_is_revalidated_with_the_stored_etag(server, tmp_path):
     """A lapsed TTL sends If-None-Match; a 304 means no body crosses the network."""
-    path = tmp_path / "c.sqlite3"
-    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
+    # One block, deliberately: http_cache() prunes expired rows as it exits, so
+    # seeding in a first block and waiting out the TTL races that housekeeping —
+    # a slow enough exit deletes the very entry the test needs.
+    with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=_BRIEF_TTL) as stats:
         http_mod.fetch_text(server.url)
-    time.sleep(_BRIEF_TTL + 0.2)
-
-    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL) as stats:
+        time.sleep(_BRIEF_TTL + 0.2)
         again = http_mod.fetch_text(server.url)
 
     assert again == server.body
     assert len(server.requests) == 2
     assert server.requests[0][1] is None, "first request cannot carry a validator"
     assert server.requests[1][1] == server.etag, "second must carry the stored ETag"
-    assert stats.revalidated == 1
+    assert stats.revalidated == 1, f"304 not counted as a revalidation: {stats.summary()}"
 
 
 def test_cache_survives_the_block_and_is_reused_by_the_next_run(server, tmp_path):
@@ -145,18 +150,22 @@ def test_a_failing_site_still_fails_even_with_a_cached_copy_to_hand(
     successful scrape of a page that is minutes old. That is off, and this is the
     test that says so: a cached copy exists, is findable, and is *not* used.
     """
-    # Two attempts rather than the real five: the retry ladder sleeps 2s, 4s, 6s,
-    # 8s between them, and this test is about what happens once they run out.
+    # Two attempts rather than the real five, and no waiting between them: the
+    # ladder sleeps 2s, 4s, 6s, 8s, and this test is about what happens once the
+    # attempts run out, not about how long they take. Only http.py's reference to
+    # the module is swapped, so nothing else loses its sleep.
     monkeypatch.setattr(http_mod, "_RETRY_ATTEMPTS", 2)
+    monkeypatch.setattr(http_mod, "time", SimpleNamespace(sleep=lambda _seconds: None))
 
-    path = tmp_path / "c.sqlite3"
-    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
+    # One block, for the reason given in the revalidation test above. It matters
+    # more here: if the seeded entry were pruned, the 500 would still raise and
+    # the test would pass while proving nothing about the cache.
+    with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=_BRIEF_TTL):
         http_mod.fetch_text(server.url)
-    time.sleep(_BRIEF_TTL + 0.2)
+        time.sleep(_BRIEF_TTL + 0.2)
 
-    server.status = 500
-    attempts_before = len(server.requests)
-    with http_mod.http_cache(path=path, ttl=_BRIEF_TTL):
+        server.status = 500
+        attempts_before = len(server.requests)
         with pytest.raises(requests.HTTPError) as exc:
             http_mod.fetch_text(server.url)
 
