@@ -36,6 +36,25 @@ from job_scraper.storage.xlsx_store import write_xlsx
 _RULE = "─" * 52
 
 
+def _cache_ttl_seconds(value: str) -> int:
+    """Parse `--cache-ttl`, refusing a negative TTL.
+
+    requests-cache reads -1 as NEVER_EXPIRE, so `--cache-ttl -1` — which is the
+    obvious guess for "turn it off" — is the single input that turns the cache on
+    permanently and quietly stops the run discovering new postings. Every other
+    negative is merely meaningless, so the whole range is refused and the message
+    names the flag the typist actually wanted.
+    """
+    ttl = int(value)
+    if ttl < 0:
+        raise argparse.ArgumentTypeError(
+            f"must be zero or more seconds, not {ttl}. Use --no-cache to switch "
+            "the cache off; a negative TTL means 'never expire', which would "
+            "serve every page from disk for ever."
+        )
+    return ttl
+
+
 def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -> str:
     """Render the end-of-run funnel: how many jobs each stage dropped, how many
     remained, the new rows written this run, and where the table now stands.
@@ -207,7 +226,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--cache-ttl",
-        type=int,
+        type=_cache_ttl_seconds,
         default=DEFAULT_CACHE_TTL,
         dest="cache_ttl",
         metavar="SECONDS",

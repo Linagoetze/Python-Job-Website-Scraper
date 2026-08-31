@@ -107,6 +107,11 @@ second run inside the cache TTL is much faster, because the plain-HTTP pages com
 off disk rather than the network — on a 50-source config, 365s cold against 132s
 warm. Rendered pages are never cached, so they cost the same every time.
 
+A run holds up to four headless Chromiums in memory from the first `dynamic`
+source until it finishes, rather than starting one per page — about 600 MB. That
+is what makes the rendered sources faster; if it is too much for your machine,
+`_RENDER_WORKERS` in `job_scraper/http.py` is the number to lower.
+
 ### Options
 
 | Flag | Default |
@@ -138,9 +143,10 @@ The six that are not paths:
   delists them instead. Off for a reason: a bad selector would otherwise erase
   real history.
 - `--no-cache` — refetch every page instead of reading any of it from the
-  response cache. Listing pages are cached for half an hour by default, so two
-  runs in quick succession mostly read from disk; pass this when a run has to
-  see the sites as they are this second.
+  response cache. Every plain-HTTP page is cached for half an hour by default —
+  listing pages and the job detail pages layer 5 reads — so two runs in quick
+  succession mostly read from disk; pass this when a run has to see the sites as
+  they are this second. Pages rendered through Playwright are never cached.
 - `--cache-ttl` — how many seconds a cached page counts as fresh. After that the
   page is not thrown away: the next run asks the site "has this changed since?"
   and only downloads it again if the answer is yes. `--cache-ttl 0` is not the

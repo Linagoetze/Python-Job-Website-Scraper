@@ -11,6 +11,7 @@ from __future__ import annotations
 import http.server
 import logging
 import socketserver
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -21,6 +22,7 @@ import pytest
 import requests
 
 from job_scraper import http as http_mod
+from job_scraper import run as run_module
 
 
 @dataclass
@@ -211,6 +213,35 @@ def test_a_zero_ttl_revalidates_every_page_rather_than_caching_none(server, tmp_
     assert "stale" not in caplog.text, "a healthy 304 is not a site failure"
 
 
+@pytest.mark.parametrize("ttl", [-1, -3600])
+def test_a_negative_ttl_is_refused(tmp_path, ttl):
+    """-1 is requests-cache's NEVER_EXPIRE, and it is the obvious guess for "off".
+
+    Left unguarded, `--cache-ttl -1` caches every career page for ever and the
+    scraper quietly stops finding new postings — the opposite of what the person
+    typing it wanted. Every negative is refused, not just the one that bites.
+    """
+    with pytest.raises(ValueError, match="zero or more seconds"):
+        with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=ttl):
+            pass
+
+
+@pytest.mark.parametrize("ttl", ["-1", "-3600"])
+def test_the_cli_refuses_a_negative_ttl_before_anything_runs(monkeypatch, capsys, ttl):
+    monkeypatch.setattr(sys, "argv", ["run.py", "--cache-ttl", ttl])
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+
+    assert exc.value.code == 2
+    assert "--no-cache" in capsys.readouterr().err, "the error must name the flag they wanted"
+
+
+def test_a_zero_ttl_is_allowed(server, tmp_path):
+    """The boundary the guard must not overshoot — 0 is meaningful, see below."""
+    with http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=0):
+        http_mod.fetch_text(server.url)
+
+
 def test_the_cache_file_keeps_the_name_it_was_given(server, tmp_path):
     """requests-cache rewrites an extension-less name to `.sqlite`.
 
@@ -300,6 +331,67 @@ def test_one_failure_does_not_poison_the_pool(server):
             http_mod.fetch_rendered(UNREACHABLE, timeout=5_000, settle_ms=0)
         assert "one" in http_mod.fetch_rendered(server.url, settle_ms=0)
     assert pool.launches == 1
+
+
+def _break_driver_for(n_threads: int, monkeypatch) -> None:
+    """Make the first *n_threads* calls to sync_playwright() blow up.
+
+    Each render thread starts exactly one, so this fails that many threads'
+    drivers and leaves the rest healthy — the memory-pressure case.
+    """
+    import playwright.sync_api as pw_api
+
+    real = pw_api.sync_playwright
+    remaining = [n_threads]
+    lock = threading.Lock()
+
+    def flaky():
+        with lock:
+            broken = remaining[0] > 0
+            if broken:
+                remaining[0] -= 1
+        if broken:
+            raise RuntimeError("no memory for a browser")
+        return real()
+
+    monkeypatch.setattr(pw_api, "sync_playwright", flaky)
+
+
+def test_one_broken_driver_does_not_steal_work_from_the_healthy_threads(server, monkeypatch):
+    """The failure mode this guards is subtle and would look like a broken scrape.
+
+    A thread whose driver died can fail a page instantly, far faster than a
+    healthy thread renders one. If it keeps taking work off the queue, a single
+    bad driver fails most of the run's pages while good browsers sit idle. It
+    must stand down instead.
+    """
+    _break_driver_for(3, monkeypatch)
+
+    with http_mod.render_pool(workers=4) as pool:
+        for _ in range(6):
+            assert "one" in http_mod.fetch_rendered(server.url, settle_ms=0)
+
+    assert pool.pages_rendered == 6, "the one healthy thread should have served every page"
+    assert pool.launches == 1
+
+
+def test_when_no_driver_starts_the_caller_gets_the_error_not_a_hang(server, monkeypatch):
+    """The total-failure case still has to fail loudly rather than block."""
+    _break_driver_for(4, monkeypatch)
+
+    with http_mod.render_pool(workers=4):
+        with pytest.raises(RuntimeError, match="no memory for a browser"):
+            http_mod.fetch_rendered(server.url, settle_ms=0)
+
+
+def test_a_pool_closed_under_a_caller_raises_rather_than_blocking(server):
+    """The enqueue side of shutdown: a request must never outlive its servers."""
+    pool = http_mod.RenderPool(workers=1)
+    pool.fetch(server.url, timeout=10_000, settle_ms=0)
+    pool.close()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        pool.fetch(server.url, timeout=10_000, settle_ms=0)
 
 
 def test_nested_blocks_share_the_pool_and_only_the_outer_one_closes_it(server):

@@ -23,6 +23,7 @@ from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import certifi
 import requests
@@ -33,6 +34,9 @@ try:
     from urllib3.util.ssl_ import create_urllib3_context
 except ImportError:  # pragma: no cover
     create_urllib3_context = None  # type: ignore[misc,assignment]
+
+if TYPE_CHECKING:  # playwright is imported lazily, so its types are too
+    from playwright.sync_api import Browser, Playwright
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +156,17 @@ def http_cache(
     growing without bound across runs.
     """
     global _SESSION
+
+    if ttl < 0:
+        # requests-cache reads -1 as NEVER_EXPIRE: every page would be served
+        # from disk for ever and the run would stop seeing new postings. Other
+        # negatives mean "do not cache", so the whole range is refused rather
+        # than the one value that bites.
+        raise ValueError(
+            f"http_cache ttl must be zero or more seconds, not {ttl}. "
+            "A negative TTL means 'never expire' to requests-cache; to switch "
+            "the cache off, do not open this block at all."
+        )
 
     path = path or default_http_cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -282,7 +297,7 @@ class _RenderRequest:
     timeout: int
     settle_ms: int
     wait_for_selector: str | None
-    future: Future
+    future: Future[str]
 
 
 class RenderPool:
@@ -316,6 +331,7 @@ class RenderPool:
         self._closed = False
         self.launches = 0
         self.pages_rendered = 0
+        self._drivers_failed = 0
 
     def fetch(
         self,
@@ -327,8 +343,16 @@ class RenderPool:
     ) -> str:
         """Render *url* on a render thread and return its HTML. Raises what the render raised."""
         self._start()
-        future: Future = Future()
-        self._queue.put(_RenderRequest(url, timeout, settle_ms, wait_for_selector, future))
+        future: Future[str] = Future()
+        # The closed-check and the put happen under one lock, and close() sets
+        # the flag under that same lock before queueing its sentinel. Without
+        # that, a caller could enqueue behind the sentinel after the threads had
+        # gone and block on a Future nobody was left to set — a hang, which is
+        # the failure shape this project likes least.
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("render pool is closed")
+            self._queue.put(_RenderRequest(url, timeout, settle_ms, wait_for_selector, future))
         return future.result()
 
     def close(self) -> None:
@@ -374,13 +398,37 @@ class RenderPool:
             with sync_playwright() as pw:
                 self._serve(pw)
         except BaseException as exc:  # noqa: BLE001 - the driver itself failed to start
-            # Nothing can be rendered on this thread. Fail every request it
-            # would have taken, loudly, rather than leaving callers blocked on a
-            # Future that will never be set.
+            self._retire(exc)
+
+    def _retire(self, exc: BaseException) -> None:
+        """This thread's driver never started. Stand down — unless nobody is left.
+
+        The tempting thing is to keep taking requests and fail them, so no caller
+        can block. That is actively harmful while other threads are healthy: a
+        thread that fails a page instantly out-races three that take seconds to
+        render one, so a single bad driver would fail most of the run's pages
+        with three good browsers sitting idle. Retire instead, and let the
+        healthy threads do the work more slowly.
+
+        Only when *every* thread has failed is there nobody to serve the queue,
+        and then the last one out fails what is waiting so callers get an
+        exception rather than a hang.
+        """
+        with self._lock:
+            self._drivers_failed += 1
+            none_left = self._drivers_failed >= self._workers
+        logger.warning(
+            "Render thread %s could not start Playwright and has stood down%s: %s",
+            threading.current_thread().name,
+            "" if none_left else "; the remaining threads carry on",
+            exc,
+        )
+        if none_left:
+            logger.error("No render thread could start Playwright; rendered pages will fail")
             self._fail_pending(exc)
 
-    def _serve(self, pw) -> None:  # type: ignore[no-untyped-def]
-        browser = None
+    def _serve(self, pw: Playwright) -> None:
+        browser: Browser | None = None
         try:
             while True:
                 req = self._queue.get()
@@ -407,7 +455,7 @@ class RenderPool:
                 except Exception as exc:  # pragma: no cover - teardown, never fatal
                     logger.debug("Closing a render browser failed: %s", exc)
 
-    def _render(self, browser, req: _RenderRequest) -> str:  # type: ignore[no-untyped-def]
+    def _render(self, browser: Browser, req: _RenderRequest) -> str:
         # A context per fetch, not a browser per fetch: a fresh context is as
         # isolated (its own cookies and storage) at roughly a tenth of the cost.
         context = browser.new_context(user_agent=self._user_agent)

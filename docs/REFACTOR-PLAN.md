@@ -55,7 +55,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8h | Renumber the ladder | 1 hr | Sonnet 5 | `think` | done — display now Layer 1-5 in execution order; stored ids untouched | `wp8h-renumber-ladder` |
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
-| 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 434 tests pass | `wp9-fetch-performance` |
+| 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
@@ -4373,9 +4373,17 @@ source still launches nothing.
 
 **The ceiling on concurrent rendered fetches drops from 10 to 4, deliberately.**
 `_DETAIL_WORKERS = 10` used to mean ten simultaneous Chromiums during a detail
-pass; four reused ones is a better trade — roughly 150 MB of resident memory
-each — and ten concurrent *launches* contend for CPU in a way one launch does
-not. It is also the direction WP10 is already going (per-host cap of 2).
+pass; four reused ones is a better trade — and ten concurrent *launches* contend
+for CPU in a way one launch does not.
+
+**Be clear about what that costs, because it is not only a smaller number.** The
+browsers are now resident for a different *duration*, not just in a different
+quantity. Before, a Chromium existed for the second it was rendering and then
+died. Now, from the first dynamic source until the run ends, up to four sit in
+memory — roughly 600 MB held across the long stretches where nothing is being
+rendered at all (39 of the 50 sources are static). On a Mac with the run taking
+minutes, that is the right trade and it is why the pool is four and not ten. On
+a smaller machine it is the first number to turn down. It is also the direction WP10 is already going (per-host cap of 2).
 `_DETAIL_WORKERS` still governs static fetches; a comment at its definition now
 says so, because the two numbers now mean different things.
 
@@ -4406,6 +4414,15 @@ dropped the TLS adapter would only show up on the one host that needs it.
 
 Opened by `run_pipeline` for the length of a run, cached at
 `data/http_cache.sqlite3`, TTL **30 minutes**.
+
+**It covers more than the package asked for, and that should be said plainly.**
+WP9 said "listing pages"; the cache sits on `fetch_text`, which is also what
+Layer 5 uses for detail pages, so those go through it too. Left that way
+deliberately rather than filtered down to listing URLs: a detail page is already
+fetched at most once per job because the store skips jobs it has seen, so
+caching them costs almost nothing and helps exactly one real case — the
+hybrid-recheck path, which re-reads a stored job's description. But it is wider
+than the brief and the README now says so.
 
 **`cache_control` is deliberately off.** Sampling fourteen static listing pages:
 
@@ -4475,7 +4492,7 @@ the filename rather than only the behaviour.
 
 #### Tests
 
-`tests/test_http_fetch.py`, 20 tests, no network: a `http.server` on localhost
+`tests/test_http_fetch.py`, 29 tests, no network: a `http.server` on localhost
 serves the cache tests and a real headless Chromium drives the pool tests
 (mocking Playwright would assert nothing about the threading rules that are the
 whole subject). Covers: no caching without the block; a hit inside the TTL
@@ -4487,7 +4504,7 @@ many pages; nothing launched when nothing is rendered; eight concurrent callers
 bounded by four threads; errors reaching the caller; a failure not poisoning the
 pool; nesting; the no-pool path; and the `renders` capability mark.
 
-**Verification.** `.venv/bin/pytest`: 434 passed (414 before). `.venv/bin/ruff
+**Verification.** `.venv/bin/pytest`: 443 passed (414 before). `.venv/bin/ruff
 check .`: clean. `python -m job_scraper.run --help` works.
 
 #### Noted, not fixed — outside this package
