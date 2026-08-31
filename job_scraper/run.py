@@ -68,7 +68,12 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
 
     Each dropped-jobs line carries the filter ladder's display ordinal in a
     left gutter (WP8h; see `drops.LAYERS`), so "L3  − senior-level title" is
-    Layer 3 of 5 — the three detail-page lines all share Layer 5."""
+    Layer 3 of 5 — the three detail-page lines all share Layer 5.
+
+    Two blocks (WP10) appear only when they have something to say, which is why
+    the funnel's pinned layout in tests/test_run_summary.py is unchanged: the
+    source-health warnings, in a marker of their own so a shrinking source is
+    never mistaken for a filter that fired, and the dry-run notice."""
 
     # All numeric columns end at the same character position for vertical
     # scanning. Wide enough for the longest label plus a six-figure count:
@@ -132,6 +137,32 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         row("Unreviewed jobs in table", f"{summary.jobs_unreviewed:,}"),
         row("Exclusions logged", f"{summary.exclusions_logged:,}"),
     ]
+    if summary.health_warnings:
+        # Deliberately not a ladder line. A source that shrank is not a filter
+        # that fired, and borrowing the "L5  − " gutter would file a warning
+        # among the drops as though something had been excluded on purpose.
+        # Hence its own marker, and no right-aligned number column.
+        n = len(summary.health_warnings)
+        lines.append(_RULE)
+        lines.append(
+            f"!  Source health: {n} source{'' if n == 1 else 's'} returned far fewer "
+            "rows than last time"
+        )
+        for drop in summary.health_warnings:
+            change = (drop.current_rows - drop.previous_rows) / drop.previous_rows * 100
+            lines.append(
+                f"!  {drop.source_name}: {drop.current_rows:,} rows this run, "
+                f"was {drop.previous_rows:,} ({change:+.0f}%)"
+            )
+    if summary.dry_run:
+        lines.append(_RULE)
+        lines.extend(
+            [
+                "DRY RUN — nothing was written: no rows, no drop",
+                "log, no spreadsheet. The counts above are what a",
+                "real run would have reported.",
+            ]
+        )
     if scoring is not None:
         if scoring.skipped_reason:
             lines.append(f"Scoring skipped: {scoring.skipped_reason}")
@@ -246,6 +277,18 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help=(
+            "Fetch and filter as usual, then write nothing: the store transaction "
+            "is rolled back and no spreadsheet, sources csv or drop log is "
+            "produced. For seeing what a rules.json change would do before it "
+            "touches the table. Scoring is skipped too, since it costs credits "
+            "and its results would be discarded."
+        ),
+    )
+    parser.add_argument(
         "--show-all",
         action="store_true",
         dest="show_all",
@@ -278,6 +321,7 @@ def main() -> None:
             keep_drop_runs=args.keep_drop_runs,
             use_cache=not args.no_cache,
             cache_ttl=args.cache_ttl,
+            dry_run=args.dry_run,
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show
@@ -291,13 +335,21 @@ def main() -> None:
     scoring_enabled = args.score or bool(rules.get("scoring_enabled", False))
 
     # Score before exporting, so the spreadsheet is sorted by fresh scores.
-    scoring = score_new_jobs(args.output_db) if scoring_enabled else None
+    # A dry run skips it: scoring writes its verdicts to the store, and this run
+    # has just thrown its transaction away — paying for tokens to store nothing
+    # would be the one part of --dry-run that costs money.
+    scoring = score_new_jobs(args.output_db) if scoring_enabled and not args.dry_run else None
 
-    shown = write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
+    shown = 0 if args.dry_run else write_xlsx(
+        args.output_db, args.output_xlsx, show_all=args.show_all
+    )
 
     print(format_summary(summary, scoring), file=sys.stderr)
-    print(f"Output: {args.output_xlsx.resolve()}")
-    if summary.exclusions_logged:
+    if not args.dry_run:
+        print(f"Output: {args.output_xlsx.resolve()}")
+    if summary.exclusions_logged and not args.dry_run:
+        # Not offered on a dry run: those exclusions were rolled back with
+        # everything else, so the drop log still holds the *previous* run's.
         print("Why was something dropped? python -m job_scraper.drops")
     if shown:
         print("Reviewed them? python -m job_scraper.review --seen-all")
