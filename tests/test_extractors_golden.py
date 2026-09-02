@@ -499,7 +499,7 @@ def test_every_fixture_has_a_golden() -> None:
 def test_extractor_output_matches_golden(name: str) -> None:
     filename = FIXTURE_CASES[name][0]
     if not (FIXTURES_DIR / filename).exists():
-        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py {name}")
+        pytest.fail(f"{filename} not captured yet — re-run scripts/capture_fixtures.py {name}")
 
     jobs = parse_fixture(name)
     expected = _GOLDEN[name]
@@ -525,7 +525,7 @@ def test_coloplast_keeps_sub_brand_postings() -> None:
     """
     filename = FIXTURE_CASES["coloplast"][0]
     if not (FIXTURES_DIR / filename).exists():
-        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py coloplast")
+        pytest.fail(f"{filename} not captured yet — re-run scripts/capture_fixtures.py coloplast")
 
     jobs = parse_fixture("coloplast")
     branded = [
@@ -555,7 +555,7 @@ def test_iss_location_is_never_the_field_label() -> None:
     """
     filename = FIXTURE_CASES["iss"][0]
     if not (FIXTURES_DIR / filename).exists():
-        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py iss")
+        pytest.fail(f"{filename} not captured yet — re-run scripts/capture_fixtures.py iss")
 
     jobs = parse_fixture("iss")
     assert jobs, "iss fixture parsed to zero jobs"
