@@ -5343,13 +5343,20 @@ ever asserts on a docstring, this is where it will bite.
 - `ruff format .` was therefore left pointed at the repo root deliberately: the
   Markdown is worth keeping formatted too, and there is nothing else outside the
   Python source for it to find.
-- A live git worktree sits at `.claude/worktrees/priceless-carson-70dbe2`, on
+- A live git worktree sat at `.claude/worktrees/priceless-carson-70dbe2`, on
   branch `wp10-test-cache-isolation`, holding a second copy of all 85 source
-  files. Ruff skips it from the repo root — it is a separate VCS root — but
-  formats it happily when pointed at it directly (34 files). Every `.py` under
-  `.claude/` was checksummed before and after and is unchanged. **Do not run
-  `ruff format .claude/...`, and prefer the named source directories if this
-  ever needs repeating.**
+  files — a leftover from a Claude Code session run in worktree isolation, which
+  should have cleaned itself up and did not. Ruff skips it from the repo root,
+  but **not** because it is a separate VCS root: because `.claude/worktrees/` is
+  listed in `.git/info/exclude`, which ruff honours alongside `.gitignore`.
+  Pointed at it directly it reformats 34 files quite happily. Every `.py` under
+  `.claude/` was checksummed before and after this package and is unchanged.
+  **Do not run `ruff format .claude/...`.** That exclude entry is local and
+  untracked, so a fresh clone would not have it — if a worktree is ever restored
+  under a path that is not excluded, ruff will start formatting the second copy.
+
+  The branch was fully merged into `main`, the tree clean, no stashes, so the
+  worktree was safe to remove.
 - The plan said 36 files; it was 37 under ruff 0.16.4. The count is a moving
   target across ruff versions, which is the argument for the `--check` gate.
 
@@ -5358,11 +5365,19 @@ ever asserts on a docstring, this is where it will bite.
 `ruff format --check .` added to the Definition of done in `CLAUDE.md`, beside
 `ruff check .`.
 
-Not added to `.github/workflows/ci.yml`, whose `Lint` step still runs only
-`ruff check .` — the package asked for the CLAUDE.md line specifically. That
-file is the checklist a session reads; CI is what actually enforces. Adding
-`ruff format --check .` to the `Lint` step is a one-line follow-up and is the
-thing that would stop this drifting for real.
+Also added to `.github/workflows/ci.yml`, as a `Format` step of its own after
+`Lint`, at the owner's request. Kept separate from `Lint` so a drift is reported
+as formatting rather than hiding behind a lint failure. CLAUDE.md is the
+checklist a session reads; CI is what actually enforces, and this package is only
+really gated once both say it.
+
+One loose thread left deliberately: `requirements.txt` pins `ruff>=0.16.0` with
+no upper bound. A lint gate tolerates that, because new rules are opt-in via
+`select`. A *format* gate does not — the formatter's output is allowed to change
+between minor versions, and when it does, CI goes red on whatever unrelated pull
+request happens to be open. This package already saw the count move from the
+plan's 36 to 37 on 0.16.4. Pinning ruff to an exact version, and bumping it
+deliberately, is the fix. Not done here because it is a dependency change.
 
 ---
 
