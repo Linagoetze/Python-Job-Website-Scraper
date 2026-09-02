@@ -108,9 +108,7 @@ _UNREPLAYABLE_IDS = {layer_id for layer_id, _ in UNREPLAYABLE_LAYERS}
 # doing it here would mean changing filtering behaviour in the session that is
 # meant to measure it. `tests/test_eval.py` pins the order so the duplication
 # cannot drift silently.
-LADDER: tuple[str, ...] = tuple(
-    layer.id for layer in LAYERS if layer.id not in _UNREPLAYABLE_IDS
-)
+LADDER: tuple[str, ...] = tuple(layer.id for layer in LAYERS if layer.id not in _UNREPLAYABLE_IDS)
 
 # Fields the replay cannot see, because the labels file has titles and metadata
 # only. Stated in the report rather than buried here: with match_in set to
@@ -412,10 +410,7 @@ class Confusion:
     @property
     def total(self) -> int:
         return (
-            self.true_positives
-            + self.false_positives
-            + self.false_negatives
-            + self.true_negatives
+            self.true_positives + self.false_positives + self.false_negatives + self.true_negatives
         )
 
     @property
@@ -678,10 +673,8 @@ def format_layers(result: EvalResult) -> str:
         )
     lines += [
         "",
-        "  'lost' is jobs labelled review that this layer dropped; 'drop prec' is the "
-        "share of",
-        "  its drops that were genuinely unwanted. recall and F are cumulative — the "
-        "ladder's",
+        "  'lost' is jobs labelled review that this layer dropped; 'drop prec' is the share of",
+        "  its drops that were genuinely unwanted. recall and F are cumulative — the ladder's",
         "  state after that layer ran.",
     ]
     for layer, why in UNREPLAYABLE_LAYERS:

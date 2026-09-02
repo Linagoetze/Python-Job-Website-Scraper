@@ -50,9 +50,7 @@ def extract(
         location = ", ".join(x for x in [city, country] if x)
 
         detail_url = (
-            f"https://apply.workable.com/{slug}/j/{shortcode}/"
-            if shortcode
-            else listing_url
+            f"https://apply.workable.com/{slug}/j/{shortcode}/" if shortcode else listing_url
         )
 
         raw_snippet = " ".join(x for x in [title, dept, location] if x)

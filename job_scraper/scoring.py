@@ -164,9 +164,7 @@ def _score_one(client: Any, model: str, system_text: str, job: dict[str, Any]) -
         max_tokens=_MAX_TOKENS,
         # cache_control: the rubric is identical for every job in the run, so
         # all calls after the first read it from cache instead of re-billing it.
-        system=[
-            {"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}
-        ],
+        system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
         output_config={
             "effort": "low",
             "format": {"type": "json_schema", "schema": _RESPONSE_SCHEMA},
@@ -288,8 +286,7 @@ def score_new_jobs(
                 remaining = len(candidates) - scored - failed
                 failed += remaining
                 logger.error(
-                    "Scoring aborted (%s); %d jobs left unscored, they will be "
-                    "retried next run",
+                    "Scoring aborted (%s); %d jobs left unscored, they will be retried next run",
                     exc.__class__.__name__,
                     remaining,
                 )

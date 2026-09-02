@@ -87,9 +87,7 @@ def test_funnel_renders_exactly() -> None:
 def test_the_regression_case_keeps_its_gap() -> None:
     """The specific line that broke: a four-digit count on the longest label."""
     line = next(
-        ln
-        for ln in format_summary(_summary()).splitlines()
-        if "location unresolvable" in ln
+        ln for ln in format_summary(_summary()).splitlines() if "location unresolvable" in ln
     )
     assert "text−1,100" not in line
     assert "text     −1,100" in line

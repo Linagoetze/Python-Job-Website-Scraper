@@ -312,4 +312,3 @@ def extract(
     # inside the loop would have noticed.
     pagination.reconcile(source_name, url, collected=len(out), total=total)
     return out
-

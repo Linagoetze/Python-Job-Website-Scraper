@@ -93,9 +93,7 @@ def server() -> Iterator[_Server]:
     state.port = srv.server_address[1]
     # poll_interval as in tests/test_http_fetch.py: shutdown() blocks until the
     # serve_forever loop notices, and the 0.5s default costs that per test.
-    threading.Thread(
-        target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-    ).start()
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     try:
         yield state
     finally:
@@ -291,12 +289,8 @@ def _pipeline_env(tmp_path, listing: str, *, ignore_robots: bool = False):
     source = {"name": "acme", "url": listing, "strategy": "static"}
     if ignore_robots:
         source["ignore_robots"] = True
-    (tmp_path / "sources.yaml").write_text(
-        yaml.dump({"sources": [source]}), encoding="utf-8"
-    )
-    (tmp_path / "rules.json").write_text(
-        json.dumps({"locations": ["Berlin"]}), encoding="utf-8"
-    )
+    (tmp_path / "sources.yaml").write_text(yaml.dump({"sources": [source]}), encoding="utf-8")
+    (tmp_path / "rules.json").write_text(json.dumps({"locations": ["Berlin"]}), encoding="utf-8")
     return tmp_path
 
 
@@ -326,9 +320,7 @@ def test_a_forbidden_source_is_skipped_once_not_fetched_page_by_page(
     server: _Server, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level("WARNING"):
-        summary, extracted = _run_against(
-            tmp_path, monkeypatch, f"{server.origin}/private/jobs"
-        )
+        summary, extracted = _run_against(tmp_path, monkeypatch, f"{server.origin}/private/jobs")
     assert (summary.sources_processed, summary.sources_skipped) == (0, 1)
     assert extracted == []  # the extractor never ran, so the site was never read
     assert "robots.txt disallows" in caplog.text
@@ -452,8 +444,11 @@ def test_no_extractor_reaches_the_network_directly() -> None:
     offenders = {}
     for path in modules:
         source = path.read_text(encoding="utf-8")
-        hits = re.findall(r"^\s*(?:import requests|from requests|import urllib\.request)", source,
-                          flags=re.MULTILINE)
+        hits = re.findall(
+            r"^\s*(?:import requests|from requests|import urllib\.request)",
+            source,
+            flags=re.MULTILINE,
+        )
         hits += re.findall(r"\b(?:urlopen|httpx)\b", source)
         if hits:
             offenders[path.name] = sorted(set(hits))
@@ -528,8 +523,12 @@ def test_detail_pages_refused_by_robots_are_reported_not_whispered(
         raise RobotsDisallowed(f"robots.txt forbids {url}")
 
     jobs = [
-        {"source_name": "oecd", "title": "Analyst", "location": "Berlin",
-         "detail_url": f"https://api.example.com/postings/{i}"}
+        {
+            "source_name": "oecd",
+            "title": "Analyst",
+            "location": "Berlin",
+            "detail_url": f"https://api.example.com/postings/{i}",
+        }
         for i in range(3)
     ]
     with caplog.at_level("WARNING"):

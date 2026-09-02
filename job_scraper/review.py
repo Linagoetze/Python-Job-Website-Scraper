@@ -233,8 +233,7 @@ def main() -> None:
         print(f"Marked {result.seen_all} unreviewed jobs as seen (rows kept, nothing deleted)")
     if args.reject_all:
         print(
-            f"Marked {result.rejected_all} unreviewed jobs as rejected "
-            "(rows kept, nothing deleted)"
+            f"Marked {result.rejected_all} unreviewed jobs as rejected (rows kept, nothing deleted)"
         )
     if not result.changed:
         print(

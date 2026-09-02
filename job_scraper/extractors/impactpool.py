@@ -62,17 +62,19 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
             continue
 
         raw_snippet = " ".join(x for x in [title, location] if x)
-        out.append({
-            "source_name": source_name,
-            "title": title,
-            "company": company,
-            "location": location,
-            "department": "",
-            "listing_url": listing_url,
-            "detail_url": detail_url,
-            "apply_url": detail_url,
-            "raw_snippet": raw_snippet,
-        })
+        out.append(
+            {
+                "source_name": source_name,
+                "title": title,
+                "company": company,
+                "location": location,
+                "department": "",
+                "listing_url": listing_url,
+                "detail_url": detail_url,
+                "apply_url": detail_url,
+                "raw_snippet": raw_snippet,
+            }
+        )
 
     return out
 

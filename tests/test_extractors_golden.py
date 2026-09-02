@@ -167,9 +167,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "https://careers.coloplast.com/Kerecis/job/Stamford-Regenerative-"
                 "Surgical-Specialist-Western-CT-CT-06901/1418450133/"
             ),
-            "raw_snippet": (
-                "Regenerative Surgical Specialist - Western CT Sales Stamford, CT, US"
-            ),
+            "raw_snippet": ("Regenerative Surgical Specialist - Western CT Sales Stamford, CT, US"),
         },
     },
     "givewell": {
@@ -207,12 +205,8 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "department": "",
             "location": "Sweden",
             "listing_url": "https://jobs.ashbyhq.com/kognity",
-            "detail_url": (
-                "https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"
-            ),
-            "apply_url": (
-                "https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"
-            ),
+            "detail_url": ("https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"),
+            "apply_url": ("https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"),
             "raw_snippet": "Delivery Manager - 12 months fixed-term contract Sweden",
         },
     },
@@ -273,9 +267,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "listing_url": "https://careers.founderspledge.com/jobs",
             "detail_url": "https://careers.founderspledge.com/jobs/8230675-funds-program-manager",
             "apply_url": "https://careers.founderspledge.com/jobs/8230675-funds-program-manager",
-            "raw_snippet": (
-                "Funds Program Manager Research New York, San Francisco Hybrid"
-            ),
+            "raw_snippet": ("Funds Program Manager Research New York, San Francisco Hybrid"),
         },
     },
     "futurelearn": {
@@ -295,8 +287,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "8191472-consulente-commerciale-vendita-educazione"
             ),
             "raw_snippet": (
-                "Consulente commerciale - Vendita Educazione Admissions "
-                "Spain (remote) Hybrid"
+                "Consulente commerciale - Vendita Educazione Admissions Spain (remote) Hybrid"
             ),
         },
     },
@@ -317,8 +308,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "5548595-produktionsmitarbeiter-in-f-m-d-memmingen-germany"
             ),
             "raw_snippet": (
-                "Produktionsmitarbeiter:in (f/m/d) - Memmingen Germany "
-                "Production Memmingen"
+                "Produktionsmitarbeiter:in (f/m/d) - Memmingen Germany Production Memmingen"
             ),
         },
     },
@@ -412,8 +402,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "training-and-education-associate-j-pal-latin-america-and-caribbean-job-105605"
             ),
             "raw_snippet": (
-                "Training and Education Associate - J-PAL Latin America and the "
-                "Caribbean Guatemala"
+                "Training and Education Associate - J-PAL Latin America and the Caribbean Guatemala"
             ),
         },
     },
@@ -466,9 +455,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "https://careers.unops.org/careersmarketplace/JobDetail/"
                 "Architectural-Engineering-Technician-Senior-Associate/4215"
             ),
-            "raw_snippet": (
-                "Architectural Engineering Technician - Senior Associate Addis Ababa"
-            ),
+            "raw_snippet": ("Architectural Engineering Technician - Senior Associate Addis Ababa"),
         },
     },
     "path": {

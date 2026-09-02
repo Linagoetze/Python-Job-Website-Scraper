@@ -49,9 +49,7 @@ def extract(
             if parent:
                 # All text nodes in the row except the job title itself
                 texts = [
-                    t.strip()
-                    for t in parent.stripped_strings
-                    if t.strip() and t.strip() != title
+                    t.strip() for t in parent.stripped_strings if t.strip() and t.strip() != title
                 ]
                 # Heuristic: last text is typically location, second-to-last agency
                 if texts:

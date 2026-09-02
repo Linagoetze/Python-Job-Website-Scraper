@@ -34,9 +34,7 @@ def extract(
 
     # Job postings may be at different paths depending on Ashby version
     postings: list[dict[str, Any]] = (
-        data.get("jobs")
-        or (data.get("jobBoard") or {}).get("jobPostings")
-        or []
+        data.get("jobs") or (data.get("jobBoard") or {}).get("jobPostings") or []
     )
 
     out: list[dict[str, Any]] = []
@@ -48,9 +46,7 @@ def extract(
         dept = (job.get("departmentName") or job.get("teamName") or "").strip()
         location = (job.get("locationName") or "").strip()
         url = (
-            f"https://jobs.ashbyhq.com/{org_slug}/{job_id}"
-            if org_slug and job_id
-            else listing_url
+            f"https://jobs.ashbyhq.com/{org_slug}/{job_id}" if org_slug and job_id else listing_url
         )
         raw_snippet = " ".join(x for x in [title, dept, location] if x)
         out.append(

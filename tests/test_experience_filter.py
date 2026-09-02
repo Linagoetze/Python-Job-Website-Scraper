@@ -1,6 +1,5 @@
 """Tests for job_scraper.experience_filter."""
 
-
 from job_scraper.experience_filter import (
     RULE_LOCATION_NOT_LISTED,
     RULE_LOCATION_UNVERIFIED,
@@ -22,6 +21,7 @@ from job_scraper.filtering import (
 # ---------------------------------------------------------------------------
 # _extract_min_years
 # ---------------------------------------------------------------------------
+
 
 class TestExtractMinYears:
     def test_years_of_experience(self):
@@ -64,6 +64,7 @@ class TestExtractMinYears:
 # _strip_html
 # ---------------------------------------------------------------------------
 
+
 class TestStripHtml:
     def test_strips_tags(self):
         result = _strip_html("<p>Hello <b>world</b></p>")
@@ -79,6 +80,7 @@ class TestStripHtml:
 # ---------------------------------------------------------------------------
 # apply_title_filter
 # ---------------------------------------------------------------------------
+
 
 class TestApplyTitleFilter:
     def _job(self, title):
@@ -115,6 +117,7 @@ class TestApplyTitleFilter:
 # apply_detail_filter — hybrid resolution for conditional locations
 # ---------------------------------------------------------------------------
 
+
 class TestHybridResolution:
     _PATTERN = build_hybrid_pattern({"conditional_location_keywords": ["hybrid"]})
 
@@ -148,9 +151,7 @@ class TestHybridResolution:
         assert len(excluded) == 1
 
     def test_swedish_compound_in_description_confirms(self):
-        kept, _ = self._run(
-            self._job([_HYBRID_PENDING_REASON]), "<p>Vi erbjuder hybridarbete.</p>"
-        )
+        kept, _ = self._run(self._job([_HYBRID_PENDING_REASON]), "<p>Vi erbjuder hybridarbete.</p>")
         assert len(kept) == 1
 
     def test_pending_job_fails_closed_on_fetch_error(self):
@@ -195,6 +196,7 @@ class TestHybridResolution:
 # ---------------------------------------------------------------------------
 # apply_detail_filter — unresolvable locations (WP8d)
 # ---------------------------------------------------------------------------
+
 
 class TestUnresolvableLocationResolution:
     """The second deferred state, settled against the same fetched description.
@@ -241,9 +243,7 @@ class TestUnresolvableLocationResolution:
         assert excluded[0]["drop_rule"] == RULE_LOCATION_NOT_LISTED
 
     def test_a_read_rejection_keeps_its_description_so_it_is_not_refetched(self):
-        _, excluded = self._run(
-            self._job([_UNRESOLVED_PENDING_REASON]), "<p>Based in Nairobi.</p>"
-        )
+        _, excluded = self._run(self._job([_UNRESOLVED_PENDING_REASON]), "<p>Based in Nairobi.</p>")
         assert "Nairobi" in excluded[0]["description_text"]
         assert excluded[0]["description_fetched_at"]
         assert not excluded[0].get(UNVERIFIED_KEY)

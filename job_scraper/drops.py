@@ -382,9 +382,7 @@ def main() -> None:
                 "No exclusions recorded yet. Run `python -m job_scraper.run` first — "
                 "the drop log is written as part of a run."
             )
-        rows = store.exclusions(
-            run_id, layer=args.layer, rule=args.rule, source=args.source
-        )
+        rows = store.exclusions(run_id, layer=args.layer, rule=args.rule, source=args.source)
 
     # The filters narrow whichever view was asked for, so the counts and the
     # listing always describe the same set of jobs.

@@ -52,12 +52,12 @@ def _job(title: str, *, location: str, slug: str, snippet: str = "") -> dict[str
 # One job per funnel stage, so every counter in RunSummary is exercised.
 _EXTRACTED = [
     _job("Data Analyst", location="Berlin", slug="kept"),
-    _job("Data Analyst", location="Lisbon", slug="wrong-city"),          # rules
-    _job("Marketing Analyst", location="Berlin", slug="keyword"),        # title keyword
-    _job("Head of Data", location="Berlin", slug="seniority"),           # seniority title
-    _job("Data Analyst", location="Berlin", slug="blocked"),             # review status
+    _job("Data Analyst", location="Lisbon", slug="wrong-city"),  # rules
+    _job("Marketing Analyst", location="Berlin", slug="keyword"),  # title keyword
+    _job("Head of Data", location="Berlin", slug="seniority"),  # seniority title
+    _job("Data Analyst", location="Berlin", slug="blocked"),  # review status
     _job("Reporting Analyst", location="Berlin", slug="senior-detail"),  # Layer 2: years
-    _job("Research Analyst", location="Berlin", slug="phd"),             # Layer 2: PhD
+    _job("Research Analyst", location="Berlin", slug="phd"),  # Layer 2: PhD
 ]
 
 _RULES = {
@@ -70,9 +70,7 @@ _RULES = {
 def _write_config(tmp_path: Path) -> tuple[Path, Path, Path]:
     sources_path = tmp_path / "sources.yaml"
     sources_path.write_text(
-        yaml.dump(
-            {"sources": [{"name": _SOURCE, "url": _LISTING, "strategy": "static"}]}
-        ),
+        yaml.dump({"sources": [{"name": _SOURCE, "url": _LISTING, "strategy": "static"}]}),
         encoding="utf-8",
     )
     rules_path = tmp_path / "rules.json"
@@ -161,18 +159,13 @@ def test_funnel_counts_are_internally_consistent(env: Path) -> None:
 
     # The title/blocklist chain, exactly as format_summary computes it.
     after_blocklist = (
-        s.jobs_kept
-        - s.jobs_keyword_excluded
-        - s.jobs_title_excluded
-        - s.jobs_blocklist_excluded
+        s.jobs_kept - s.jobs_keyword_excluded - s.jobs_title_excluded - s.jobs_blocklist_excluded
     )
     assert after_blocklist >= 0
 
     # Everything surviving the review-status check is either cached or sent to
     # Layer 2, and Layer 2's intake splits into genuinely new and rechecked.
-    assert after_blocklist == (
-        s.jobs_already_stored + s.jobs_new_checked + s.jobs_stored_rechecked
-    )
+    assert after_blocklist == (s.jobs_already_stored + s.jobs_new_checked + s.jobs_stored_rechecked)
 
     # Layer 2 keeps what it does not exclude.
     assert s.jobs_new_checked + s.jobs_stored_rechecked - s.jobs_detail_excluded == s.jobs_kept_new

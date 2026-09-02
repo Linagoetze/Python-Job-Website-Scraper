@@ -59,6 +59,7 @@ def _unresolvable(job):
 # matches_rules
 # ---------------------------------------------------------------------------
 
+
 class TestMatchesRules:
     def test_empty_rules_passes_everything(self):
         rules = {
@@ -156,8 +157,12 @@ class TestMatchesRules:
         assert reasons == ["locations: matched"]
 
     def test_conditional_locations_inert_without_keywords(self):
-        rules = {"locations": ["Malmö"], "conditional_locations": ["Stockholm"],
-                 "conditional_location_keywords": [], "remote_keywords": []}
+        rules = {
+            "locations": ["Malmö"],
+            "conditional_locations": ["Stockholm"],
+            "conditional_location_keywords": [],
+            "remote_keywords": [],
+        }
         ok, _ = matches_rules(_job(title="Analyst (Hybrid)", location="Stockholm"), rules, None)
         assert not ok
 
@@ -202,8 +207,11 @@ class TestMatchesRules:
         # detail fetch for a shape the location rules already have an answer
         # for — and on an aggregator that tags every posting "Remote", a great
         # many of them.
-        rules = {"locations": ["Malmö"], "remote_keywords": ["remote", "anywhere"],
-                 "match_in": "title_only"}
+        rules = {
+            "locations": ["Malmö"],
+            "remote_keywords": ["remote", "anywhere"],
+            "match_in": "title_only",
+        }
         ok, reasons = matches_rules(_job(location="Remote"), rules, None)
         assert not ok
         assert reasons == ["locations: city not on the list"]
@@ -299,6 +307,7 @@ class TestMatchesRulesKeywords:
 # ---------------------------------------------------------------------------
 # apply_title_keyword_filter
 # ---------------------------------------------------------------------------
+
 
 class TestBuildLocationPattern:
     """Layer 2's copy of `locations`, for searching a description."""

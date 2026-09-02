@@ -174,9 +174,7 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "giving_what_we_can": (
         "giving_what_we_can.html",
         "https://www.givingwhatwecan.org/get-involved/careers",
-        lambda url, fetch: giving_what_we_can.extract(
-            url, fetch, source_name="giving_what_we_can"
-        ),
+        lambda url, fetch: giving_what_we_can.extract(url, fetch, source_name="giving_what_we_can"),
     ),
     "jpal": (
         "jpal.html",

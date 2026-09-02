@@ -64,10 +64,14 @@ def _run_main(
         "argv",
         [
             "run.py",
-            "--sources", str(tmp_path / "sources.yaml"),
-            "--rules", str(rules_path),
-            "--output-db", str(tmp_path / "jobs.sqlite3"),
-            "--output-xlsx", str(xlsx_path),
+            "--sources",
+            str(tmp_path / "sources.yaml"),
+            "--rules",
+            str(rules_path),
+            "--output-db",
+            str(tmp_path / "jobs.sqlite3"),
+            "--output-xlsx",
+            str(xlsx_path),
             *(["--dry-run"] if dry_run else []),
         ],
     )
@@ -108,9 +112,7 @@ def test_a_real_run_with_scoring_on_still_scores(
     assert len(seen["scored"]) == 1
 
 
-def test_the_flag_reaches_the_pipeline(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_flag_reaches_the_pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert _run_main(tmp_path, monkeypatch, dry_run=True)["pipeline"][0]["dry_run"] is True
     assert _run_main(tmp_path, monkeypatch, dry_run=False)["pipeline"][0]["dry_run"] is False
 
@@ -132,9 +134,12 @@ def test_a_dry_run_does_not_offer_the_drop_log_of_a_run_it_rolled_back(
         "argv",
         [
             "run.py",
-            "--rules", str(rules_path),
-            "--output-db", str(tmp_path / "jobs.sqlite3"),
-            "--output-xlsx", str(tmp_path / "jobs.xlsx"),
+            "--rules",
+            str(rules_path),
+            "--output-db",
+            str(tmp_path / "jobs.sqlite3"),
+            "--output-xlsx",
+            str(tmp_path / "jobs.xlsx"),
             "--dry-run",
         ],
     )
@@ -164,9 +169,12 @@ def test_the_health_block_survives_the_trip_through_main(
         "argv",
         [
             "run.py",
-            "--rules", str(rules_path),
-            "--output-db", str(tmp_path / "jobs.sqlite3"),
-            "--output-xlsx", str(tmp_path / "jobs.xlsx"),
+            "--rules",
+            str(rules_path),
+            "--output-db",
+            str(tmp_path / "jobs.sqlite3"),
+            "--output-xlsx",
+            str(tmp_path / "jobs.xlsx"),
         ],
     )
     run_module.main()

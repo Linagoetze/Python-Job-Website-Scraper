@@ -170,13 +170,9 @@ def apply_combined_title_filter(
     for job in jobs:
         title = str(job.get("title") or "")
         if kw_pattern and kw_pattern.search(title):
-            kw_excluded.append(
-                dict(job, **{DROP_RULE_KEY: title_keyword_rule(title, kw_matchers)})
-            )
+            kw_excluded.append(dict(job, **{DROP_RULE_KEY: title_keyword_rule(title, kw_matchers)}))
         elif sen_pattern and sen_pattern.search(title):
-            sen_excluded.append(
-                dict(job, **{DROP_RULE_KEY: _seniority_rule(title, sen_matchers)})
-            )
+            sen_excluded.append(dict(job, **{DROP_RULE_KEY: _seniority_rule(title, sen_matchers)}))
         else:
             kept.append(job)
 
@@ -201,8 +197,16 @@ _EXPERIENCE_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 _WORD_YEARS: dict[str, int] = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
 }
 _WORD_YEARS_PATTERN = re.compile(
     r"\b(one|two|three|four|five|six|seven|eight|nine|ten)"
@@ -382,8 +386,7 @@ def _resolve_unresolved_location(
     return dict(
         job,
         matched_reasons=[
-            _UNRESOLVED_CONFIRMED_REASON if r == _UNRESOLVED_PENDING_REASON else r
-            for r in reasons
+            _UNRESOLVED_CONFIRMED_REASON if r == _UNRESOLVED_PENDING_REASON else r for r in reasons
         ],
     )
 
@@ -542,9 +545,7 @@ def apply_detail_filter(
             no_requirement += 1
             kept.append(dict(job, experience_level="unspecified", **extra))
         elif min_years <= _MAX_JUNIOR_YEARS:
-            kept.append(
-                dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)", **extra)
-            )
+            kept.append(dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)", **extra))
         else:
             excluded.append(
                 dict(

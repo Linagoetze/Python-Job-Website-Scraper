@@ -198,10 +198,7 @@ class TestLocationDropRules:
 
     def test_remote_keyword_overridden_by_a_named_city(self) -> None:
         # The Impactpool shape: every posting tagged "Remote | <duty station>".
-        assert (
-            self._reason("Remote | Nairobi", self._RULES_WITH_GATE)
-            == RULE_LOC_REMOTE_OVERRIDDEN
-        )
+        assert self._reason("Remote | Nairobi", self._RULES_WITH_GATE) == RULE_LOC_REMOTE_OVERRIDDEN
 
     def test_conditional_city_with_no_hybrid_gate_configured(self) -> None:
         ungated = dict(self._RULES_WITH_GATE, conditional_location_keywords=[])
@@ -290,8 +287,7 @@ def test_logging_costs_no_extra_http_request(env: Path, monkeypatch: pytest.Monk
     # None of the jobs dropped before Layer 2 was opened. 'no-location' is not
     # in this set: WP8f admits it at Layer 0, so it does reach Layer 2, on the
     # same footing as any other newly-seen job with no prior verdict on it.
-    dropped_early = {"unlisted-city", "remote-overridden", "keyword",
-                     "seniority", "blocked"}
+    dropped_early = {"unlisted-city", "remote-overridden", "keyword", "seniority", "blocked"}
     assert not any(url.rsplit("/", 1)[-1] in dropped_early for url in fetched)
 
 
@@ -463,9 +459,7 @@ def test_equal_counts_sort_in_ladder_order_not_by_stored_id() -> None:
 
     Invisible while only the ids were on screen; wrong once the ordinals are.
     """
-    rows = [
-        {"layer": layer.id, "rule": f"rule for {layer.id}"} for layer in drops_mod.LAYERS
-    ]
+    rows = [{"layer": layer.id, "rule": f"rule for {layer.id}"} for layer in drops_mod.LAYERS]
     ordered = [drops_mod.layer_ordinal(layer) for layer, _, _ in rule_counts(rows)]
     assert ordered == [1, 2, 3, 4, 5]
 
@@ -517,8 +511,9 @@ def test_rule_counts_report_shows_the_display_label_not_the_stored_id(
     assert "0-rules" not in out
 
 
-def test_cli_shows_the_last_run(env: Path, monkeypatch: pytest.MonkeyPatch,
-                                capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_shows_the_last_run(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _run(env)
     monkeypatch.setattr(
         sys, "argv", ["drops.py", "--db", str(env / "jobs.sqlite3"), "--show-drops"]
@@ -530,8 +525,9 @@ def test_cli_shows_the_last_run(env: Path, monkeypatch: pytest.MonkeyPatch,
     assert "Marketing Analyst" in out
 
 
-def test_cli_summary_counts_the_rules(env: Path, monkeypatch: pytest.MonkeyPatch,
-                                      capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_summary_counts_the_rules(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _run(env)
     monkeypatch.setattr(sys, "argv", ["drops.py", "--db", str(env / "jobs.sqlite3")])
     drops_mod.main()
@@ -541,8 +537,9 @@ def test_cli_summary_counts_the_rules(env: Path, monkeypatch: pytest.MonkeyPatch
     assert RULE_LOC_UNLISTED_CITY in out
 
 
-def test_cli_exports_csv(env: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                         capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_exports_csv(
+    env: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _run(env)
     out_path = tmp_path / "exported" / "drops.csv"
     monkeypatch.setattr(

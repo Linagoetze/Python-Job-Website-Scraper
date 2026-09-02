@@ -41,6 +41,7 @@ def _with_rule(job: JobRecord, rule: str) -> JobRecord:
 # Title keyword filter (CSV-driven)
 # ---------------------------------------------------------------------------
 
+
 def load_title_exclude_keywords(path: Path) -> list[tuple[str, str]]:
     """Read title_exclude_keywords.csv and return a list of (keyword, match_type) pairs.
 
@@ -282,9 +283,7 @@ def build_hybrid_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
     Returns None when the feature is unconfigured.
     """
     keywords = [
-        str(x).strip()
-        for x in (rules.get("conditional_location_keywords") or [])
-        if str(x).strip()
+        str(x).strip() for x in (rules.get("conditional_location_keywords") or []) if str(x).strip()
     ]
     return _build_title_keyword_pattern([(kw, "prefix") for kw in keywords])
 
@@ -505,9 +504,7 @@ def matches_rules(
                 reasons.append(_HYBRID_CONFIRMED_REASON)
             else:
                 reasons.append(_HYBRID_PENDING_REASON)
-        elif locations and _location_names_no_place(
-            loc_field, remote_keywords, non_place_pattern
-        ):
+        elif locations and _location_names_no_place(loc_field, remote_keywords, non_place_pattern):
             # Present, but naming no place this layer can resolve. Judging it
             # against the list would be judging a placeholder, so defer to
             # Layer 5 and let the description decide (it fails closed there).
@@ -526,9 +523,7 @@ def matches_rules(
             # comment for why this must not become a Layer 5 pending marker.
             reasons.append(_LOCATION_EMPTY_ADMITTED_REASON)
         else:
-            return False, [
-                _location_drop_rule(loc_field, remote_kw_present, conditional_locations)
-            ]
+            return False, [_location_drop_rule(loc_field, remote_kw_present, conditional_locations)]
 
     if not reasons and (include_keywords or locations or conditional_locations):
         reasons.append("matched rules")

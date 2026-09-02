@@ -90,8 +90,9 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         text = f"{' ' * indent}{label}"
         return text.ljust(max(_NUMCOL - len(value), len(text) + 2)) + value
 
-    def cut(layer_id: str, label: str, dropped: int,
-            remaining: tuple[int, str] | None = None) -> str:
+    def cut(
+        layer_id: str, label: str, dropped: int, remaining: tuple[int, str] | None = None
+    ) -> str:
         # The ladder ordinal sits in its own gutter ahead of the minus sign
         # (WP8h). "− 1  off-criteria" reads at a glance as "minus one";
         # "L1  − off-criteria" cannot be misread as part of the count.
@@ -114,22 +115,42 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         f"({summary.sources_skipped} skipped)",
         "",
         row("Jobs seen (all pages, dupes incl.)", f"{summary.jobs_extracted:,}"),
-        cut(LAYER_RULES, "off-criteria (location/keywords)", rules_excluded,
-            (summary.jobs_kept, "match your criteria")),
+        cut(
+            LAYER_RULES,
+            "off-criteria (location/keywords)",
+            rules_excluded,
+            (summary.jobs_kept, "match your criteria"),
+        ),
         cut(LAYER_TITLE_KEYWORD, "title keyword", summary.jobs_keyword_excluded),
-        cut(LAYER_SENIORITY, "senior-level title", summary.jobs_title_excluded,
-            (passed_titles, "passed title filters")),
-        cut(LAYER_REVIEW_STATUS, "blocklisted (rejected)", summary.jobs_blocklist_excluded,
-            (after_blocklist, "after blocklist")),
+        cut(
+            LAYER_SENIORITY,
+            "senior-level title",
+            summary.jobs_title_excluded,
+            (passed_titles, "passed title filters"),
+        ),
+        cut(
+            LAYER_REVIEW_STATUS,
+            "blocklisted (rejected)",
+            summary.jobs_blocklist_excluded,
+            (after_blocklist, "after blocklist"),
+        ),
         row("already in table (skipped)", f"{summary.jobs_already_stored:,}", indent=_GUTTER),
         row("stored, hybrid recheck", f"{summary.jobs_stored_rechecked:,}", indent=_GUTTER),
         row("new, detail-checked", f"{summary.jobs_new_checked:,}", indent=_GUTTER),
-        cut(LAYER_DETAIL, f"needs 3+ yrs / PhD ({summary.jobs_phd_excluded} PhD)",
-            summary.jobs_detail_excluded - summary.jobs_hybrid_excluded
-            - summary.jobs_location_excluded),
+        cut(
+            LAYER_DETAIL,
+            f"needs 3+ yrs / PhD ({summary.jobs_phd_excluded} PhD)",
+            summary.jobs_detail_excluded
+            - summary.jobs_hybrid_excluded
+            - summary.jobs_location_excluded,
+        ),
         cut(LAYER_DETAIL, "non-hybrid (distant city)", summary.jobs_hybrid_excluded),
-        cut(LAYER_DETAIL, "location unresolvable in the text", summary.jobs_location_excluded,
-            (summary.jobs_kept_new, "new jobs kept")),
+        cut(
+            LAYER_DETAIL,
+            "location unresolvable in the text",
+            summary.jobs_location_excluded,
+            (summary.jobs_kept_new, "new jobs kept"),
+        ),
         _RULE,
         row("New rows written", f"{summary.rows_written:,}"),
         row("Marked delisted", f"{summary.rows_delisted:,}"),
@@ -169,10 +190,8 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         else:
             lines.append(row("Jobs scored (LLM)", f"{scoring.jobs_scored:,}"))
             if scoring.jobs_failed:
-                lines.append(row("Scoring failures (retried next run)",
-                                 f"{scoring.jobs_failed:,}"))
-            lines.append(row("Estimated scoring cost",
-                             f"${scoring.estimated_cost_usd:.4f}"))
+                lines.append(row("Scoring failures (retried next run)", f"{scoring.jobs_failed:,}"))
+            lines.append(row("Estimated scoring cost", f"${scoring.estimated_cost_usd:.4f}"))
     return "\n".join(lines)
 
 
@@ -340,8 +359,8 @@ def main() -> None:
     # would be the one part of --dry-run that costs money.
     scoring = score_new_jobs(args.output_db) if scoring_enabled and not args.dry_run else None
 
-    shown = 0 if args.dry_run else write_xlsx(
-        args.output_db, args.output_xlsx, show_all=args.show_all
+    shown = (
+        0 if args.dry_run else write_xlsx(args.output_db, args.output_xlsx, show_all=args.show_all)
     )
 
     print(format_summary(summary, scoring), file=sys.stderr)

@@ -84,9 +84,7 @@ def _exclusions(jobs: list[JobRecord], layer: str) -> list[dict[str, Any]]:
     logged as unattributed rather than silently dropping the row, since a
     missing row is exactly the blindness this log exists to remove.
     """
-    return [
-        exclusion(job, layer, str(job.get(DROP_RULE_KEY) or "unattributed")) for job in jobs
-    ]
+    return [exclusion(job, layer, str(job.get(DROP_RULE_KEY) or "unattributed")) for job in jobs]
 
 
 @dataclass
@@ -160,9 +158,7 @@ def refilter_stored_jobs(
         # A stored job with an unresolvable location field passes the same way,
         # and for the same reason: Layer 5 already settled it once, and a
         # re-filter pass has no description to settle it against.
-        ok, reasons = matches_rules(
-            job, rules, hybrid_pattern, non_place_pattern=non_place_pattern
-        )
+        ok, reasons = matches_rules(job, rules, hybrid_pattern, non_place_pattern=non_place_pattern)
         if ok:
             kept.append(job)
         else:
@@ -450,9 +446,7 @@ def _run_pipeline(
             layer_short(LAYER_DETAIL),
         )
     empty_location_admits = sum(
-        1
-        for j in kept_rows
-        if _LOCATION_EMPTY_ADMITTED_REASON in (j.get("matched_reasons") or [])
+        1 for j in kept_rows if _LOCATION_EMPTY_ADMITTED_REASON in (j.get("matched_reasons") or [])
     )
     if empty_location_admits:
         # Unlike the two counts above, this is not a Layer 5 cost — see
@@ -529,9 +523,7 @@ def _run_pipeline(
             if (k := dedupe_key_for_job(j)) and stored.get(k, {}).get("status") == "rejected"
         ]
         jobs_blocklist_excluded = len(blocked_jobs)
-        drops += [
-            exclusion(j, LAYER_REVIEW_STATUS, RULE_REVIEW_REJECTED) for j in blocked_jobs
-        ]
+        drops += [exclusion(j, LAYER_REVIEW_STATUS, RULE_REVIEW_REJECTED) for j in blocked_jobs]
         if jobs_blocklist_excluded:
             blocked_keys = {dedupe_key_for_job(j) for j in blocked_jobs}
             kept_rows = [j for j in kept_rows if dedupe_key_for_job(j) not in blocked_keys]
@@ -599,8 +591,7 @@ def _run_pipeline(
             1 for j in detail_excluded if j.get("experience_level") == "unresolvable_location"
         )
         jobs_years_excluded = (
-            len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded
-            - jobs_location_excluded
+            len(detail_excluded) - jobs_phd_excluded - jobs_hybrid_excluded - jobs_location_excluded
         )
         jobs_detail_excluded = len(detail_excluded)
         drops += _exclusions(detail_excluded, LAYER_DETAIL)
@@ -679,9 +670,7 @@ def _run_pipeline(
         drops += refilter_drops
         for filter_name, count in refilter_counts.items():
             if count:
-                logger.debug(
-                    "Marked %d stored jobs rejected by the %s filter", count, filter_name
-                )
+                logger.debug("Marked %d stored jobs rejected by the %s filter", count, filter_name)
 
         exclusions_logged = store.record_exclusions(run_id, drops)
         pruned = store.prune_exclusions(keep_drop_runs)
