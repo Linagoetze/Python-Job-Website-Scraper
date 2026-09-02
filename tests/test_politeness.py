@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import pytest
+import requests
 
 from job_scraper import http as http_mod
 from job_scraper.robots import RobotsDisallowed, RobotsPolicy, host_of
@@ -30,6 +31,9 @@ class _Server:
     requests: list[tuple[str, str | None]] = field(default_factory=list)
     robots: str | None = "User-agent: *\nDisallow: /private\n"
     robots_status: int = 200
+    # How many times a POST should 500 before it starts succeeding, for the
+    # retry test — impactpool's flakiness in miniature.
+    post_failures: int = 0
 
     @property
     def origin(self) -> str:
@@ -65,6 +69,12 @@ def server() -> Iterator[_Server]:
             length = int(self.headers.get("Content-Length") or 0)
             self.rfile.read(length)
             state.requests.append((self.path, self.headers.get("User-Agent")))
+            if state.post_failures > 0:
+                state.post_failures -= 1
+                self.send_response(500)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             # The server does not enforce robots.txt — the client does — so it
             # answers everything. A test asserting on a refusal therefore fails
             # loudly if the request was ever actually made.
@@ -421,8 +431,21 @@ def test_no_extractor_reaches_the_network_directly() -> None:
     import pathlib
     import re
 
+    from job_scraper import extractors
+
+    # Located from the package, not from the working directory. A relative path
+    # works from the project root and silently matches nothing from anywhere
+    # else, and a guard that can pass without reading a single file is worse
+    # than no guard: it reports safety it never checked.
+    package_dir = pathlib.Path(extractors.__file__).parent
+    modules = sorted(package_dir.glob("*.py"))
+    assert len(modules) > 20, (
+        f"only {len(modules)} extractor modules found in {package_dir} — this guard "
+        "is not looking where it thinks it is"
+    )
+
     offenders = {}
-    for path in sorted(pathlib.Path("job_scraper/extractors").glob("*.py")):
+    for path in modules:
         source = path.read_text(encoding="utf-8")
         hits = re.findall(r"^\s*(?:import requests|from requests|import urllib\.request)", source,
                           flags=re.MULTILINE)
@@ -511,3 +534,56 @@ def test_detail_pages_refused_by_robots_are_reported_not_whispered(
     assert "robots.txt refused the detail pages of 3 job(s)" in caplog.text
     assert "https://api.example.com" in caplog.text
     assert "ignore_robots" in caplog.text
+
+
+def test_a_post_api_retries_a_transient_500(
+    server: _Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One flaky page must not abandon the rest of a paginated board.
+
+    Tetra Pak walks its whole board ten postings at a time; before this, a 500
+    on page seven ended the source with a short list and no error. The backoff
+    is flattened so the test proves the retry, not the wait.
+    """
+    monkeypatch.setattr(http_mod, "_retry_delay", lambda attempt: 0.0)
+    server.post_failures = 2
+
+    with http_mod.polite_fetching(user_agent="job-scraper/0.1 (test)", delay=0, check_robots=False):
+        assert http_mod.post_json(f"{server.origin}/api/jobs", {"pageNum": 7}) == {"results": []}
+    assert len(server.requests) == 3  # two refusals, then the answer
+
+
+def test_a_post_api_gives_up_and_raises_rather_than_returning_half_a_board(
+    server: _Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A site that is genuinely down must fail the source, not shorten it."""
+    monkeypatch.setattr(http_mod, "_retry_delay", lambda attempt: 0.0)
+    server.post_failures = 99
+
+    with http_mod.polite_fetching(user_agent="job-scraper/0.1 (test)", delay=0, check_robots=False):
+        with pytest.raises(requests.HTTPError):
+            http_mod.post_json(f"{server.origin}/api/jobs", {"pageNum": 7})
+    assert len(server.requests) == http_mod._RETRY_ATTEMPTS
+
+
+def test_a_client_error_is_not_retried(server: _Server, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 4xx is an answer, not a hiccup; retrying it is just noise for the host."""
+    monkeypatch.setattr(http_mod, "_retry_delay", lambda attempt: 0.0)
+
+    class _Response:
+        status_code = 404
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("404", response=self)  # type: ignore[arg-type]
+
+    calls = []
+
+    class _Session:
+        def post(self, *args: object, **kwargs: object) -> _Response:
+            calls.append(1)
+            return _Response()
+
+    monkeypatch.setattr(http_mod, "_SESSION", _Session())
+    with pytest.raises(requests.HTTPError):
+        http_mod.post_json("https://one.invalid/api", {})
+    assert len(calls) == 1

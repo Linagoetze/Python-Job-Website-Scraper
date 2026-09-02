@@ -514,6 +514,16 @@ def _refunds_its_turn(response: Any) -> bool:
 _RETRY_ATTEMPTS = 5
 
 
+def _retry_delay(attempt: int) -> float:
+    """Seconds to wait before retrying a transient 5xx. Linear, and deliberately dull.
+
+    A function rather than an expression so both fetchers share one policy and a
+    test can flatten it to zero without waiting twenty real seconds to prove a
+    retry happened.
+    """
+    return 2.0 * attempt
+
+
 def fetch_text(
     url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None
 ) -> str:
@@ -554,7 +564,7 @@ def fetch_text(
             status = exc.response.status_code if exc.response is not None else 0
             if status < 500 or attempt == _RETRY_ATTEMPTS:
                 raise
-            time.sleep(2 * attempt)
+            time.sleep(_retry_delay(attempt))
     raise AssertionError("unreachable")
 
 
@@ -576,21 +586,35 @@ def post_json(
     loop was the fastest thing in the run for exactly that reason.
 
     Deliberately not cached: `requests-cache` does not cache POST by default,
-    and a search API's answers are not what the WP9 cache is for.
+    and a search API's answers are not what the WP9 cache is for. Transient 5xx
+    responses are retried, as in `fetch_text`; there is no curl fallback, which
+    is the one thing this path does not share with it — that hatch exists for
+    hosts whose TLS the Python stack cannot negotiate, and none of the three
+    POST boards is one.
     """
     _check_robots(url)
     agent = user_agent or current_user_agent()
-    with _SESSION_LOCK:
-        session = _SESSION
-    with _slot_for(url):
-        response = session.post(
-            url,
-            json=payload,
-            headers={"User-Agent": agent, **(headers or {})},
-            timeout=timeout,
-        )
-    response.raise_for_status()
-    return response.json()
+    request_headers = {"User-Agent": agent, **(headers or {})}
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        with _SESSION_LOCK:
+            session = _SESSION
+        with _slot_for(url):
+            response = session.post(
+                url, json=payload, headers=request_headers, timeout=timeout
+            )
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            # The same 5xx retry `fetch_text` has, and for a sharper reason here:
+            # Tetra Pak walks its whole board ten postings at a time, so one
+            # transient 500 on page seven would abandon every page after it and
+            # the source would report a short list rather than an error.
+            if response.status_code < 500 or attempt == _RETRY_ATTEMPTS:
+                raise
+            time.sleep(_retry_delay(attempt))
+            continue
+        return response.json()
+    raise AssertionError("unreachable")
 
 
 # ---------------------------------------------------------------------------

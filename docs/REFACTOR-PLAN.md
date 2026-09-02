@@ -56,7 +56,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
-| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 511 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
+| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -4867,6 +4867,27 @@ once inside `_run_pipeline`); both are now read once and passed down.
 
 **Numbers after the follow-up.** 511 tests pass (498 before), suite ~8 s.
 `ruff check .` passes. `tests/test_run_summary.py` still untouched.
+
+### Second review pass (2026-09-02)
+
+Two points on the fixes themselves, both taken.
+
+- **`post_json` did not retry a 5xx**, so one transient 500 on page seven of
+  Tetra Pak's pagination would abandon every page after it and report a short
+  list rather than an error — the exact shape `source_health` warnings exist to
+  catch, arriving by a route the commit message had claimed was closed ("the
+  same treatment as every other fetch"). It retries now, on the same policy as
+  `fetch_text`, which is shared as `_retry_delay` so a test can flatten it
+  rather than wait twenty seconds. Still no curl fallback, and that is
+  deliberate: that hatch is for hosts whose TLS the Python stack cannot
+  negotiate, and none of the three POST boards is one.
+- **The extractor guard could pass vacuously.** It globbed a path relative to
+  the working directory, so from anywhere but the project root it matched no
+  files and reported safety it had not checked. It now locates the package from
+  `extractors.__file__` and asserts it found more than twenty modules, so a
+  guard that is looking in the wrong place fails instead of passing.
+
+514 tests pass.
 
 ---
 
