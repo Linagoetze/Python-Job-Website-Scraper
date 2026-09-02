@@ -427,6 +427,11 @@ def test_no_extractor_reaches_the_network_directly() -> None:
     Agent, read no robots.txt and paid no per-host spacing — Tetra Pak's
     paginated loop hardest of all. An extractor must go through `job_scraper.
     http`, which is the only place those three things live.
+
+    `tetrapak.py` no longer exists to check: once it went through the robots
+    check it had been dodging, the endpoint turned out to be disallowed, and
+    WP11 moved the source to the HTML search page every other SuccessFactors
+    board already uses. The guard is unchanged and still covers the other two.
     """
     import pathlib
     import re

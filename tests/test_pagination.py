@@ -26,7 +26,6 @@ from job_scraper.extractors import (
     niras,
     smartrecruiters,
     successfactors_html,
-    tetrapak,
     unops,
 )
 from job_scraper.extractors.pagination import ShortWalkError
@@ -200,7 +199,11 @@ def test_the_captured_walk_covers_every_page() -> None:
     assert len(parse_fixture("jpal")) > 9
 
 
-# --- SmartRecruiters and Tetra Pak: totals from an API ----------------------
+# --- SmartRecruiters: a total from an API -----------------------------------
+#
+# Tetra Pak used to be tested here too, against the same shape. Its extractor is
+# gone: the JSON API it called is disallowed by robots.txt, and the source now
+# reads the HTML search page through `successfactors_html`.
 
 
 def _smartrecruiters_pages(pages: list[dict[str, Any]]) -> Any:
@@ -243,35 +246,6 @@ def test_smartrecruiters_empty_board_is_not_a_failure() -> None:
     assert smartrecruiters.extract("https://example.test", fetch, "acme", "acme") == []
 
 
-def _tetrapak_result(index: int) -> dict[str, Any]:
-    # Ids start at one: the extractor reads `id or ""`, so a zero id is dropped.
-    return {
-        "response": {
-            "id": index + 1,
-            "urlTitle": f"job-{index + 1}",
-            "jobLocationShort": ["Lund"],
-        }
-    }
-
-
-def test_tetrapak_empty_page_before_the_total_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    responses = [
-        {"totalJobs": 40, "jobSearchResult": [_tetrapak_result(i) for i in range(10)]},
-        {"totalJobs": 40, "jobSearchResult": []},
-    ]
-    monkeypatch.setattr(tetrapak, "post_json", lambda *a, **k: responses.pop(0))
-
-    with pytest.raises(ShortWalkError, match="40 job"):
-        tetrapak.extract("https://example.test", lambda url: "")
-
-
-def test_tetrapak_stops_cleanly_at_the_total(monkeypatch: pytest.MonkeyPatch) -> None:
-    responses = [{"totalJobs": 2, "jobSearchResult": [_tetrapak_result(i) for i in range(2)]}]
-    monkeypatch.setattr(tetrapak, "post_json", lambda *a, **k: responses.pop(0))
-
-    assert len(tetrapak.extract("https://example.test", lambda url: "")) == 2
-
-
 # --- the four listings that state a total in their own markup ---------------
 #
 # None of these can store its walk as a fixture — UNOPS is 13 pages, DSV 201,
@@ -280,10 +254,11 @@ def test_tetrapak_stops_cleanly_at_the_total(monkeypatch: pytest.MonkeyPatch) ->
 # fixtures and the live pages the totals were read from are named in the plan.
 
 
-def _unops_page(jobs: int, total: int | None) -> str:
+def _unops_page(jobs: int, total: int | None, offset: int = 0) -> str:
     articles = "".join(
         f'<article class="article article--result">'
-        f'<h3><a href="/careersmarketplace/JobDetail/role-{i}/{i}">Role {i}</a></h3>'
+        f'<h3><a href="/careersmarketplace/JobDetail/role-{offset + i}/{offset + i}">'
+        f"Role {offset + i}</a></h3>"
         f'<span class="list-item-Duty Station">Copenhagen</span></article>'
         for i in range(jobs)
     )
@@ -297,6 +272,7 @@ def _unops_page(jobs: int, total: int | None) -> str:
 
 
 def test_unops_empty_page_before_its_stated_total_raises() -> None:
+    """A page that came back empty part-way through the marketplace."""
     pages = {
         0: _unops_page(6, total=74),
         6: _unops_page(0, total=None),
@@ -306,7 +282,7 @@ def test_unops_empty_page_before_its_stated_total_raises() -> None:
         offset = int(url.rsplit("jobOffset=", 1)[1])
         return pages[offset]
 
-    with pytest.raises(ShortWalkError, match="74 result"):
+    with pytest.raises(ShortWalkError, match="says it has 74"):
         unops.extract("https://careers.unops.org/careersmarketplace/SearchJobs", fetch)
 
 
@@ -382,7 +358,7 @@ def test_niras_empty_page_before_its_stated_total_raises() -> None:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return pages[int(url.rsplit("page=", 1)[1])]
 
-    with pytest.raises(ShortWalkError, match="60 vacant position"):
+    with pytest.raises(ShortWalkError, match="says it has 60"):
         niras.extract("https://www.niras.com/jobs/vacant-positions/", fetch)
 
 
@@ -407,7 +383,7 @@ def test_successfactors_empty_page_before_its_stated_total_raises() -> None:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return pages[int(url.rsplit("startrow=", 1)[1])]
 
-    with pytest.raises(ShortWalkError, match="2010 posting"):
+    with pytest.raises(ShortWalkError, match="says it has 2010"):
         successfactors_html.extract(
             "https://jobs.dsv.com/search/",
             fetch,
@@ -424,7 +400,7 @@ def test_successfactors_lapping_the_list_early_raises() -> None:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return page
 
-    with pytest.raises(ShortWalkError, match="2010 posting"):
+    with pytest.raises(ShortWalkError, match="says it has 2010"):
         successfactors_html.extract(
             "https://jobs.dsv.com/search/",
             fetch,
@@ -531,3 +507,57 @@ def test_successfactors_parses_exactly_what_its_label_counts(name: str, per_page
 
     assert stated == per_page
     assert len(parse_fixture(name)) == stated
+
+
+# --- a page that half-renders is short, not empty ---------------------------
+#
+# The narrower guard these replaced only fired on a page with nothing at all on
+# it. A page that renders three of its six rows ends the walk just as quietly,
+# through the "this page was short, so it must be the last" exit, and is the
+# more likely failure of the two: it needs only part of a page to go wrong.
+
+
+def test_unops_half_rendered_page_does_not_pass_as_the_last_one() -> None:
+    pages = {0: _unops_page(6, total=74), 6: _unops_page(3, total=74, offset=6)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("jobOffset=", 1)[1])]
+
+    with pytest.raises(ShortWalkError, match="holding 9 posting"):
+        unops.extract("https://careers.unops.org/careersmarketplace/SearchJobs", fetch)
+
+
+def test_unops_genuinely_short_last_page_is_fine() -> None:
+    """The same exit, taken honestly: 8 of 8, the last page simply not full."""
+    pages = {0: _unops_page(6, total=8), 6: _unops_page(2, total=8, offset=6)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("jobOffset=", 1)[1])]
+
+    assert len(unops.extract("https://careers.unops.org/careersmarketplace/SearchJobs", fetch)) == 8
+
+
+def test_successfactors_half_rendered_page_does_not_pass_as_the_last_one() -> None:
+    pages = {0: _sf_page(10, total=25), 10: _sf_page(4, total=25, offset=10)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("startrow=", 1)[1])]
+
+    with pytest.raises(ShortWalkError, match="holding 14 posting"):
+        successfactors_html.extract(
+            "https://jobs.dsv.com/search/",
+            fetch,
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
+        )
+
+
+def test_niras_half_rendered_page_does_not_pass_as_the_last_one() -> None:
+    pages = {1: _niras_page(25, total=40), 2: _niras_page(5, total=40, offset=25)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("page=", 1)[1])]
+
+    with pytest.raises(ShortWalkError, match="holding 30 posting"):
+        niras.extract("https://www.niras.com/jobs/vacant-positions/", fetch)

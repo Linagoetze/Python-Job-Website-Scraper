@@ -30,7 +30,6 @@ from job_scraper.extractors import (
     smartrecruiters,
     successfactors_html,
     teamtailor,
-    tetrapak,
     undp,
     unops,
     workable,
@@ -89,8 +88,6 @@ REGISTRY: dict[str, ExtractorFn] = {
     "jpal": partial(jpal.extract, source_name="jpal"),
     "giving_what_we_can": partial(giving_what_we_can.extract, source_name="giving_what_we_can"),
     "gfi_europe": partial(gfi_europe.extract, source_name="gfi_europe"),
-    # --- SAP SuccessFactors ---
-    "tetrapak": partial(tetrapak.extract, source_name="tetrapak"),
     # --- SAP SuccessFactors (HTML / static) ---
     "dsv": partial(
         successfactors_html.extract,
@@ -110,8 +107,22 @@ REGISTRY: dict[str, ExtractorFn] = {
         page_step=25,
         base_search_url="https://careers.coloplast.com/search/",
     ),
-    # --- SAP SuccessFactors (Playwright — infinite scroll; the rendering
-    # fetcher comes from sources.yaml's `strategy: dynamic`, not from here) ---
+    # --- SAP SuccessFactors (Playwright; the rendering fetcher comes from
+    # sources.yaml's `strategy: dynamic`, not from here) ---
+    #
+    # ISS: AJAX infinite scroll. Tetra Pak: a career-site-builder front end that
+    # fills itself from /services/recruiting — which their robots.txt disallows,
+    # and WP10's check duly refused, leaving the source failing every run. The
+    # postings are all on /search/, which robots.txt allows, so this reads the
+    # page a visitor sees instead of the endpoint they asked crawlers to leave
+    # alone. The location filter lives in the URL, as it did in the old module's
+    # request body.
+    "tetrapak": partial(
+        successfactors_html.extract,
+        source_name="tetrapak",
+        page_step=10,
+        base_search_url="https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden",
+    ),
     "iss": partial(
         successfactors_html.extract,
         source_name="iss",
