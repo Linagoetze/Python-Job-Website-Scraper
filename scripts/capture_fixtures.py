@@ -197,10 +197,8 @@ def capture_one(source: dict[str, str], pages: int = 1) -> tuple[bool, str]:
     jobs = _verify(extractor, listing_url, texts)
     rel = written[0].relative_to(default_project_root())
     pages_note = f" +{len(written) - 1} more page(s)" if len(written) > 1 else ""
-    message = (
-        f"{name}: saved {rel}{pages_note} ({total_size:,} bytes, {jobs} jobs) "
-        f"from {recorded[0][0]}"
-    )
+    source = recorded[0][0]
+    message = f"{name}: saved {rel}{pages_note} ({total_size:,} bytes, {jobs} jobs) from {source}"
     if stale:
         message += f"; removed stale {', '.join(stale)}"
     return True, message
