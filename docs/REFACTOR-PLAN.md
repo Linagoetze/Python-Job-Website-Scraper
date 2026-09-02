@@ -60,7 +60,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 | CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
-| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 598 tests pass | `cu2-dead-sources` |
+| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 598 tests pass; **incident: a private file was staged into the public repo, caught before any push, see the result section** | `cu2-dead-sources` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5636,6 +5636,64 @@ Deliberate choices:
   rows and now has 0 both collapsed and is empty, and the two lines say
   different things about it. Pinned by
   `test_shrinking_and_empty_are_reported_separately`.
+
+### The incident: a private file was staged into the public repo (2026-09-02)
+
+**Caught before any push. Nothing left the machine, and the file is untouched
+on disk.** Recorded in full anyway, because the rule that failed is still the
+rule protecting every other private file in this repo.
+
+**What happened.** The owner added the `probably_good` row to
+`data/curated/excluded_sources.csv` by opening it in Numbers. Numbers wrote
+`data/curated/excluded_sources.numbers` beside it — a 136 KB binary holding the
+same real organisation names and notes. This session then ran `git add -A` to
+stage the `probably_good` deletion, and the new file went with it into commit
+`f5ecc5b`.
+
+**Why `.gitignore` did not catch it.** The rules for `data/curated/` named each
+private file individually:
+
+```gitignore
+data/curated/blocklist.csv
+data/curated/excluded_sources.csv
+data/curated/candidate_sources.xlsx
+```
+
+Every one of those is a real file and every one is correctly matched. The list
+is simply not closed under "what an application writes next to the file you
+opened" — a `.numbers` sidecar matches nothing, and neither would a `.xlsx`
+export, a `~$` lock file, or a Numbers autosave. The audit's §6 found this
+family of gap once already, in the `.sqlite` vs `.sqlite3` case that CU1
+closed by adding one more line. Adding one more line is what fails here.
+
+**Fixed two ways.** The tip commit was amended to untrack the file (unpushed
+and not on `main`, so amending was allowed), and the per-file rules were
+replaced with a deny-by-default directory rule:
+
+```gitignore
+data/curated/*
+!data/curated/*.example.csv
+!data/curated/*.example.xlsx
+```
+
+Verified afterwards with `git check-ignore`: all four private files ignored,
+`blocklist.example.csv` still tracked, and the only thing under
+`data/curated/` anywhere in the history is that template.
+
+**The lesson, and it is about the session and not the file.** `git add -A` is
+the wrong instinct in a repository whose privacy depends on per-file
+exclusions — it stages whatever appeared since the last look, including files
+no one in the session created. CLAUDE.md says never to touch `data/curated/`;
+this session did not *edit* anything there, but staging from it is the same
+failure with a different verb, and the instruction should be read as covering
+both. Stage named paths, and treat a deny-by-default ignore rule as the
+backstop rather than the primary defence.
+
+**One consequence for the owner, not a code issue.**
+`data/curated/excluded_sources.csv` no longer exists on disk — Numbers
+converted it, so the tombstone is now a proprietary binary. No run breaks,
+since nothing in the code reads that file; it is a human record, and it is no
+longer greppable. Worth exporting back to CSV.
 
 ### Follow-up: `test_fixture_still_parses` fails instead of skipping
 
