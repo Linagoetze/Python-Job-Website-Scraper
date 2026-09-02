@@ -22,6 +22,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from bs4 import BeautifulSoup
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
@@ -81,51 +83,57 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "dsv": (
         "dsv.html",
         "https://jobs.dsv.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="dsv",
-            page_step=10,
-            base_search_url="https://jobs.dsv.com/search/",
+        # The parser, not the walk: this board runs to 201 pages, so the
+        # saved page pins what the extractor reads and `tests/test_pagination.py`
+        # covers the walk. See the impactpool entry for the reasoning.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), "https://jobs.dsv.com/search/", "dsv"
         ),
     ),
     "iss": (
         "iss.html",
         "https://jobs.issworld.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="iss",
-            page_step=20,
-            base_search_url="https://jobs.issworld.com/search/",
+        # The parser, not the walk: this board runs to 4 pages, so the
+        # saved page pins what the extractor reads and `tests/test_pagination.py`
+        # covers the walk. See the impactpool entry for the reasoning.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), "https://jobs.issworld.com/search/", "iss"
         ),
     ),
     "novo_nordisk": (
         "novo_nordisk.html",
         "https://careers.novonordisk.com/search",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="novo_nordisk",
-            page_step=100,
-            base_search_url="https://careers.novonordisk.com/search",
+        # The parser, not the walk: this board runs to 4 pages, so the
+        # saved page pins what the extractor reads and `tests/test_pagination.py`
+        # covers the walk. See the impactpool entry for the reasoning.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"),
+            "https://careers.novonordisk.com/search",
+            "novo_nordisk",
         ),
     ),
     "coloplast": (
         "coloplast.html",
         "https://careers.coloplast.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="coloplast",
-            page_step=25,
-            base_search_url="https://careers.coloplast.com/search/",
+        # The parser, not the walk: this board runs to 14 pages, so the
+        # saved page pins what the extractor reads and `tests/test_pagination.py`
+        # covers the walk. See the impactpool entry for the reasoning.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), "https://careers.coloplast.com/search/", "coloplast"
         ),
     ),
     "impactpool": (
+        # The parser, not the walk. This listing runs to roughly a hundred
+        # pages, so capturing it the way J-PAL's five are captured would be ten
+        # megabytes of someone else's HTML; the walk is covered synthetically in
+        # `tests/test_pagination.py` instead. Replaying one page through
+        # `extract` would now raise, and rightly — page 1 links to page 2, and
+        # the harness has no page 2 to give it.
         "impactpool.html",
         "https://www.impactpool.org/search",
-        lambda url, fetch: impactpool.extract(url, fetch, source_name="impactpool"),
+        lambda url, fetch: impactpool._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), url, "impactpool"
+        ),
     ),
     "against_malaria_foundation": (
         "against_malaria_foundation.html",

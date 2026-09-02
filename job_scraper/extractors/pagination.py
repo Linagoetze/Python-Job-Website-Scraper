@@ -25,15 +25,20 @@ was promised" is different for every listing — a pager, `totalFound`,
 `totalJobs` — and only the extractor knows it. What must not differ is what
 happens next, so the exception type and the wording live here.
 
-Note what this deliberately does not cover: an extractor whose only end signal
-is "a short or empty page" has no promise to check against, so it cannot tell
-the two cases apart at all. See `docs/REFACTOR-PLAN.md`, WP11, for which
-extractors those are and why they were left alone rather than given a guess.
+Every paginated source here turned out to publish a total somewhere on the page
+— a pager, `totalFound`, `totalJobs`, "1-6 of 74 results", "Vacant positions: 2"
+— so all six are guarded. Where a total cannot be read on the day (the markup
+moved, the page is a stub), `unverifiable_end` logs rather than raises: an
+extractor that cannot see how long the listing is has no grounds to call a short
+walk a failure, but the owner should know the guard was blind.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import NoReturn
+
+logger = logging.getLogger(__name__)
 
 
 class ShortWalkError(RuntimeError):
@@ -50,4 +55,22 @@ def short_walk(source_name: str, url: str, *, collected: int, promised: str) -> 
         f"{source_name}: {url} yielded no postings, but {promised}. "
         f"Refusing to return a short list of {collected} posting(s): a page that "
         "did not parse is not the end of the listing."
+    )
+
+
+def unverifiable_end(source_name: str, url: str, *, collected: int) -> None:
+    """Note that a walk ended on an empty page with no total to check it against.
+
+    Not an error: without a declared total, "the listing ended" and "this page
+    did not parse" are the same observation, and raising on every last page of
+    every run would be worse than useless. It is logged because a source whose
+    total has stopped being readable has quietly lost its guard, and the run
+    should say so while the count still looks plausible.
+    """
+    logger.warning(
+        "%s: %s yielded no postings and the listing publishes no total, so a "
+        "finished walk cannot be told from a broken page; accepting %d posting(s)",
+        source_name,
+        url,
+        collected,
     )

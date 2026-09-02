@@ -20,7 +20,9 @@ Note the single wrapping <div>: the anchor has exactly one element child, so
 "the first child's text" is the entire card, metadata included. Read the
 labelled `p.headline` instead.
 
-Pagination: ?pageSize=25&page=N — loop until a page returns no job links.
+Pagination: ?pageSize=25&page=N — loop until a page returns no job links. The
+filter bar heads the list "Vacant positions: N", so a page yielding nothing
+short of that count is a failure rather than the end; see `pagination.py`.
 """
 
 from __future__ import annotations
@@ -32,7 +34,13 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
+from job_scraper.extractors import pagination
+
 _JOB_PATH = "/jobs/vacant-positions/cvtp"
+# `<p>Vacant positions: <span class="filter-result-text">2</span></p>`. Rendered
+# by the same JavaScript that builds the cards, so a page that never rendered
+# has no count either — which is why it is only ever read from a page with jobs.
+_TOTAL_SELECTOR = "span.filter-result-text"
 _TITLE_SELECTOR = "p.headline"
 _PAGE_SIZE = 25
 _WAIT_SELECTOR = f'a[href*="{_JOB_PATH}"]'
@@ -43,8 +51,16 @@ def _paginate_url(base_url: str, page: int) -> str:
     return f"{base_url.rstrip('/')}/{sep}pageSize={_PAGE_SIZE}&page={page}"
 
 
-def _parse_page(html: str, listing_url: str, source_name: str) -> list[dict[str, Any]]:
-    soup = BeautifulSoup(html, "lxml")
+def _declared_total(soup: BeautifulSoup) -> int | None:
+    """How many vacancies the filter bar says there are, if it says."""
+    element = soup.select_one(_TOTAL_SELECTOR)
+    if element is None:
+        return None
+    digits = "".join(c for c in element.get_text(strip=True) if c.isdigit())
+    return int(digits) if digits else None
+
+
+def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for a in soup.find_all("a", href=lambda h: h and _JOB_PATH in h):
         href = str(a["href"]).strip()
@@ -111,12 +127,26 @@ def extract(
     seen: set[str] = set()
     page = 1
 
+    total: int | None = None
+
     while True:
         url = _paginate_url(listing_url, page)
-        html = fetch_fn(url)
-        jobs = _parse_page(html, listing_url, source_name)
+        soup = BeautifulSoup(fetch_fn(url), "lxml")
+        jobs = _parse_page(soup, listing_url, source_name)
         if not jobs:
+            if total is not None and len(out) < total:
+                pagination.short_walk(
+                    source_name,
+                    url,
+                    collected=len(out),
+                    promised=f"the filter bar reports {total} vacant position(s)",
+                )
+            if total is None:
+                pagination.unverifiable_end(source_name, url, collected=len(out))
             break
+
+        # Only a page that rendered can be asked how long the list is.
+        total = _declared_total(soup) or total
         for job in jobs:
             key = job["detail_url"]
             if key not in seen:
