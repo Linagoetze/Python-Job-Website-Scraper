@@ -42,11 +42,6 @@ class SourceDrop:
     current_rows: int
 
 
-# Statuses a human set (or will set, from WP5b's review commands). Automated
-# passes — delisting, re-filtering — must never overwrite these.
-REVIEW_STATUSES = ("shortlisted", "rejected")
-
-
 def dedupe_key_for_job(job: dict[str, Any]) -> str:
     """Stable deduplication key from an extractor job dict ('' if it has no URL)."""
     u = normalize_http_url(
