@@ -16,6 +16,7 @@ is nothing to hoist if there is only one import.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -25,7 +26,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
 import capture_fixtures  # noqa: E402
-from capture_fixtures import single_response_fetch  # noqa: E402
+from capture_fixtures import recorded_pages_fetch, single_response_fetch  # noqa: E402
 
 from job_scraper.extractors import (  # noqa: E402
     against_malaria,
@@ -45,7 +46,9 @@ __all__ = [
     "FIXTURES_DIR",
     "FIXTURE_CASES",
     "capture_fixtures",
+    "fixture_pages",
     "parse_fixture",
+    "recorded_pages_fetch",
     "single_response_fetch",
 ]
 
@@ -186,8 +189,27 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
 }
 
 
+def fixture_pages(name: str) -> list[Path]:
+    """Every saved page of *name*'s fixture, in the order the extractor asked.
+
+    A single-page fixture is one file, `name.ext`. A paginated one adds
+    `name.p1.ext`, `name.p2.ext`, … (see scripts/capture_fixtures.py). Sorting
+    numerically rather than by filename matters once a walk passes ten pages.
+    """
+    filename = FIXTURE_CASES[name][0]
+    first = FIXTURES_DIR / filename
+    stem, _, ext = filename.rpartition(".")
+    page_file = re.compile(rf"^{re.escape(stem)}\.p(\d+)\.{re.escape(ext)}$")
+    numbered = [
+        (int(match.group(1)), path)
+        for path in FIXTURES_DIR.glob(f"{stem}.p*.{ext}")
+        if (match := page_file.match(path.name))
+    ]
+    return [first, *(path for _, path in sorted(numbered))]
+
+
 def parse_fixture(name: str) -> list[dict[str, Any]]:
     """Run *name*'s extractor over its saved fixture. Never touches the network."""
-    filename, listing_url, extractor = FIXTURE_CASES[name]
-    path = FIXTURES_DIR / filename
-    return extractor(listing_url, single_response_fetch(path.read_text(encoding="utf-8")))
+    _, listing_url, extractor = FIXTURE_CASES[name]
+    pages = [path.read_text(encoding="utf-8") for path in fixture_pages(name)]
+    return extractor(listing_url, recorded_pages_fetch(pages))
