@@ -21,8 +21,8 @@ Note the single wrapping <div>: the anchor has exactly one element child, so
 labelled `p.headline` instead.
 
 Pagination: ?pageSize=25&page=N — loop until a page returns no job links. The
-filter bar heads the list "Vacant positions: N", so a page yielding nothing
-short of that count is a failure rather than the end; see `pagination.py`.
+filter bar heads the list "Vacant positions: N", and the walk is checked
+against that count before it returns; see `pagination.py`.
 """
 
 from __future__ import annotations
@@ -134,15 +134,6 @@ def extract(
         soup = BeautifulSoup(fetch_fn(url), "lxml")
         jobs = _parse_page(soup, listing_url, source_name)
         if not jobs:
-            if total is not None and len(out) < total:
-                pagination.short_walk(
-                    source_name,
-                    url,
-                    collected=len(out),
-                    promised=f"the filter bar reports {total} vacant position(s)",
-                )
-            if total is None:
-                pagination.unverifiable_end(source_name, url, collected=len(out))
             break
 
         # Only a page that rendered can be asked how long the list is.
@@ -156,4 +147,6 @@ def extract(
             break
         page += 1
 
+    # The filter bar counted them; this walk either has them all or it does not.
+    pagination.reconcile(source_name, url, collected=len(out), total=total)
     return out

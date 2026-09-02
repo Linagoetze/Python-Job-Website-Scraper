@@ -15,8 +15,8 @@ HTML structure per listing:
 
 Pagination: uses ?jobOffset=N with 6 results per page. The listing states its
 own length — "1-6 of 74 results", and the same number in the control's
-aria-label — so a page that yields nothing before that count is reached is a
-failure rather than the end of the marketplace. See `pagination.py`.
+aria-label — and the walk is checked against it before it returns. See
+`pagination.py`.
 """
 
 from __future__ import annotations
@@ -102,15 +102,6 @@ def extract(
         soup = BeautifulSoup(html, "lxml")
         page_jobs = _parse_page(soup, listing_url, source_name)
         if not page_jobs:
-            if total is not None and len(out) < total:
-                pagination.short_walk(
-                    source_name,
-                    url,
-                    collected=len(out),
-                    promised=f"the listing reports {total} result(s)",
-                )
-            if total is None:
-                pagination.unverifiable_end(source_name, url, collected=len(out))
             break
 
         # Read the total only from a page that parsed: a page that did not
@@ -125,4 +116,9 @@ def extract(
             break
         offset += _PAGE_SIZE
 
+    # However the loop ended — empty page, short page, or the last full one —
+    # the marketplace stated its own length and this walk either matched it or
+    # did not. A page that half-renders ends the walk short without ever coming
+    # back empty, which is why this is checked here and not in the loop.
+    pagination.reconcile(source_name, url, collected=len(out), total=total)
     return out

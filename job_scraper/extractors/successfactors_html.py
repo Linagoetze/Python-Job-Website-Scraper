@@ -8,8 +8,7 @@ Pagination uses a ?startrow=N query parameter. Loop until a page returns no job
 links or the page_step would exceed a reasonable upper bound. Both layouts state
 how many postings there are — "Page 1 of 201, Results 1 to 10 of 2010" in the
 classic pagination label, "Showing 1 to 20 of 62 Jobs" on the tile skin — so a
-page yielding nothing short of that count is a failure rather than the end of
-the board; see `pagination.py`.
+walk is checked against that count before it returns; see `pagination.py`.
 
 Whether a page needs JavaScript is the caller's business, not this module's:
 `sources.yaml`'s `strategy` picks the fetcher, and this extractor uses whatever
@@ -286,7 +285,6 @@ def extract(
         soup = BeautifulSoup(fetch_fn(url), "lxml")
         jobs = _parse_page(soup, base_search_url, source_name)
         if not jobs:
-            _refuse_a_short_walk(source_name, url, out, total)
             break
 
         # Only a page that parsed can be asked how long the board is.
@@ -301,29 +299,17 @@ def extract(
                 new_jobs += 1
         if new_jobs == 0:
             # All duplicates: the board is serving the same page over again,
-            # which is the end of the list only if we have the whole list.
-            _refuse_a_short_walk(source_name, url, out, total)
+            # which is the end of the list only if we have the whole list —
+            # settled below, like every other way out of this loop.
             break
         if len(jobs) < page_step:
             break
         startrow += page_step
 
+    # Whichever of the three exits was taken, the board published a count and
+    # this walk is measured against it. The short-page exit is the one that
+    # needs it most: a page that half-renders is short, never empty, so nothing
+    # inside the loop would have noticed.
+    pagination.reconcile(source_name, url, collected=len(out), total=total)
     return out
 
-
-def _refuse_a_short_walk(
-    source_name: str,
-    url: str,
-    collected: list[dict[str, Any]],
-    total: int | None,
-) -> None:
-    """Raise if the board said it had more than this walk came away with."""
-    if total is not None and len(collected) < total:
-        pagination.short_walk(
-            source_name,
-            url,
-            collected=len(collected),
-            promised=f"the board reports {total} posting(s)",
-        )
-    if total is None:
-        pagination.unverifiable_end(source_name, url, collected=len(collected))

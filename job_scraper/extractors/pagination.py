@@ -58,8 +58,34 @@ def short_walk(source_name: str, url: str, *, collected: int, promised: str) -> 
     )
 
 
+def reconcile(source_name: str, url: str, *, collected: int, total: int | None) -> None:
+    """Check a finished walk against the length the listing claimed.
+
+    Called once the loop has ended, however it ended. That is deliberately
+    broader than "a page came back empty": a walk also stops when a page comes
+    back *short*, and a page that half-renders is short rather than empty. The
+    listing said how many there were; either they are all here or the source
+    fails.
+
+    Only safe because these extractors parse exactly what their listing counts —
+    a page's rows equal the upper bound in its own label on every captured
+    instance, and both live walks matched their stated totals to the row. Where
+    that is not true, as on Impactpool's aggregated and deduplicated board, the
+    walk is guarded by its next-page link instead and never comes here.
+    """
+    if total is None:
+        unverifiable_end(source_name, url, collected=collected)
+        return
+    if collected < total:
+        raise ShortWalkError(
+            f"{source_name}: the walk ended at {url} holding {collected} posting(s), "
+            f"but the listing says it has {total}. Refusing a short list: a page "
+            "that did not parse looks exactly like the end of one that did."
+        )
+
+
 def unverifiable_end(source_name: str, url: str, *, collected: int) -> None:
-    """Note that a walk ended on an empty page with no total to check it against.
+    """Note that a walk finished with no total to check it against.
 
     Not an error: without a declared total, "the listing ended" and "this page
     did not parse" are the same observation, and raising on every last page of
@@ -68,7 +94,7 @@ def unverifiable_end(source_name: str, url: str, *, collected: int) -> None:
     should say so while the count still looks plausible.
     """
     logger.warning(
-        "%s: %s yielded no postings and the listing publishes no total, so a "
+        "%s: the walk ended at %s and the listing publishes no total, so a "
         "finished walk cannot be told from a broken page; accepting %d posting(s)",
         source_name,
         url,
