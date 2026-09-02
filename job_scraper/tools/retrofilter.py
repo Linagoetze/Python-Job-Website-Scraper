@@ -14,7 +14,11 @@ from job_scraper.config_loader import (
     default_title_keywords_path,
     load_rules,
 )
-from job_scraper.filtering import build_hybrid_pattern, load_title_exclude_keywords
+from job_scraper.filtering import (
+    build_hybrid_pattern,
+    build_non_place_pattern,
+    load_title_exclude_keywords,
+)
 from job_scraper.pipeline import refilter_stored_jobs
 from job_scraper.storage.db import JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
@@ -44,11 +48,14 @@ def main() -> None:
     rules = load_rules()
     title_keywords = load_title_exclude_keywords(default_title_keywords_path())
     hybrid_pattern = build_hybrid_pattern(rules)
+    non_place_pattern = build_non_place_pattern(rules)
 
     with JobStore(db_path) as store:
         # The drop rows are discarded here on purpose: they belong to a run,
         # and this one-off script does not open one.
-        counts, _ = refilter_stored_jobs(store, rules, title_keywords, hybrid_pattern)
+        counts, _ = refilter_stored_jobs(
+            store, rules, title_keywords, hybrid_pattern, non_place_pattern
+        )
 
     print(f"Marked {counts['title_keywords']} rows rejected by title keywords")
     print(f"Marked {counts['rules']} rows rejected by rules, {counts['title']} by seniority")
