@@ -59,6 +59,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
+| CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5387,6 +5388,63 @@ is its own work package, never a passenger on someone else's change.
 That is the whole shape of WP12, really: a mechanical diff is only reviewable
 when it arrives alone, and it only stays arrived if something enforces it and the
 tool producing it cannot move underfoot.
+
+---
+
+## CU1 — Final cleanup, session 1 of 3
+
+First of three sessions working through `docs/AUDIT.md`'s findings, doing only
+what the owner listed for this session — §7A (the three dead sources) and the
+rest of §7C are left for a later session.
+
+### Result
+
+584 tests pass (up from 583), `ruff check .` and `ruff format --check .` clean.
+Branch `cu1-tidy`, not pushed.
+
+- **§7B — `retrofilter` fixed.** It never built `non_place_pattern`, so a
+  stored job whose location was a bare region name ("EMEA", "Worldwide") was
+  judged "a city not on the list" and permanently rejected — a verdict the
+  scraper itself would never reach, since `pipeline.py` always builds and
+  passes that pattern. One-line-plus-import fix in
+  `job_scraper/tools/retrofilter.py`, pinned by
+  `tests/test_retrofilter.py`.
+- **§7C — golden tests fail, not skip, on a missing fixture.** The three
+  `pytest.skip(...)` calls in `tests/test_extractors_golden.py` for a missing
+  captured page are now `pytest.fail(...)`, so deleting a fixture breaks the
+  build instead of silently dropping its coverage. All fixtures are present
+  today, so this changes no test outcome. The other fixture-skip sites
+  (`test_niras_extractor.py`, `test_store_roundtrip.py`, `test_pagination.py`,
+  `test_capture_fixtures.py`) were left alone — out of scope for this session,
+  not overlooked.
+- **§7D — tidying.**
+  - `.gitignore` now also matches `data/*.sqlite`, closing the gap a plain
+    (non-`.sqlite3`) cache file once slipped through.
+  - `storage/db.py`'s unused `REVIEW_STATUSES` tuple deleted — nothing read
+    it; the rule it named is enforced by spelling the statuses out at each
+    call site instead.
+  - The comment in `scripts/refresh_label_locations.py` claiming
+    `labels.csv` "lives under version control" fixed — it is deliberately
+    gitignored, precisely because it holds real job titles.
+  - Five orphaned files in `data/` were candidates: `jobs.csv`, `drops.csv`,
+    `survivors.csv`, `skipped_sources.csv`, `skipped_sources.xlsx`. Checked
+    each against the whole codebase (`.py` sources and `README.md`) for any
+    read or write by filename — only `jobs_sources.csv` (a different file,
+    still written every run) turned up. `drops.csv`, `survivors.csv`,
+    `skipped_sources.csv` and `skipped_sources.xlsx` were deleted from the
+    local `data/` directory. `jobs.csv` was kept, as instructed — it is the
+    owner's only pre-migration snapshot and the README already documents it
+    as a frozen, safe-to-delete-when-ready archive. None of these five are
+    tracked by git (all gitignored), so this is local-machine cleanup only,
+    not part of the commit history.
+  - Fossil `.pyc` files for modules with no surviving `.py` source —
+    `verdicts` (pre-dates the public repo entirely), `storage/csv_store`
+    (deleted in WP5), `tools/migrate_to_sqlite` (deleted alongside it) and
+    `extractors/tetrapak` — plus four orphaned test caches, deleted from
+    `__pycache__/`. Also gitignored; local cleanup only.
+- **Left alone, per the owner's instruction:** the `SEA` keyword, the
+  hybrid-locations feature, `scripts/scrape_and_blocklist.sh`, and
+  `data/curated/blocklist.csv` — all §7E in the audit, none touched.
 
 ---
 
