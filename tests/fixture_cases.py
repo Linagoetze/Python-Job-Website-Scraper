@@ -41,6 +41,7 @@ from job_scraper.extractors import (  # noqa: E402
     niras,
     successfactors_html,
     teamtailor,
+    unops,
     workday,
 )
 
@@ -83,9 +84,8 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "dsv": (
         "dsv.html",
         "https://jobs.dsv.com/search/",
-        # The parser, not the walk: this board runs to 201 pages, so the
-        # saved page pins what the extractor reads and `tests/test_pagination.py`
-        # covers the walk. See the impactpool entry for the reasoning.
+        # The parser, not the walk: 201 pages, which is far too much markup to
+        # store. The walk itself is `novo_nordisk`'s to cover.
         lambda url, fetch: successfactors_html._parse_page(
             BeautifulSoup(fetch(url), "lxml"), "https://jobs.dsv.com/search/", "dsv"
         ),
@@ -93,9 +93,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "iss": (
         "iss.html",
         "https://jobs.issworld.com/search/",
-        # The parser, not the walk: this board runs to 4 pages, so the
-        # saved page pins what the extractor reads and `tests/test_pagination.py`
-        # covers the walk. See the impactpool entry for the reasoning.
+        # The parser, not the walk. This board is only four pages and could
+        # have been captured whole; it is not, because the walk is one shared
+        # module and `novo_nordisk` already exercises it against real markup.
+        # What ISS is here for is its tile skin, which is the layout the other
+        # three instances do not have.
         lambda url, fetch: successfactors_html._parse_page(
             BeautifulSoup(fetch(url), "lxml"), "https://jobs.issworld.com/search/", "iss"
         ),
@@ -103,32 +105,39 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "novo_nordisk": (
         "novo_nordisk.html",
         "https://careers.novonordisk.com/search",
-        # The parser, not the walk: this board runs to 4 pages, so the
-        # saved page pins what the extractor reads and `tests/test_pagination.py`
-        # covers the walk. See the impactpool entry for the reasoning.
-        lambda url, fetch: successfactors_html._parse_page(
-            BeautifulSoup(fetch(url), "lxml"),
-            "https://careers.novonordisk.com/search",
-            "novo_nordisk",
+        # The one SuccessFactors instance captured as its whole walk (four
+        # pages). The walk is a single shared module, so capturing all five
+        # instances' walks would test the same loop five times over; this one
+        # exercises it against real markup — pagination, the last short page,
+        # and the reconciliation against the board's own total — while the other
+        # four pin their skins' parsing, which is what actually differs between
+        # them.
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="novo_nordisk",
+            page_step=100,
+            base_search_url="https://careers.novonordisk.com/search",
         ),
     ),
     "coloplast": (
         "coloplast.html",
         "https://careers.coloplast.com/search/",
-        # The parser, not the walk: this board runs to 14 pages, so the
-        # saved page pins what the extractor reads and `tests/test_pagination.py`
-        # covers the walk. See the impactpool entry for the reasoning.
+        # The parser, not the walk. Fourteen pages could have been captured;
+        # this one is here for its sub-brand postings (/Kerecis/job/…), pinned
+        # by `test_coloplast_keeps_sub_brand_postings`, and the walk is
+        # `novo_nordisk`'s to cover.
         lambda url, fetch: successfactors_html._parse_page(
             BeautifulSoup(fetch(url), "lxml"), "https://careers.coloplast.com/search/", "coloplast"
         ),
     ),
     "impactpool": (
-        # The parser, not the walk. This listing runs to roughly a hundred
-        # pages, so capturing it the way J-PAL's five are captured would be ten
-        # megabytes of someone else's HTML; the walk is covered synthetically in
-        # `tests/test_pagination.py` instead. Replaying one page through
-        # `extract` would now raise, and rightly — page 1 links to page 2, and
-        # the harness has no page 2 to give it.
+        # The parser, not the walk: roughly a hundred pages, which would be
+        # ten megabytes of someone else's HTML. This walk is not shared with
+        # anything, so it is covered synthetically in `tests/test_pagination.py`
+        # — the one source here whose walk no captured markup exercises.
+        # Replaying a single page through `extract` would now raise, and rightly:
+        # page 1 links to page 2 and the harness has no page 2 to give it.
         "impactpool.html",
         "https://www.impactpool.org/search",
         lambda url, fetch: impactpool._parse_page(
@@ -188,6 +197,14 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "planted.html",
         "https://careers.eatplanted.com/jobs",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="planted"),
+    ),
+    "unops": (
+        # Captured as the whole thirteen-page walk. UNOPS had no fixture at all
+        # until WP11's review pointed out that the one source with a hand-rolled
+        # total-reader was also the one with no real markup behind it.
+        "unops.html",
+        "https://careers.unops.org/careersmarketplace/SearchJobs",
+        lambda url, fetch: unops.extract(url, fetch, source_name="unops"),
     ),
     "seven_perigee": (
         "seven_perigee.html",

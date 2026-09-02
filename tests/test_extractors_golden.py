@@ -113,27 +113,28 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "novo_nordisk": {
-        # WP8g follow-on (2026-08-21): captured to replace the inference that
-        # this source was unaffected by the package. It was — all 100 rows are
-        # byte-identical to what main produced. Classic table layout.
-        "count": 100,
+        # WP11 review (2026-09-02): re-captured as its whole four-page walk, so
+        # this is the board's real length rather than page one's 100. It is the
+        # SuccessFactors instance that covers the shared walk end to end — the
+        # other four pin their skins' parsing. Recapture with `--pages all`.
+        "count": 329,
         "first_job": {
             "source_name": "novo_nordisk",
-            "title": "Project Engineer (Biotech Focus)",
-            "department": "Engineering & Technical",
-            "location": "West Lebanon, NH, US",
+            "title": "Regulatory Affairs Specialist",
+            "department": "Reg Affairs & Safety Pharmacovigilance",
+            "location": "Søborg, Capital Region of Denmark, DK",
             "listing_url": "https://careers.novonordisk.com/search",
             "detail_url": (
-                "https://careers.novonordisk.com/job/West-Lebanon-Project-Engineer-"
-                "%28Biotech-Focus%29-NH-03784/1418437333/"
+                "https://careers.novonordisk.com/job/"
+                "S%C3%B8borg-Regulatory-Affairs-Specialist-Capi/1432777733/"
             ),
             "apply_url": (
-                "https://careers.novonordisk.com/job/West-Lebanon-Project-Engineer-"
-                "%28Biotech-Focus%29-NH-03784/1418437333/"
+                "https://careers.novonordisk.com/job/"
+                "S%C3%B8borg-Regulatory-Affairs-Specialist-Capi/1432777733/"
             ),
             "raw_snippet": (
-                "Project Engineer (Biotech Focus) Engineering & Technical "
-                "West Lebanon, NH, US"
+                "Regulatory Affairs Specialist Reg Affairs & Safety Pharmacovigilance "
+                "Søborg, Capital Region of Denmark, DK"
             ),
         },
     },
@@ -443,6 +444,31 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "cvtp-8491-7004-expert-communication-institutionelle/"
             ),
             "raw_snippet": "7.004 Expert Communication institutionelle Tunisia",
+        },
+    },
+    "unops": {
+        # WP11 review (2026-09-02): UNOPS had no fixture at all, which is how a
+        # crash in its total-reader survived — the reader was only ever run
+        # against hand-written markup. Captured as the whole thirteen-page walk;
+        # recapture with `--pages all`.
+        "count": 74,
+        "first_job": {
+            "source_name": "unops",
+            "title": "Architectural Engineering Technician - Senior Associate",
+            "department": "",
+            "location": "Addis Ababa",
+            "listing_url": "https://careers.unops.org/careersmarketplace/SearchJobs",
+            "detail_url": (
+                "https://careers.unops.org/careersmarketplace/JobDetail/"
+                "Architectural-Engineering-Technician-Senior-Associate/4215"
+            ),
+            "apply_url": (
+                "https://careers.unops.org/careersmarketplace/JobDetail/"
+                "Architectural-Engineering-Technician-Senior-Associate/4215"
+            ),
+            "raw_snippet": (
+                "Architectural Engineering Technician - Senior Associate Addis Ababa"
+            ),
         },
     },
     "path": {
