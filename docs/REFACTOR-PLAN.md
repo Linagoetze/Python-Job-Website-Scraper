@@ -1,9 +1,28 @@
 # Refactor plan
 
-Living document. Every Claude Code session reads this first and updates it last.
+**The refactor is finished.** Every package below is done, the independent audit
+that followed is at `docs/AUDIT.md`, and the three cleanup sessions that worked
+through its findings are recorded at the end as CU1-CU3.
+
+This file is no longer a queue of work. It is two things: the record of how the
+project got from where "The big picture" describes to where it is now, and the
+decisions log — which the audit called the most valuable thing in the
+repository, and which is the reason a future session should still read this file
+before touching anything. What is left to do is under
+[Future work](#future-work), and neither item is refactor work.
+
+Still living in one sense: a session that makes a decision a later one would
+otherwise re-derive should still write it into the decisions log. That is the
+part of this file that never closes.
+
 Lives at `docs/REFACTOR-PLAN.md`.
 
 ## The big picture
+
+*This section describes the state the refactor started from, in August 2026. It
+is kept in the present tense it was written in, because it is the problem
+statement the packages below were answering. What became of each of
+the three is noted underneath.*
 
 This codebase grew one Claude Code session at a time. Each session solved its
 immediate problem correctly without asking whether the surrounding structure
@@ -30,12 +49,34 @@ the accretion. It is ordered so that each package is safe to stop after.
 - Preserve the owner's review history. The existing 265-row blocklist means
   "already seen", not "rejected", and must not be imported as rejections.
 
+**What became of the three:**
+
+1. **`storage/csv_store.py` is gone** — deleted outright in WP5, not wrapped.
+   SQLite is the store, one write per run inside one transaction, and the Excel
+   formulas live only in `storage/xlsx_store.py`.
+2. **The filter ladder is five layers, not five regex passes.** WP8 deleted the
+   two language layers and pruned the keyword list against a measured gold set
+   rather than by argument; WP8h renumbered what is left into execution order.
+   Layers 1-4 are free text matching and only Layer 5 costs a request.
+3. **`title_exclude_keywords.csv` still exists, and that is deliberate.** The
+   plan intended to replace it with LLM scoring; WP7 built the scoring stage and
+   the owner decided not to open API billing, so nothing replaces it and
+   deleting it would have handed its job to no one. It was pruned instead — 8
+   keywords removed, each removal measured — and the scoring stage sits dormant
+   and switched off. If billing is ever opened, that is the moment to revisit
+   it, and the WP7 and WP8 entries in the decisions log say exactly what to
+   re-read first.
+
+Of the four guiding decisions above, three held. The second did not, and the
+decisions log records why rather than quietly restating the goal.
+
 ## Status
 
 | WP | Title | Time | Model | Effort cue | Status | Branch |
 |----|-------|------|-------|-----------|--------|--------|
 | 0 | Fixture capture script | 1 hr | Sonnet 5 | none | done | `wp0-fixtures` |
-| 0c | Sanitise fixtures | 1 hr | Opus 5 | `think hard` | done | `wp0c-sanitise-fixtures` |
+| 0b | Conditional hybrid-gated locations | — | — | — | done — the owner's own feature, landed between WP0 and WP0c; WP6, WP8d and WP8f all build on its shape | `wp0b-hybrid-locations` |
+| 0c | Sanitise fixtures, capture what the extractor reads | 1 hr | Opus 5 | `think hard` | done — sanitiser, recording capture, `is_rendering_fetcher()`; unplanned, and WP8g/WP9/WP11 each depend on it | `wp0c-sanitise-fixtures` |
 | 1 | Atomic writes and delisting guard | 1.5 hr | Sonnet 5 | `think` | done | `wp1-data-safety` |
 | 2 | Test net and tooling | 3-4 hr | Opus 5 | `think` | done | `wp2-test-net` |
 | 3 | Company field from config | 1 hr | Sonnet 5 | none | done | `wp3-company-field` |
@@ -61,9 +102,18 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 | CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
 | CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 602 tests pass; **incident: a private file was staged into the public repo, caught before any push, see the result section** | `cu2-dead-sources` |
+| CU3 | Final cleanup, session 3 of 3 — close the refactor out | 0.5 hr | Opus 5 | none | done — plan reconciled to the finished state, WP0b/WP0c/CU1-CU3 folded in, Future work added, the SEA and leave-alone decisions logged, the place-names instruction replaced with an honest note, README rewritten for a stranger; 602 tests pass, no code changed | `cu3-close-out` |
 
-Total roughly 30 hours. One package per week is about three months. Two evenings
-a week is six or seven weeks. Nothing breaks if you stop after any package.
+**All twenty-six packages and all three cleanup sessions are done.** The
+estimate was roughly 30 hours; the real thing ran from 2026-08-02 to 2026-09-02,
+one package per session, never two. Three of the twenty-six were not in the
+original plan at all — WP0b, WP0c, and the pagination work in WP11 — and each
+was added because an earlier package's *result* raised something, which is what
+the one-package-per-session rule was for.
+
+The finished state, verified by `docs/AUDIT.md` against the code rather than
+against this table: 602 tests passing, `ruff check` and `ruff format --check`
+clean, 49 sources, 29 extractors, 43 fixtures, and no data-loss path found.
 
 ## Decisions log
 
@@ -488,6 +538,37 @@ Record any decision a future session would otherwise have to re-derive.
   order. J-PAL is the only source captured this way today; re-capture it with
   the flag.
 
+- **The `SEA` keyword stays. Measured, and it changes nothing** (CU3, from the
+  audit's independent check). The eval report credits `SEA` with costing two
+  wanted jobs, which reads as an obvious prune and has now attracted two
+  separate readers. It is wrong both times, for the reason two entries up:
+  that table reports **attribution**, not marginal cost. The audit did the
+  measurement properly — removed the keyword, re-ran, diffed — and **no posting
+  changes verdict either way**, because something further down the ladder
+  catches both. Keeping it costs nothing and removing it buys nothing, so it
+  stays where it is rather than being churned. **Do not re-propose removing
+  `SEA` without a marginal measurement** — remove it, re-run
+  `python -m job_scraper.eval`, diff, and quote the diff. A row in the printed
+  table is not that measurement, and a paragraph of reasoning is not either.
+
+- **The retired shell script, its companion tool and the old blocklist file all
+  stay** (CU3, the owner's standing instruction). Three things look like dead
+  weight to every fresh reader, and all three are staying until the owner says
+  otherwise. Do not propose deleting them again:
+
+  - `scripts/scrape_and_blocklist.sh` — the pre-WP5b flow, clearly marked
+    retired, prints its own warning, destroys nothing.
+  - `job_scraper/tools/blocklist_all.py` — its companion, now a slower alias
+    for `review --seen-all`.
+  - `data/curated/blocklist.csv` — all 265 rows are in the store, so nothing
+    needs the file to run. It is kept as the only surviving record of what had
+    been reviewed before the migration, and it has already earned that once:
+    the WP8b recovery used it as independent corroboration of which postings
+    were unreviewed.
+
+  Retiring any of these is a decision for the owner, not a maintenance finding.
+  The audit reached the same conclusion independently (§7E) and left them.
+
 ---
 
 # How to run one session
@@ -627,7 +708,94 @@ dsv:        tests/fixtures/dsv.html         (31,671 bytes, was 57,961)
 impactpool: tests/fixtures/impactpool.html (107,966 bytes, was 126,917)
 ```
 
-### Sanitising captured HTML (WP0c)
+### Re-running when a fixture goes stale
+
+A career site redesign will eventually break a golden-file test from WP2
+before it breaks the real pipeline — that's the fixture doing its job. To
+refresh one or more fixtures:
+
+```
+python scripts/capture_fixtures.py <source_name> [<source_name> ...]
+```
+
+A paginated source needs its whole walk, not its first page (WP11):
+
+```
+python scripts/capture_fixtures.py --pages all jpal
+```
+
+Source names must match an entry in `job_scraper/config/sources.yaml`. The
+script overwrites the existing fixture for each name given — check the printed
+byte size against the old one before trusting it (a page returning a login
+wall or a cookie-consent interstitial is still "successful" HTTP-wise but
+much smaller than the real listing). After refreshing, re-run the golden-file
+tests (WP2) and update the expected job counts/fields if the site's structure
+genuinely changed.
+
+---
+
+## WP0b — Conditional hybrid-gated locations
+
+No prompt, and not a package this plan commissioned. It is the owner's own
+feature, written between WP0 and WP0c on branch `wp0b-hybrid-locations`, and it
+is recorded here because a later session reading the status table would
+otherwise find a gap between WP0 and WP1 and wonder what landed in it.
+
+The feature: a city too far to commute to daily goes in
+`rules.json`'s `conditional_locations` rather than `locations`, and a posting
+there is admitted **only** if the role turns out to be hybrid. The listing page
+almost never says, so the check runs in two stages — `filtering.matches_rules`
+admits the posting provisionally, and the detail layer settles it against the
+body text it was already fetching. It fails closed: a conditional city is out of
+range unless something proves otherwise.
+
+### Result
+
+Two commits. `feat: gate conditional locations on hybrid working` added the
+filter, the deferred state and the tests; `fix: compile hybrid pattern once per
+run, split recheck from new in summary` followed immediately, and is the more
+interesting of the two — it is the first time this project's "compile once" rule
+was applied to something already written, and it split
+`RunSummary.jobs_stored_rechecked` out of "new, detail-checked" so the funnel
+reconciles against rows actually written.
+
+Three later packages are direct descendants, and reading them without this one
+makes them look arbitrary:
+
+- **WP6** persisted the confirmation on the posting's row, so a confirmed
+  posting stops costing a detail fetch on every subsequent run.
+- **WP8d** copied the shape wholesale for unresolvable locations — provisional
+  at Layer 0, settled at Layer 2, failing closed — and generalised the flag into
+  `UNVERIFIED_KEY`.
+- **WP6's follow-up** fixed the one real bug in the pattern: a *failed* check is
+  a network failure, not a judgement, and must never be persisted as
+  `'rejected'`.
+
+The first entry in the decisions log is about this feature, and it still
+stands: keep it, and do not propose deleting it as filter-ladder cleanup. The
+audit re-verified it end to end and reached the same conclusion independently.
+
+---
+
+## WP0c — Sanitise the fixtures, and capture what the extractor reads
+
+Not in the original plan. WP0's six fixtures were whole live pages saved
+verbatim, and within a day that turned out to carry two separate problems:
+they embedded third-party inline config (one value of which GitHub's secret
+scanner flagged), and one of the six was a page its extractor never reads.
+Both are the same point — a fixture is only worth having if it holds what
+the extractor actually parses, and nothing else.
+
+### Result
+
+Branch `wp0c-sanitise-fixtures`. `sanitise_html` strips what no extractor
+reads, `capture_one` records the request the extractor really makes, and
+`is_rendering_fetcher()` replaced an identity check that was silently
+capturing dynamic sources before they had rendered. The four subsections
+below are the detail, and all four are still load-bearing: WP8g, WP9 and
+WP11 each turned on one of them.
+
+### Sanitising captured HTML
 
 Captured HTML now passes through `sanitise_html` before it is written. It uses
 BeautifulSoup, never a regex, and removes only `<script>` elements that carry
@@ -704,30 +872,6 @@ field identical, so the fixture in the repo was not captured too early and the
 churn was discarded. That run is also the only end-to-end exercise of the
 current `capture_one` against a live site; everything else is covered by tests
 with the network faked out.
-
-### Re-running when a fixture goes stale
-
-A career site redesign will eventually break a golden-file test from WP2
-before it breaks the real pipeline — that's the fixture doing its job. To
-refresh one or more fixtures:
-
-```
-python scripts/capture_fixtures.py <source_name> [<source_name> ...]
-```
-
-A paginated source needs its whole walk, not its first page (WP11):
-
-```
-python scripts/capture_fixtures.py --pages all jpal
-```
-
-Source names must match an entry in `job_scraper/config/sources.yaml`. The
-script overwrites the existing fixture for each name given — check the printed
-byte size against the old one before trusting it (a page returning a login
-wall or a cookie-consent interstitial is still "successful" HTTP-wise but
-much smaller than the real listing). After refreshing, re-run the golden-file
-tests (WP2) and update the expected job counts/fields if the site's structure
-genuinely changed.
 
 ---
 
@@ -5474,6 +5618,12 @@ offline, from bytes on disk.
 598 tests pass (up from 584), `ruff check .` and `ruff format --check .` clean,
 `python -m job_scraper.run --help` works. Branch `cu2-dead-sources`, not pushed.
 
+*Later, same session:* the review follow-up and the fixture-skip change below
+took it to **602**, which is the figure in the status table and the count on
+`main` today. The 598 above was true when it was written and is left as written,
+because a result section that quietly acquires the final number stops recording
+what the session actually saw at each point.
+
 The three sources turned out to have three different answers, and only one of
 them is a bug.
 
@@ -5721,6 +5871,11 @@ converted it, so the tombstone is now a proprietary binary. No run breaks,
 since nothing in the code reads that file; it is a human record, and it is no
 longer greppable. Worth exporting back to CSV.
 
+**Done.** Checked at the start of CU3: `data/curated/excluded_sources.csv` is
+back, greppable, and the `.numbers` file is gone. The deny-by-default ignore
+rule covers whichever of the two exists, so the fix does not depend on the
+owner having tidied up.
+
 ### Follow-up: `test_fixture_still_parses` fails instead of skipping
 
 Raised at the end of this session as noted-not-fixed, then done on the owner's
@@ -5738,6 +5893,138 @@ scope.
 
 ---
 
+## CU3 — Final cleanup, session 3 of 3
+
+The last of the three sessions. Nothing in `docs/AUDIT.md` was left to fix —
+CU1 took §7B/§7C/§7D and CU2 took §7A — so this one is bookkeeping: make this
+file describe the finished project rather than the queue it used to be, and
+write down the things a future session would otherwise re-derive or
+re-propose.
+
+**No code changed.** 602 tests pass, `ruff check .` and `ruff format --check .`
+clean, `python -m job_scraper.run --help` works. Branch `cu3-close-out`, not
+pushed.
+
+### Result
+
+- **The plan reflects the finished state.** The header says the refactor is
+  closed and what this file is for now; "The big picture" is marked as the
+  problem statement it was, with what became of each of its three items
+  underneath — including the one guiding decision that did **not** hold (the
+  keyword CSV was pruned, not replaced, because WP7's scorer is off).
+- **WP0b and WP0c are folded in properly.** Both landed between WP0 and WP1 and
+  neither had a section of its own; WP0c had a status row pointing at a
+  subsection of WP0, and WP0b had nothing at all. WP0b is now written up as
+  what it was — the owner's own feature, not a commissioned package — with the
+  three later packages that inherit its shape named, because WP6, WP8d and
+  WP8f all read as arbitrary without it. WP0c's four subsections were promoted
+  out of WP0 unchanged.
+- **CU1, CU2 and CU3 are in the status table** alongside the work packages,
+  rather than being sections the table does not mention. CU2's result section
+  gained a note reconciling its 598 with the 602 the same session finished on,
+  and its incident section records that the `excluded_sources` tombstone has
+  been exported back to CSV.
+- **Two decisions recorded** — the `SEA` keyword and the three retired-but-kept
+  artefacts. Both are things this project has now talked itself out of twice,
+  which is the definition of a decisions-log entry.
+- **The place-names instruction was replaced with an honest note** — see the
+  section below.
+- **`README.md` rewritten for a stranger.** Detail in that file's own history;
+  the substance is that it now describes the project as it is rather than
+  carrying its own changelog, and it links here and to `CLAUDE.md` so a reader
+  who wants the reasoning can find it.
+
+### What was deliberately not done
+
+- **`docs/AUDIT.md` is left exactly as written.** It is a dated, independent
+  read of a specific commit, and editing it to reflect what was fixed
+  afterwards would destroy the thing that makes it worth keeping. Where a
+  finding has been acted on, this file says so; the audit stays as it was
+  found.
+- **No code, config or test was touched.** Every finding that warranted a code
+  change was already closed by CU1 and CU2. A cleanup session that goes
+  looking for one more thing to fix is how the accretion in "The big picture"
+  started.
+
+---
+
+# Future work
+
+Neither of these is refactor work, and neither has a deadline. They are the two
+things worth doing next, in this order.
+
+## 1. Fixture coverage for the uncovered page readers
+
+From the audit's §7C, which counted fifteen uncovered readers out of
+twenty-seven. **It is thirteen out of twenty-six today** — CU2 captured
+`gfi_europe` and deleted `probably_good`, and both were in the uncovered
+fifteen. Counting by source rather than by reader the gap looks smaller (22 of
+49 sources have a saved page), but the reader count is the honest one:
+thirteen readers have no saved page at all, so no golden test and no parse
+check, and if one of them breaks tomorrow the whole suite still passes.
+
+As of CU3 they are: `asana`, `breezy`, `coefficient`, `jobsinlund`, `lever`,
+`mammut`, `norrsken`, `oatly`, `personio`, `sida`, `smartrecruiters`, `undp`,
+`workable`. Only `workable` currently serves more than one source (two), so
+this is close to one capture per reader rather than a few captures covering
+many. Five of the thirteen are generic ATS readers — `breezy`, `lever`,
+`personio`, `smartrecruiters`, `workable` — and those are the ones to do first:
+a bug in one of them is inherited by every future employer added on that
+platform, which is what made WP8g's SuccessFactors findings worth as much as
+they were.
+
+The audit's companion suggestion in the same section is **already done**: a
+missing fixture now fails rather than skips, in `test_extractors_golden.py`
+(CU1) and in `test_fixture_still_parses` (CU2). Do not re-propose it.
+
+**This is ongoing maintenance, not a package.** It should not be done in one
+sitting and does not need to be: capture a few pages, pin them, fix whatever
+surfaces, repeat. CU2 was the first instalment and shows the shape — three
+sources captured, and the captures answered a question no amount of reading the
+code had answered in nineteen runs.
+
+Expect to find bugs, and budget for fixing them rather than for capturing.
+**The audit's estimate is that roughly three in four uncovered readers are
+carrying an unnoticed bug**, and it is not a guess: WP8g captured four
+SuccessFactors sources for the first time and three of the four turned out to
+be broken — a label returned as a location, a whole card returned as a title,
+and a quarter of one source's postings silently dropped. CU2 then captured
+three more and found one further real bug. Treat "this source has no saved
+page" as an open question about correctness.
+
+The method is fixed and is the hard-won part:
+
+```bash
+python scripts/capture_fixtures.py <source_name>
+```
+
+Capture **first**, then read the extractor. WP8g's lesson, restated in CU2 and
+true both times: reasoning identifies the page layout correctly and gets the
+data wrong.
+
+## 2. Review the skipped-sources record and add new sources
+
+Two hand-maintained files under `data/curated/`, both gitignored, and they are
+different things:
+
+- **`candidate_sources.xlsx`** — employers noted but never added. This is the
+  one to work through.
+- **`excluded_sources.csv`** — the tombstone. Organisations ruled out
+  permanently, with the reason and the date. **Check a candidate against this
+  before proposing it**, or the same source gets re-added and re-removed.
+  `probably_good` is the most recent entry (CU2), and its reason is a good
+  example of what belongs there: not "this broke" but "this cannot be made to
+  work within this design".
+
+Adding a source that runs on an ATS already supported is a `sources.yaml` entry
+and one registry line — Greenhouse, Lever, Ashby, Workable, Teamtailor,
+Personio, SmartRecruiters, Workday, Breezy and SuccessFactors are all covered.
+A genuinely bespoke site is a new extractor, and CLAUDE.md's "config over code"
+rule means it should have to earn that.
+
+Whatever is added, capture its fixture in the same session — a new source with
+no saved page joins the population in item 1 above.
+
 ---
 
 # Keeping the public repo clean
@@ -5745,15 +6032,58 @@ scope.
 The repo is public. Every private file has a tracked `.example` twin and the
 real one is gitignored. Keep applying that pattern.
 
-Verified clean at the start of this plan: `sources.yaml`, `rules.json`,
-`blocklist.csv`, `jobs.csv` and `candidate_sources.xlsx` have never appeared in
-any commit.
+Verified clean at the start of this plan, and re-verified across the whole
+history by the audit's §6: `sources.yaml`, `rules.json`, `blocklist.csv`,
+`jobs.csv`, `candidate_sources.xlsx`, the database, the spreadsheet, the
+labelled set and every one-off export have **zero commits, ever**. No
+credential of any shape appears in any published file or in any of the 43
+fixtures.
+
+Two things the refactor learned about *how* that stays true:
+
+- **Ignore rules for a directory of private files must deny by default.** A
+  per-file list is only correct until an application writes a sidecar beside a
+  file you opened. It happened twice — a `.sqlite` cache that the `.sqlite3`
+  rule missed (audit §6, closed by CU1), and an `excluded_sources.numbers` that
+  Numbers wrote beside the CSV and a `git add -A` then staged (CU2). The rule
+  for `data/curated/` is now `*` plus `!*.example.csv` / `!*.example.xlsx`.
+- **`git add -A` is the wrong instinct in this repository.** Stage named paths.
+  The ignore rules are the backstop, not the primary defence.
 
 Still to watch:
 
 - `job_scraper/config/title_exclude_keywords.csv` is tracked and shows real role
   exclusions. Optional: give it the `.example` treatment too.
-- `profile.md` from WP7 will contain a CV. Must be gitignored.
-- The SQLite database from WP4 will hold every job ever seen. Must be gitignored.
-- This plan file is public. Skim it for real cities and companies before pushing.
-- Fixtures from WP0 are third-party career pages. Fine to publish, but large.
+- Fixtures are third-party career pages. Fine to publish, but large, and they
+  go through the sanitiser (WP0c) before they are written.
+
+## Place names in this file and in the tests
+
+**This file names real cities and employers, and that is a considered decision
+rather than an oversight.** It replaces the instruction that used to stand here
+— "skim it for real cities and companies before pushing" — which was never met
+and, on the audit's independent reading, was not worth meeting.
+
+The reasoning, from the audit's §6 and §7E:
+
+- **Employers are not a meaningful disclosure.** About half the employers
+  followed are named here. The published code already names all of them: the
+  extractor registry lists every source, and many are in the fixture filenames.
+  This file adds nothing the repository does not already say.
+- **Locations are a real disclosure, and cleaning this file would not close
+  it.** Six target cities appear here, but eleven of the twenty-seven location
+  settings appear across published files in total, because **the test suite
+  uses real cities as test data** — which is how the tests came to be worth
+  having, since they were written from real examples. Sanitising the plan file
+  alone would leave the disclosure exactly where it is while making this file
+  worse.
+- **What it actually reveals is mild.** That someone is job-hunting in a
+  particular region of Europe. Combined with the repository being under a real
+  name that is a little personal — but it is not an address, not a credential,
+  and not anything that can be used against anyone.
+
+So: real place names stay, here and in the tests, and nobody has to pretend
+otherwise before pushing. **An honest note is worth more than a rule everybody
+skips.** What does *not* get published is what was never published: the config,
+the store, the labelled set, the blocklist, and the contact details, which live
+in the gitignored `rules.json` for exactly this reason (WP10).
