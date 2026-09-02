@@ -101,9 +101,10 @@ def main() -> int:
         return 1
 
     raw = args.labels.read_bytes()
-    # This file is hand-curated and lives under version control; a refresh must
-    # show 63 changed lines, not 63 plus a spurious one because the writer
-    # terminated the final row when the original did not.
+    # This file is hand-curated and deliberately excluded from version control
+    # (real job titles); a refresh must show 63 changed lines, not 63 plus a
+    # spurious one because the writer terminated the final row when the
+    # original did not.
     ends_with_newline = raw.endswith(b"\n")
 
     with args.labels.open(encoding="utf-8", newline="") as fh:
