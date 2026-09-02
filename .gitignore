@@ -17,11 +17,15 @@ data/*.xlsx
 job_scraper/config/sources.yaml
 job_scraper/config/rules.json
 
-# Hand-maintained personal data. blocklist.example.csv is the tracked template;
-# your real blocklist and research notes stay local.
-data/curated/blocklist.csv
-data/curated/excluded_sources.csv
-data/curated/candidate_sources.xlsx
+# Hand-maintained personal data. Everything under curated/ is local by default
+# and only the .example templates are tracked, rather than naming each real
+# file: the per-file list missed `excluded_sources.numbers` the moment Numbers
+# saved a copy of the CSV beside it, and a `git add -A` staged it (CU2). A rule
+# that has to be extended every time an application writes a sidecar is a rule
+# that will be wrong again.
+data/curated/*
+!data/curated/*.example.csv
+!data/curated/*.example.xlsx
 
 # Pre-publish backup of the original repo history (local only).
 .git.backup/
