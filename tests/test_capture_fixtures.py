@@ -92,7 +92,11 @@ class _FakeFetcher:
 
 
 def _jpal_page(jobs: int, last_page: int | None) -> str:
-    """Minimal J-PAL listing markup: *jobs* postings and an optional pager."""
+    """Minimal J-PAL listing markup: the jobs view, *jobs* postings, a pager.
+
+    The `view-id-jobs` wrapper is not decoration — the extractor reads it to
+    tell a rendered listing from a page whose view is missing.
+    """
     nodes = "".join(
         '<div class="node node--type-job">'
         f'<h3 class="job-teaser-title"><a href="/careers/job-{i}">Job {i}</a></h3>'
@@ -103,7 +107,11 @@ def _jpal_page(jobs: int, last_page: int | None) -> str:
     if last_page is not None:
         links = "".join(f'<a href="?page={n}">{n}</a>' for n in range(last_page + 1))
         pager = f'<nav class="pager">{links}</nav>'
-    return f"<html><body>{nodes}{pager}</body></html>"
+    return (
+        '<html><body><div class="view view-id-jobs">'
+        f'<div class="view-content">{nodes}</div>{pager}'
+        "</div></body></html>"
+    )
 
 
 @pytest.fixture

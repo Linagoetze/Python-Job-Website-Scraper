@@ -14,13 +14,23 @@ be captured from a healthy site.
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 import pytest
 
-from job_scraper.extractors import jpal, smartrecruiters, tetrapak
+from job_scraper.extractors import (
+    impactpool,
+    jpal,
+    niras,
+    smartrecruiters,
+    successfactors_html,
+    tetrapak,
+    unops,
+)
 from job_scraper.extractors.pagination import ShortWalkError
-from tests.fixture_cases import parse_fixture
+from tests.fixture_cases import FIXTURES_DIR, parse_fixture
 
 _LISTING_URL = "https://www.povertyactionlab.org/careers"
 
@@ -37,18 +47,32 @@ def _job_node(slug: str) -> str:
     )
 
 
-def _page(jobs: int, last_page: int | None, offset: int = 0) -> str:
-    """A listing page holding *jobs* postings, with a pager up to *last_page*.
+def _page(jobs: int, last_page: int | None, offset: int = 0, rendered: bool = True) -> str:
+    """A listing page in one of the jobs view's three states.
 
-    `last_page=None` is the no-pager page: what a single-page listing serves,
-    and also what the site served when its view failed to render.
+    `rendered=True` builds the view around whatever postings there are — with
+    `.view-content` when there are some and `.view-empty` when there are none,
+    which is what the site serves for a search that genuinely matches nothing.
+    `rendered=False` leaves the jobs view off the page altogether: the failure
+    that cost 35 postings. The office-contact blocks are included because they
+    are `.view-empty` too, and a check that is not scoped to the jobs view would
+    read them as an answer about vacancies.
     """
+    contact = '<div class="view view-id-office_contact"><div class="view-empty">J-PAL</div></div>'
+    if not rendered:
+        return f"<html><body>{contact}</body></html>"
+
     nodes = "".join(_job_node(f"job-{offset + i}") for i in range(jobs))
+    body = (
+        f'<div class="view-content">{nodes}</div>'
+        if jobs
+        else '<div class="view-empty">Your search returned no results.</div>'
+    )
     pager = ""
     if last_page is not None:
         links = "".join(f'<a href="?page={n}">Page {n + 1}</a>' for n in range(last_page + 1))
         pager = f'<nav class="pager">{links}</nav>'
-    return f"<html><body>{nodes}{pager}</body></html>"
+    return f'<html><body><div class="view view-id-jobs">{body}{pager}</div>{contact}</body></html>'
 
 
 def _serving(pages: dict[str, str]) -> Any:
@@ -93,7 +117,7 @@ def test_empty_page_mid_walk_raises_rather_than_shortening() -> None:
     fetch = _serving(
         {
             _LISTING_URL: _page(jobs=9, last_page=4),
-            f"{_LISTING_URL}?page=1": _page(jobs=0, last_page=None),
+            f"{_LISTING_URL}?page=1": _page(jobs=0, last_page=None, rendered=False),
         }
     )
 
@@ -102,22 +126,23 @@ def test_empty_page_mid_walk_raises_rather_than_shortening() -> None:
 
     message = str(excinfo.value)
     assert "?page=1" in message
-    assert "pager runs to page 4" in message
+    assert "no jobs listing at all" in message
     # The count it refused to return, so the log says how much was at stake.
     assert "9 posting(s)" in message
 
 
 def test_a_broken_pages_missing_pager_cannot_end_the_walk() -> None:
-    """`_last_page` returning 0 from a broken page must not be believed.
+    """A page that failed to render is never asked how many pages there are.
 
     This is the mechanism of the original bug rather than its symptom: the walk
-    asked the page that had just failed how many pages there were, and a page
-    that renders nothing renders no pager either.
+    asked the page that had just failed, and a page that renders nothing renders
+    no pager either. `_last_page` now says None for "no pager here" rather than
+    0, and the walk reaches the state check before it would read the pager.
     """
     fetch = _serving(
         {
             _LISTING_URL: _page(jobs=9, last_page=4),
-            f"{_LISTING_URL}?page=1": _page(jobs=0, last_page=None),
+            f"{_LISTING_URL}?page=1": _page(jobs=0, last_page=None, rendered=False),
         }
     )
 
@@ -147,6 +172,26 @@ def test_a_runaway_pager_stops_and_says_so() -> None:
         return _page(jobs=1, last_page=10_000)
 
     with pytest.raises(ShortWalkError, match="limit"):
+        jpal.extract(_LISTING_URL, fetch)
+
+
+def test_a_listing_that_genuinely_has_no_vacancies_is_not_a_failure() -> None:
+    """The view rendered and said there are none. That is an answer, not a fault."""
+    fetch = _serving({_LISTING_URL: _page(jobs=0, last_page=None)})
+
+    assert jpal.extract(_LISTING_URL, fetch) == []
+
+
+def test_a_missing_jobs_view_on_the_first_page_raises() -> None:
+    """The state that used to be indistinguishable from "no vacancies".
+
+    Page 0 was previously covered only by the pipeline's zero-row guard, which
+    keeps the stored jobs but reports the source as healthy with nothing on it.
+    The view being absent is not a count of zero, and it is now said out loud.
+    """
+    fetch = _serving({_LISTING_URL: _page(jobs=0, last_page=None, rendered=False)})
+
+    with pytest.raises(ShortWalkError, match="no jobs listing at all"):
         jpal.extract(_LISTING_URL, fetch)
 
 
@@ -225,3 +270,264 @@ def test_tetrapak_stops_cleanly_at_the_total(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(tetrapak, "post_json", lambda *a, **k: responses.pop(0))
 
     assert len(tetrapak.extract("https://example.test", lambda url: "")) == 2
+
+
+# --- the four listings that state a total in their own markup ---------------
+#
+# None of these can store its walk as a fixture — UNOPS is 13 pages, DSV 201,
+# Impactpool about a hundred — so the walk is pinned here and the saved page
+# pins the parser. Each site's total is quoted from what it really serves; the
+# fixtures and the live pages the totals were read from are named in the plan.
+
+
+def _unops_page(jobs: int, total: int | None) -> str:
+    articles = "".join(
+        f'<article class="article article--result">'
+        f'<h3><a href="/careersmarketplace/JobDetail/role-{i}/{i}">Role {i}</a></h3>'
+        f'<span class="list-item-Duty Station">Copenhagen</span></article>'
+        for i in range(jobs)
+    )
+    legend = ""
+    if total is not None:
+        legend = (
+            f'<span class="list-controls__text__legend" aria-label="{total} results">'
+            f"1-{jobs} of {total} results</span>"
+        )
+    return f"<html><body>{legend}{articles}</body></html>"
+
+
+def test_unops_empty_page_before_its_stated_total_raises() -> None:
+    pages = {
+        0: _unops_page(6, total=74),
+        6: _unops_page(0, total=None),
+    }
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        offset = int(url.rsplit("jobOffset=", 1)[1])
+        return pages[offset]
+
+    with pytest.raises(ShortWalkError, match="74 result"):
+        unops.extract("https://careers.unops.org/careersmarketplace/SearchJobs", fetch)
+
+
+def test_unops_without_a_readable_total_says_it_could_not_check(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No total is not an error, but it is not silence either."""
+    pages = {0: _unops_page(6, total=None), 6: _unops_page(0, total=None)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("jobOffset=", 1)[1])]
+
+    with caplog.at_level(logging.WARNING):
+        jobs = unops.extract("https://careers.unops.org/careersmarketplace/SearchJobs", fetch)
+
+    assert len(jobs) == 6
+    assert "publishes no total" in caplog.text
+
+
+def _impactpool_page(jobs: int, next_page: int | None, offset: int = 0) -> str:
+    rows = "".join(
+        f'<div class="job"><a href="/jobs/role-{offset + i}">'
+        f'<div class="ip-typography">Role {offset + i}</div>'
+        f'<div class="ip-typography">Org</div>'
+        f'<div class="ip-typography">Geneva</div></a></div>'
+        for i in range(jobs)
+    )
+    nxt = f'<a href="/search?page={next_page}">Next</a>' if next_page else ""
+    return f"<html><body>{rows}{nxt}</body></html>"
+
+
+def test_impactpool_page_that_was_linked_to_must_not_come_back_empty() -> None:
+    pages = {1: _impactpool_page(40, next_page=2), 2: _impactpool_page(0, next_page=None)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("page=", 1)[1])]
+
+    with pytest.raises(ShortWalkError, match="page 1 linked to it"):
+        impactpool.extract("https://www.impactpool.org/search", fetch, "impactpool")
+
+
+def test_impactpool_stops_where_the_links_stop() -> None:
+    """The count in the header is deliberately not the test: it runs ahead of a
+    deduplicated walk on an aggregator, and using it would fail every run.
+
+    The walk still asks for the page after the last one — the absent link makes
+    that page's emptiness acceptable rather than skipping the request. Trusting
+    the link to end the walk would mean a restyled pager silently truncating it,
+    which is the failure this whole package is about.
+    """
+    pages = {1: _impactpool_page(40, next_page=None), 2: _impactpool_page(0, next_page=None)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("page=", 1)[1])]
+
+    assert len(impactpool.extract("https://www.impactpool.org/search", fetch, "impactpool")) == 40
+
+
+def _niras_page(jobs: int, total: int | None, offset: int = 0) -> str:
+    cards = "".join(
+        f'<a href="/jobs/vacant-positions/cvtp-{offset + i}-role/">'
+        f'<div class="box-content"><p class="headline">Role {offset + i}</p>'
+        f'<p class="list-tags">Country: <span>Denmark</span></p></div></a>'
+        for i in range(jobs)
+    )
+    bar = f'<p>Vacant positions: <span class="filter-result-text">{total}</span></p>'
+    return f"<html><body>{bar if total is not None else ''}{cards}</body></html>"
+
+
+def test_niras_empty_page_before_its_stated_total_raises() -> None:
+    pages = {1: _niras_page(25, total=60), 2: _niras_page(0, total=None)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("page=", 1)[1])]
+
+    with pytest.raises(ShortWalkError, match="60 vacant position"):
+        niras.extract("https://www.niras.com/jobs/vacant-positions/", fetch)
+
+
+def _sf_page(jobs: int, total: int | None, offset: int = 0) -> str:
+    rows = "".join(
+        f'<tr><td><a href="/job/City-Role-{offset + i}/{offset + i}/">Role {offset + i}</a></td>'
+        f'<td class="colLocation"><span class="jobLocation">Copenhagen</span></td></tr>'
+        for i in range(jobs)
+    )
+    label = ""
+    if total is not None:
+        label = (
+            f'<span class="paginationLabel" aria-label="Search results for . Page 1 of 9, '
+            f'Results 1 to {jobs} of {total}">Results</span>'
+        )
+    return f"<html><body>{label}<table>{rows}</table></body></html>"
+
+
+def test_successfactors_empty_page_before_its_stated_total_raises() -> None:
+    pages = {0: _sf_page(10, total=2010), 10: _sf_page(0, total=None)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("startrow=", 1)[1])]
+
+    with pytest.raises(ShortWalkError, match="2010 posting"):
+        successfactors_html.extract(
+            "https://jobs.dsv.com/search/",
+            fetch,
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
+        )
+
+
+def test_successfactors_lapping_the_list_early_raises() -> None:
+    """A board that serves page one again has not ended, it has stuck."""
+    page = _sf_page(10, total=2010)
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return page
+
+    with pytest.raises(ShortWalkError, match="2010 posting"):
+        successfactors_html.extract(
+            "https://jobs.dsv.com/search/",
+            fetch,
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
+        )
+
+
+def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
+    pages = {0: _sf_page(10, total=15), 10: _sf_page(5, total=15, offset=10)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[int(url.rsplit("startrow=", 1)[1])]
+
+    jobs = successfactors_html.extract(
+        "https://jobs.dsv.com/search/",
+        fetch,
+        source_name="dsv",
+        page_step=10,
+        base_search_url="https://jobs.dsv.com/search/",
+    )
+    assert len(jobs) == 15
+
+
+# --- the totals, read from the real saved pages -----------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "reader", "expected"),
+    [
+        ("dsv", successfactors_html._declared_total, 2010),
+        ("iss", successfactors_html._declared_total, 62),
+        ("novo_nordisk", successfactors_html._declared_total, 350),
+        ("coloplast", successfactors_html._declared_total, 331),
+        ("niras", niras._declared_total, 2),
+    ],
+)
+def test_the_saved_page_still_states_its_total(name: str, reader: Any, expected: int) -> None:
+    """The guard is only as good as its ability to read the number.
+
+    A restyled pagination label would not fail any other test: the postings
+    would still parse, the golden would still match, and the walk would go back
+    to ending on an empty page with nothing to check it against — quietly, in
+    `unverifiable_end`. Pinning the number against the captured markup is what
+    makes that drift visible at test time.
+    """
+    from bs4 import BeautifulSoup
+
+    path = FIXTURES_DIR / f"{name}.html"
+    if not path.exists():
+        pytest.skip(f"{name}.html not captured yet")
+
+    assert reader(BeautifulSoup(path.read_text(encoding="utf-8"), "lxml")) == expected
+
+
+def test_the_saved_impactpool_page_still_links_to_the_next_one() -> None:
+    """Impactpool's guard is the link, not the count; it has to be findable."""
+    from bs4 import BeautifulSoup
+
+    path = FIXTURES_DIR / "impactpool.html"
+    if not path.exists():
+        pytest.skip("impactpool.html not captured yet")
+
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "lxml")
+    assert impactpool._links_to_page(soup, 2)
+    assert not impactpool._links_to_page(soup, 3)
+
+
+@pytest.mark.parametrize(
+    ("name", "per_page"),
+    [("dsv", 10), ("iss", 20), ("novo_nordisk", 100), ("coloplast", 25)],
+)
+def test_successfactors_parses_exactly_what_its_label_counts(name: str, per_page: int) -> None:
+    """The invariant the total guard rests on, checked against real markup.
+
+    "Results 1 to 10 of 2010" is only a safe thing to compare a finished walk
+    against if this extractor sees the same postings the site is counting. It
+    does: on every captured instance, the rows parsed off a page equal the
+    upper bound the page's own label states for it. If a skin appears where
+    that stops being true — a row the parser drops, or one the site counts
+    twice — the walk would end short of the total and raise on the boards whose
+    length happens to divide evenly by the page size. This is where that shows.
+    """
+    from bs4 import BeautifulSoup
+
+    path = FIXTURES_DIR / f"{name}.html"
+    if not path.exists():
+        pytest.skip(f"{name}.html not captured yet")
+
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "lxml")
+    labels = [soup.get_text(" ", strip=True)] + [
+        str(tag.get("aria-label")) for tag in soup.select("[aria-label]")
+    ]
+    stated = next(
+        int(m.group(1))
+        for label in labels
+        if (
+            m := re.search(
+                r"(?:results|showing)\s+[\d,]+\s*(?:to|-|–)\s*([\d,]+)\s+of", label, re.I
+            )
+        )
+    )
+
+    assert stated == per_page
+    assert len(parse_fixture(name)) == stated

@@ -11,6 +11,19 @@ page lists every page that exists. That pager is the walk's authority: it says
 how many pages there are, so a page inside that range which yields no postings
 is a failure, not the end. See `pagination.py` for why that distinction is the
 whole point of this module's loop.
+
+The listing is one Drupal view among several on the page, `div.view-id-jobs`,
+and it says which of three things happened:
+
+    .view-id-jobs .view-content   postings rendered
+    .view-id-jobs .view-empty     rendered, and there are genuinely none
+    neither                       the view did not render at all
+
+That third state is what the site served when this extractor lost 35 postings,
+and reading it directly is what lets the walk tell an empty listing from a
+broken one — rather than inferring it from a missing pager, which both states
+share. The office-contact blocks lower down the page are also Drupal views with
+their own `.view-empty`, so the check is scoped to the jobs view, not the page.
 """
 
 from __future__ import annotations
@@ -25,6 +38,7 @@ from bs4 import BeautifulSoup
 from job_scraper.extractors import pagination
 
 BASE_URL = "https://www.povertyactionlab.org"
+_JOBS_VIEW = "div.view-id-jobs"
 # A sanity bound on the pager, not an expected length: about forty postings at
 # nine to a page is five pages, so anything near this is a malformed pager.
 _PAGE_LIMIT = 50
@@ -62,20 +76,30 @@ def _parse_jobs(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
     return out
 
 
-def _last_page(soup: BeautifulSoup) -> int:
-    """Return the highest page index found in pagination links (0-indexed).
+def _listing_rendered(soup: BeautifulSoup) -> bool:
+    """True if the jobs view produced a listing — with postings or without.
 
-    Zero means "this page shows no pager", which a genuine single-page listing
-    and a page that failed to render both do. The caller keeps them apart by
-    only ever asking this of a page that yielded postings.
+    False means the view is not on the page at all, which is not an answer
+    about vacancies; it is the absence of one, and the walk must not read it as
+    zero. See this module's docstring for the three states.
     """
-    max_page = 0
-    for a in soup.select("a[href]"):
-        href = a.get("href", "")
-        m = re.search(r"[?&]page=(\d+)", href)
-        if m:
-            max_page = max(max_page, int(m.group(1)))
-    return max_page
+    return soup.select_one(f"{_JOBS_VIEW} .view-content, {_JOBS_VIEW} .view-empty") is not None
+
+
+def _last_page(soup: BeautifulSoup) -> int | None:
+    """The highest page index in the pager (0-indexed), or None if there is none.
+
+    None is now distinct from 0: 0 is a pager whose only page is the first,
+    None is a page showing no pager at all. The caller pairs it with
+    `_listing_rendered`, which is what says whether that absence means "one page
+    of results" or "this page is not a listing".
+    """
+    pages = [
+        int(m.group(1))
+        for a in soup.select("a[href]")
+        if (m := re.search(r"[?&]page=(\d+)", a.get("href", "")))
+    ]
+    return max(pages) if pages else None
 
 
 def extract(
@@ -93,24 +117,27 @@ def extract(
         html = fetch_text(url)
         soup = BeautifulSoup(html, "lxml")
 
-        jobs = _parse_jobs(soup, listing_url, source_name)
-        if not jobs and page > 0:
-            # An earlier page's pager said this one exists and holds postings.
-            # Every page in range carries at least one — J-PAL's out-of-range
-            # response is the only empty one, and it lies past `last`.
+        if not _listing_rendered(soup):
+            # No jobs view on the page at all. This is the failure that cost 35
+            # postings, and it is caught here rather than deduced from an empty
+            # result later — including on page 0, where an unrendered view used
+            # to look exactly like a career page with no vacancies.
             pagination.short_walk(
                 source_name,
                 url,
                 collected=len(out),
-                promised=f"the pager runs to page {last}",
+                promised="the page carries no jobs listing at all, rendered or empty",
             )
+
+        jobs = _parse_jobs(soup, listing_url, source_name)
         out.extend(jobs)
 
-        # Read the pager only from a page that parsed: a broken page shows no
-        # pager, and taking its answer is exactly how the walk used to end early.
-        # Never shrink the count either, so a page whose pager is truncated
-        # cannot cut a walk that an earlier page said was longer.
-        last = max(last, _last_page(soup))
+        # Read the pager only from a page that rendered its listing, and never
+        # shrink the count: a truncated pager cannot cut a walk that an earlier
+        # page said was longer.
+        this_page_last = _last_page(soup)
+        if this_page_last is not None:
+            last = max(last, this_page_last)
         if page >= last:
             break
         if page >= _PAGE_LIMIT:
