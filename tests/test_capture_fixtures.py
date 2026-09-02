@@ -310,7 +310,7 @@ def test_capture_keeps_the_rendering_mark_through_the_wrapper(
 def test_fixture_still_parses(name: str) -> None:
     filename = FIXTURE_CASES[name][0]
     if not (FIXTURES_DIR / filename).exists():
-        pytest.skip(f"{filename} not captured yet — re-run scripts/capture_fixtures.py {name}")
+        pytest.fail(f"{filename} not captured yet — re-run scripts/capture_fixtures.py {name}")
 
     jobs = parse_fixture(name)
 

@@ -366,6 +366,25 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Senior Software Engineer",
         },
     },
+    "gfi_europe": {
+        # CU2 (2026-09-02): captured for the first time, after nineteen runs of
+        # zero postings. The page had moved from root-relative hrefs to
+        # absolute ones and the raw-string prefix test stopped matching; see
+        # the extractor's module docstring. `location` and `department` are
+        # empty for every row because the listing genuinely carries neither —
+        # the place, where there is one, is inside the title.
+        "count": 3,
+        "first_job": {
+            "source_name": "gfi_europe",
+            "title": "Executive Director (remote)",
+            "location": "",
+            "department": "",
+            "listing_url": "https://gfieurope.org/careers/",
+            "detail_url": "https://gfieurope.org/careers/executive-director",
+            "apply_url": "https://gfieurope.org/careers/executive-director",
+            "raw_snippet": "Executive Director (remote)",
+        },
+    },
     "giving_what_we_can": {
         # Not a bug: the only listing on this page has no location anywhere in
         # its markup, just a closed-applications note. Pinned empty.
@@ -565,3 +584,30 @@ def test_iss_location_is_never_the_field_label() -> None:
         f"{len(offenders)} of {len(jobs)} ISS rows have the column label 'Title' "
         "as their location; the sr-only guard in successfactors_html has regressed"
     )
+
+
+def test_gfi_europe_matches_absolute_hrefs_and_skips_near_misses() -> None:
+    """Pin CU2's bug: postings linked absolutely must still be found.
+
+    The extractor tested `href.startswith("/careers/")` on the raw attribute.
+    When the page began emitting `https://gfieurope.org/careers/[slug]` instead
+    of the root-relative form, every posting stopped matching and the source
+    returned zero rows for nineteen consecutive runs.
+
+    The golden above pins the count. This checks the boundary the fix has to
+    hold on both sides: the postings are matched however the href is written,
+    and the four near misses on the same page — the listing itself, the German
+    listing, the FAQ page whose path merely shares the prefix, and GFI's global
+    board on another host — are still not mistaken for vacancies.
+    """
+    jobs = parse_fixture("gfi_europe")
+    assert jobs, "gfi_europe fixture parsed to zero jobs"
+
+    for job in jobs:
+        parts = urlparse(job["detail_url"])
+        assert parts.netloc == "gfieurope.org", (
+            f"off-site link parsed as a posting: {parts.geturl()}"
+        )
+        assert parts.path.startswith("/careers/"), f"non-posting path parsed: {parts.path}"
+        assert parts.path.rstrip("/") != "/careers", "the listing page parsed as a posting"
+        assert not parts.path.startswith("/de/"), "the German listing parsed as a posting"

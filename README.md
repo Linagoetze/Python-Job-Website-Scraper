@@ -243,6 +243,28 @@ anything that lost more than half is named here. The `!` marker is deliberately
 not an `L` gutter: a shrinking source is not a filter that fired, and it should
 never be read as one.
 
+**Empty sources** get a second block in the same place, and answer the question
+the one above structurally cannot:
+
+```
+────────────────────────────────────────────────────
+!  Empty sources: 1 source returned zero rows this run
+!  lifesum: 0 rows — nothing delisted; check its extractor
+```
+
+Health warnings compare a source against *its own* last successful scrape, so a
+source that has never worked has nothing to collapse from and can never appear
+there. That blind spot is not hypothetical: three sources returned zero rows in
+nineteen consecutive runs without ever tripping a warning. This block asks the
+current run instead — "did this return anything at all?" — so a source that is
+dead on arrival is named on its first run and every run after.
+
+A source whose extractor *raised* is not listed here; that already fails loudly
+and is counted as skipped. This is the clean scrape that found nothing, which is
+either a broken reader or a genuinely empty careers page, and only looking will
+tell you which. Nothing is delisted either way, unless you passed
+`--allow-empty-delist` — in which case the line says so instead.
+
 ### Why was something dropped?
 
 Filtering 8,000 postings down to a handful is only trustworthy if you can check

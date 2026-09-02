@@ -190,3 +190,120 @@ def test_the_heading_counts_the_sources_it_names() -> None:
     text = format_summary(_summary(health_warnings=(_drop("one", 10, 1), _drop("two", 80, 2))))
     assert "2 sources returned far fewer rows than last time" in text
     assert "1 source returned" in format_summary(_summary(health_warnings=(_drop("one", 10, 1),)))
+
+
+# --- zero rows on this run, whatever the history (CU2) -----------------------
+
+
+def test_a_source_that_returns_nothing_is_named(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _run(env, monkeypatch, rows=0).empty_sources == (_SOURCE,)
+
+
+def test_a_source_that_has_never_worked_is_named_on_every_run(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The blind spot this check exists to close (docs/AUDIT.md §7A).
+
+    `source_health_regressions` compares a source against its own last
+    successful run, so a source that has never returned a row has nothing to
+    collapse from and can never be reported there. Three sources sat at zero
+    for nineteen consecutive runs on that technicality. The zero-row check asks
+    the current run instead, so the first run and the nineteenth both say so.
+    """
+    first = _run(env, monkeypatch, rows=0)
+    nineteenth = _run(env, monkeypatch, rows=0)
+    assert first.empty_sources == nineteenth.empty_sources == (_SOURCE,)
+    assert first.health_warnings == nineteenth.health_warnings == ()
+
+
+def test_a_source_with_rows_is_not_named(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _run(env, monkeypatch, rows=3).empty_sources == ()
+
+
+def test_a_failing_source_is_not_named_as_empty(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """It raised, which is reported on its own; one event must not warn twice."""
+
+    def boom(name: str) -> Any:
+        def extractor(url: str, fetch_fn: Any) -> list[dict[str, str]]:
+            raise RuntimeError("selector gone")
+
+        return extractor
+
+    monkeypatch.setattr(pipeline_mod, "get_extractor", boom)
+    summary = run_pipeline(
+        sources_path=env / "sources.yaml",
+        rules_path=env / "rules.json",
+        out_db_path=env / "jobs.sqlite3",
+        cache_path=env / "http_cache.sqlite3",
+        check_robots=False,
+    )
+    assert summary.empty_sources == ()
+
+
+def test_the_empty_block_has_its_own_heading_and_no_ladder_ordinal() -> None:
+    text = format_summary(_summary(empty_sources=("gfi_europe", "lifesum")))
+    warnings = [ln for ln in text.splitlines() if ln.startswith("!")]
+    assert len(warnings) == 3  # the heading and the two sources
+    assert "2 sources returned zero rows this run" in warnings[0]
+    assert "gfi_europe: 0 rows" in warnings[1]
+    for line in warnings:
+        assert "− " not in line
+        assert not any(f"L{n}" in line for n in range(1, 6))
+
+
+def test_the_empty_heading_counts_the_sources_it_names() -> None:
+    assert "1 source returned zero rows" in format_summary(_summary(empty_sources=("lifesum",)))
+
+
+def test_a_healthy_run_adds_no_empty_block() -> None:
+    assert "zero rows this run" not in format_summary(_summary())
+
+
+def test_shrinking_and_empty_are_reported_separately() -> None:
+    """A source can be in both blocks; each answers its own question."""
+    text = format_summary(
+        _summary(health_warnings=(_drop("acme", 40, 0),), empty_sources=("acme",))
+    )
+    assert "acme: 0 rows this run, was 40 (-100%)" in text
+    assert "acme: 0 rows — nothing delisted" in text
+
+
+def test_the_empty_line_says_nothing_was_delisted_by_default() -> None:
+    text = format_summary(_summary(empty_sources=("lifesum",)))
+    assert "lifesum: 0 rows — nothing delisted; check its extractor" in text
+
+
+def test_the_empty_line_admits_the_delisting_under_allow_empty_delist() -> None:
+    """The one run where "nothing delisted" would be a lie.
+
+    `--allow-empty-delist` means "this source genuinely emptied", and
+    `note_misses_and_delist` then delists its unreviewed jobs immediately,
+    bypassing the miss threshold. A block that still reported nothing had
+    happened would be reassuring the reader about the only run where the
+    reassurance is untrue.
+    """
+    text = format_summary(_summary(empty_sources=("lifesum",), allow_empty_delist=True))
+    assert "lifesum: 0 rows — its stored jobs were delisted (--allow-empty-delist)" in text
+    assert "nothing delisted" not in text
+
+
+def test_the_flag_alone_adds_no_block() -> None:
+    """No empty source, nothing to say — the flag is not news on its own."""
+    assert "!" not in format_summary(_summary(allow_empty_delist=True))
+
+
+def test_the_run_reports_the_flag_it_was_given(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    jobs: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        pipeline_mod, "get_extractor", lambda name: lambda url, fetch_fn: list(jobs)
+    )
+    summary = run_pipeline(
+        sources_path=env / "sources.yaml",
+        rules_path=env / "rules.json",
+        out_db_path=env / "jobs.sqlite3",
+        cache_path=env / "http_cache.sqlite3",
+        check_robots=False,
+        allow_empty_delist=True,
+    )
+    assert summary.empty_sources == (_SOURCE,)
+    assert summary.allow_empty_delist is True

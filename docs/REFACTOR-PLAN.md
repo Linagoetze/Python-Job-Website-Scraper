@@ -60,6 +60,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 | CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
+| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 602 tests pass; **incident: a private file was staged into the public repo, caught before any push, see the result section** | `cu2-dead-sources` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5454,6 +5455,288 @@ Branch `cu1-tidy`, not pushed.
 - **Left alone, per the owner's instruction:** the `SEA` keyword, the
   hybrid-locations feature, `scripts/scrape_and_blocklist.sh`, and
   `data/curated/blocklist.csv` — all §7E in the audit, none touched.
+
+## CU2 — Final cleanup, session 2 of 3
+
+Second of three sessions working through `docs/AUDIT.md`. This session is
+`§7A` only: the three sources that have returned zero postings in every one of
+nineteen runs and have never stored a single row.
+
+Done in the order the audit insists on — **capture first, reason second**. Each
+page was saved with `scripts/capture_fixtures.py` before a line of extractor
+code was read, because WP8g's lesson is that reasoning identifies the layout
+correctly and gets the data wrong. All three captures came back `0 jobs`, which
+is what made the diagnosis honest rather than a guess: the failure reproduced
+offline, from bytes on disk.
+
+### Result
+
+598 tests pass (up from 584), `ruff check .` and `ruff format --check .` clean,
+`python -m job_scraper.run --help` works. Branch `cu2-dead-sources`, not pushed.
+
+The three sources turned out to have three different answers, and only one of
+them is a bug.
+
+### `gfi_europe` — a real bug, fixed
+
+The page moved from root-relative hrefs (`/careers/[slug]`) to absolute ones
+(`https://gfieurope.org/careers/[slug]`). The extractor tested
+`href.startswith("/careers/")` against the **raw attribute**, so after the
+change nothing matched and the loop fell through to an empty list every time.
+
+Fixed by resolving each href against the listing URL and testing the parsed
+host and path instead of the raw string. That is also what keeps the four near
+misses on the same page out, and all four are real, which is why the string
+test looked reasonable in the first place:
+
+| Link on the page | Why it is not a posting |
+|---|---|
+| `https://gfieurope.org/careers/` | the listing itself |
+| `https://gfieurope.org/de/careers/` | the German listing |
+| `https://gfieurope.org/careers-at-…-faq/` | shares the prefix, is an FAQ |
+| `https://gfi.org/careers/` | GFI's global board, another host |
+
+`tests/fixtures/gfi_europe.html` captured and wired into `FIXTURE_CASES`, so
+it is covered by `test_fixture_still_parses` and pinned by a golden (3
+postings) plus `test_gfi_europe_matches_absolute_hrefs_and_skips_near_misses`,
+which holds the boundary on both sides — postings found however the href is
+written, near misses still excluded.
+
+`location` and `department` are empty on all three rows. That is the page, not
+a gap in the reader: the listing carries neither field, and the place, where
+there is one, is inside the title ("Senior Policy Manager, Brussels
+(remote/hybrid)"). Recorded in the golden so it is not "fixed" later.
+
+### `lifesum` — not broken. It has no vacancies
+
+The audit's warning that `lifesum`'s page "must differ from all six" existing
+Teamtailor fixtures was right, and the way it differs is the answer: it is
+Teamtailor's **empty state**. The captured page contains, in server-rendered
+markup:
+
+```html
+<h3 class="mb-2 text-xl font-semibold">
+  No open positions right now
+</h3>
+```
+
+There is no job markup for a selector to miss — no `/jobs/<id>` anchor of any
+kind — and the rest of the page (filters, locations, footer) renders exactly as
+the other six Teamtailor boards do. The reader is correct. The company has no
+openings, and by the look of a nineteen-run history, has had none for months.
+
+**Nothing was changed, and nothing should be.** Two consequences worth writing
+down, because both are counter-intuitive:
+
+- **No golden test was added.** The audit asked for one asserting a non-zero
+  posting count, and that is not possible here without faking data. It is also
+  not what a golden would be for: a fixture in `FIXTURE_CASES` is a claim that
+  the reader works, and `test_fixture_still_parses` asserts `len(jobs) > 0` for
+  every entry. Registering an empty board would either break that test or force
+  it to be weakened for every source at once, which is the exact trade the
+  audit's §5 warns against.
+- **The capture was deleted rather than kept.** An unregistered
+  `lifesum.html` in `tests/fixtures/` is the trap `capture_fixtures._remove_stale`
+  exists to prevent: it looks like a valid fixture and nothing parses it. The
+  evidence is this section instead.
+
+Keep the source. A zero-vacancy board is the honest output of a working reader,
+and the new zero-row check (below) now names it once per run, which is the
+right amount of noise for "still nothing there".
+
+### `probably_good` — genuinely unfixable within this design
+
+The site has been rebuilt on a third-party platform (`neuronhub`). What the
+static fetcher receives is now a 7 KB client-rendered shell: a `<head>` full of
+module preloads and a `<body>` containing one `<noscript>` iframe and two
+comment markers. There is no job data in it at all, so there is nothing for any
+selector to be wrong about.
+
+Three routes were investigated properly rather than assumed, in increasing
+order of desperation:
+
+1. **`strategy: dynamic`.** Rendering does work — the board comes back with 10
+   `<article data-testid="job.card.container">` cards. But the board holds
+   **1,637 jobs behind a "Load more" button**, so a rendered capture is a
+   walk whose end has been faked: exactly the silent short walk WP11 went to
+   the trouble of making impossible. Worse, a card carries **no per-job URL**.
+   The detail link is fetched on demand and only appears in the DOM after the
+   card is clicked, which no `fetch(url) -> str` fetcher can do. Ten of 1,637
+   jobs, with no usable `detail_url`, is not a fix.
+2. **The GraphQL backend.** `backend.jobs.probablygood.org` enforces a
+   **persisted-query allowlist**: a query is rejected unless its text matches,
+   byte for byte, one shipped in the current front-end bundle. Sending the
+   query by hand returns `query not in persisted-queries.json`. Replaying the
+   exact captured string does work today — but it is pinned to a released
+   front-end version (`neuronhub@0.3.10.5`), and the vendor's next deploy
+   silently invalidates it.
+3. **The Algolia index behind it.** This is the only route that yields clean,
+   complete data — `jobs_prod`, 1,637 hits, and each hit carries title, org,
+   `url_external` and locations as JSON. It needs the route-2 GraphQL call
+   first, because the Algolia API key is issued per session by that query.
+
+So a working extractor is possible, and it would need: a version-pinned
+persisted GraphQL string, an ephemeral API key, a paginated third-party search
+API, and a fixture that would hold that API key — which the HTML sanitiser
+cannot strip, because it only handles HTML, and which the project's own secret
+scan would flag. That is three of CLAUDE.md's rules at once, and it breaks
+without warning whenever the vendor ships a front-end release.
+
+**Recommendation: move `probably_good` to `data/curated/excluded_sources.csv`.**
+Not touched from this session — CLAUDE.md puts `data/curated/` off limits — so
+this is a proposal for the owner, who would add:
+
+```csv
+Probably Good,https://jobs.probablygood.org/,"Excluded 2026-09-02 (CU2). Site rebuilt on the neuronhub platform: static HTML is an empty client-rendered shell, rendered HTML gives 10 of 1,637 jobs with no per-job URL, and the only complete route is a version-pinned persisted GraphQL query plus a session-issued Algolia key. Unfixable without a fragile bespoke API client."
+```
+
+Worth noting when weighing it up: `probably_good` is an **aggregator** of other
+organisations' vacancies, not an employer career page, and its postings link
+off-site. The loss is coverage of a curated board, not of an employer this
+project follows.
+
+**Acted on, same session.** The owner removed `probably_good` from
+`sources.yaml` (50 sources → 49) and asked for the code to go with it, so
+`job_scraper/extractors/probably_good.py` and its two `registry.py` lines are
+deleted. The module read `<h4>` titles from a static listing that the site no
+longer serves at all, so keeping it would have meant keeping a reader for
+markup that does not exist. Nothing else referenced it: a grep across `.py`,
+`.md`, `.yaml` and `.csv` found only the registry and the module itself, and
+it had no fixture, no golden and no test — which is precisely how it managed
+to be dead for nineteen runs.
+
+### The zero-row check (audit §7A, part 2)
+
+The WP10 health warning asks whether a source **collapsed against its own last
+successful run**. A source that has never worked has no successful run to
+compare against, so `source_health_regressions` skips it by construction — the
+`previous is None` guard, which is correct for a first sighting and is exactly
+what let these three stay quiet nineteen times.
+
+"Did this shrink?" and "did this return anything at all?" are different
+questions, so this is a separate check rather than a loosening of the existing
+one. `RunSummary.empty_sources` is read off this run's own `source_health`
+entries — no history, no query, and therefore it works identically under
+`--dry-run` — and renders as its own block:
+
+```
+!  Empty sources: 1 source returned zero rows this run
+!  lifesum: 0 rows — nothing delisted; check its extractor
+```
+
+Deliberate choices:
+
+- **Sources whose extractor raised are excluded.** They already fail loudly and
+  separately; naming one event twice is noise. The check covers the silent
+  case: a clean scrape that returned nothing.
+- **It is computed, not stored.** `source_health_regressions` lives in the
+  store because it needs history. This needs none, so putting it there would
+  add a query to answer a question the run already knows the answer to.
+- **A source can appear in both blocks**, and should — a source that had 40
+  rows and now has 0 both collapsed and is empty, and the two lines say
+  different things about it. Pinned by
+  `test_shrinking_and_empty_are_reported_separately`.
+
+### Review follow-up (2026-09-02)
+
+A review pass raised three points. Two were real and are fixed; the third is
+recorded because the reasoning matters more than the change would have.
+
+- **The block's line was wrong under one flag.** It printed "0 rows — nothing
+  delisted" unconditionally, but `--allow-empty-delist` means "this source
+  genuinely emptied" and `note_misses_and_delist` then delists its unreviewed
+  jobs immediately, bypassing the miss threshold. So the one run where the
+  reassurance mattered was the one run it was false. `RunSummary` now carries
+  `allow_empty_delist` and the line names the fate it actually applied. Pinned
+  by `test_the_empty_line_admits_the_delisting_under_allow_empty_delist`.
+- **The README documented the health block but not this one.** Both appear in
+  the same place and are easily confused, so the new paragraph leads with the
+  distinction — health warnings ask "did this shrink?", which a
+  never-working source cannot answer — and states what is and is not delisted.
+- **`gfi_europe` could go quiet again** if the site moved to `www.gfieurope.org`
+  or added paging links under `/careers/`: the host comparison is exact, and a
+  `?page=2` link would parse as a posting. **Deliberately not pre-empted.**
+  Neither is true of the page today, so a guard would be pinned to no fixture
+  and tested against nothing — speculative matching is how the original
+  `startswith` test came to look reasonable. The real answer is the second half
+  of this package: whichever way it broke, the zero-row check would name it on
+  the next run instead of after nineteen. Widening the host match is a
+  five-minute change if the site ever moves, and the failing golden will say so.
+
+### The incident: a private file was staged into the public repo (2026-09-02)
+
+**Caught before any push. Nothing left the machine, and the file is untouched
+on disk.** Recorded in full anyway, because the rule that failed is still the
+rule protecting every other private file in this repo.
+
+**What happened.** The owner added the `probably_good` row to
+`data/curated/excluded_sources.csv` by opening it in Numbers. Numbers wrote
+`data/curated/excluded_sources.numbers` beside it — a 136 KB binary holding the
+same real organisation names and notes. This session then ran `git add -A` to
+stage the `probably_good` deletion, and the new file went with it into commit
+`f5ecc5b`.
+
+**Why `.gitignore` did not catch it.** The rules for `data/curated/` named each
+private file individually:
+
+```gitignore
+data/curated/blocklist.csv
+data/curated/excluded_sources.csv
+data/curated/candidate_sources.xlsx
+```
+
+Every one of those is a real file and every one is correctly matched. The list
+is simply not closed under "what an application writes next to the file you
+opened" — a `.numbers` sidecar matches nothing, and neither would a `.xlsx`
+export, a `~$` lock file, or a Numbers autosave. The audit's §6 found this
+family of gap once already, in the `.sqlite` vs `.sqlite3` case that CU1
+closed by adding one more line. Adding one more line is what fails here.
+
+**Fixed two ways.** The tip commit was amended to untrack the file (unpushed
+and not on `main`, so amending was allowed), and the per-file rules were
+replaced with a deny-by-default directory rule:
+
+```gitignore
+data/curated/*
+!data/curated/*.example.csv
+!data/curated/*.example.xlsx
+```
+
+Verified afterwards with `git check-ignore`: all four private files ignored,
+`blocklist.example.csv` still tracked, and the only thing under
+`data/curated/` anywhere in the history is that template.
+
+**The lesson, and it is about the session and not the file.** `git add -A` is
+the wrong instinct in a repository whose privacy depends on per-file
+exclusions — it stages whatever appeared since the last look, including files
+no one in the session created. CLAUDE.md says never to touch `data/curated/`;
+this session did not *edit* anything there, but staging from it is the same
+failure with a different verb, and the instruction should be read as covering
+both. Stage named paths, and treat a deny-by-default ignore rule as the
+backstop rather than the primary defence.
+
+**One consequence for the owner, not a code issue.**
+`data/curated/excluded_sources.csv` no longer exists on disk — Numbers
+converted it, so the tombstone is now a proprietary binary. No run breaks,
+since nothing in the code reads that file; it is a human record, and it is no
+longer greppable. Worth exporting back to CSV.
+
+### Follow-up: `test_fixture_still_parses` fails instead of skipping
+
+Raised at the end of this session as noted-not-fixed, then done on the owner's
+say-so. `tests/test_capture_fixtures.py`'s `test_fixture_still_parses` was the
+last fixture-skip site that mattered — it is the "every fixture parses to more
+than zero jobs" assertion the audit's §5 calls out by name, and while it
+skipped, deleting a fixture quietly removed its coverage instead of breaking
+the build. Now `pytest.fail`, matching what CU1 did to the three sites in
+`test_extractors_golden.py`.
+
+Changes no test outcome today: every fixture in `FIXTURE_CASES` is present, and
+598 tests still pass. The remaining skip sites (`test_niras_extractor.py`,
+`test_store_roundtrip.py`, `test_pagination.py`) are untouched and still out of
+scope.
+
+---
 
 ---
 

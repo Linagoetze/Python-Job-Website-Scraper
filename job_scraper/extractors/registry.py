@@ -25,7 +25,6 @@ from job_scraper.extractors import (
     norrsken,
     oatly,
     personio,
-    probably_good,
     sida,
     smartrecruiters,
     successfactors_html,
@@ -82,7 +81,6 @@ REGISTRY: dict[str, ExtractorFn] = {
     "against_malaria_foundation": partial(
         against_malaria.extract, source_name="against_malaria_foundation"
     ),
-    "probably_good": partial(probably_good.extract, source_name="probably_good"),
     "mammut": partial(mammut.extract, source_name="mammut"),
     "unops": partial(unops.extract, source_name="unops"),
     "jpal": partial(jpal.extract, source_name="jpal"),

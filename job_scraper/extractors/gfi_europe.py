@@ -1,19 +1,28 @@
 """Extractor for Good Food Institute Europe careers page.
 
 HTML structure (WordPress, static):
-    <a href="/careers/[slug]">Job Title</a>
-Jobs are linked as standard anchor tags with paths under /careers/.
+    <a href="https://gfieurope.org/careers/[slug]">Job Title</a>
+Jobs are linked as standard anchor tags under the site's own `/careers/` path.
+
+The links are matched on their *resolved* path, not on the raw `href` string.
+The page moved from root-relative hrefs (`/careers/[slug]`) to absolute ones
+(`https://gfieurope.org/careers/[slug]`) at some point before 2026-09, and a
+prefix test against the raw string silently stopped matching anything —
+nineteen runs of zero postings. Resolving first also keeps three near misses
+out: the German listing (`/de/careers/`), the FAQ page (`/careers-at-…`, which
+shares the prefix but is not a posting), and GFI's global board on the separate
+`gfi.org` host.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-BASE_URL = "https://gfieurope.org"
+_CAREERS_PREFIX = "/careers/"
 
 
 def extract(
@@ -23,20 +32,23 @@ def extract(
 ) -> list[dict[str, Any]]:
     html = fetch_text(listing_url)
     soup = BeautifulSoup(html, "lxml")
+    listing = urlparse(listing_url)
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     for a in soup.find_all("a", href=True):
-        href: str = a["href"]
-        # Only internal /careers/ links; skip the listing page itself
-        if not href.startswith("/careers/"):
+        detail_url = urljoin(listing_url, str(a["href"]))
+        parts = urlparse(detail_url)
+        # Same host only: the page also links GFI's global board on gfi.org.
+        if parts.netloc != listing.netloc:
             continue
-        if href.rstrip("/") == "/careers":
+        path = parts.path
+        # A posting lives *under* /careers/; the listing itself is not one.
+        if not path.startswith(_CAREERS_PREFIX) or path.rstrip("/") == _CAREERS_PREFIX.rstrip("/"):
             continue
         title = a.get_text(" ", strip=True)
         if not title:
             continue
-        detail_url = urljoin(BASE_URL, href)
         if detail_url in seen:
             continue
         seen.add(detail_url)

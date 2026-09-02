@@ -34,6 +34,7 @@ from job_scraper.extractors import (  # noqa: E402
     against_malaria,
     ashby,
     bearingpoint,
+    gfi_europe,
     giving_what_we_can,
     greenhouse,
     impactpool,
@@ -170,6 +171,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "futurelearn.html",
         "https://gusglobaluniversitysystems-futurelearn.teamtailor.com/",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="futurelearn"),
+    ),
+    "gfi_europe": (
+        "gfi_europe.html",
+        "https://gfieurope.org/careers/",
+        lambda url, fetch: gfi_europe.extract(url, fetch, source_name="gfi_europe"),
     ),
     "giving_what_we_can": (
         "giving_what_we_can.html",
