@@ -57,6 +57,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
+| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | not started | `wp11-pagination` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -4888,6 +4889,59 @@ Two points on the fixes themselves, both taken.
   guard that is looking in the wrong place fails instead of passing.
 
 514 tests pass.
+
+---
+
+## WP11 — J-PAL pagination, and silent short walks
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP11 only.
+
+WP10's source-health warning fired on its first real run: `jpal` returned 9
+rows, down from 44. That was diagnosed offline from the WP9 response cache and
+is a real shortfall, not a WP10 side effect. What the cache held:
+
+- `https://www.povertyactionlab.org/careers` — 200, 9 job nodes, pager links
+  through `?page=4`.
+- `https://www.povertyactionlab.org/careers?page=1` — 200, a 93 KB body, zero
+  job nodes, and no pager links at all.
+
+So `extract` walked page 0, saw a pager, fetched page 1, parsed nothing from it,
+asked `_last_page` where the end was, got 0, and stopped — returning 9 of about
+44 postings without failing. The cache that held this evidence has since been
+pruned; capture a fresh fixture with `scripts/` rather than assuming those
+numbers still describe the site.
+
+The narrow bug is in `extractors/jpal.py`. The general one is the shape:
+**a paginated walk that ends because a page yielded nothing cannot tell "we
+reached the end" from "this page did not parse".** Priority 2 says the second
+must fail, not silently shorten the list. Five extractors have a `while True`
+page loop — `jpal`, `smartrecruiters`, `tetrapak`, `unops`, `niras`,
+`successfactors_html` — so decide deliberately whether this is one fix or a
+shared helper, and say which in the plan.
+
+- Work out why `?page=1` parses to nothing: a changed pager, a different URL
+  shape, or a page that needs rendering. Fix `jpal` accordingly. Do not scrape
+  the live site to build a fixture by hand — use the capture script.
+- Make a mid-walk empty page loud. A first page that yields nothing is already
+  handled (the pipeline's zero-row guard refuses to delist); a *later* page
+  that yields nothing while the pager says there is more is the case with no
+  guard at all, and it should raise so the source fails rather than shortens.
+- Check the other paginated extractors against the same question. Report what
+  you find; fix only what is actually broken, and note the rest.
+- `_last_page` returning 0 from a page with no links is indistinguishable from
+  a genuine single-page listing. Whatever you do about that, it has to keep the
+  single-page case working — `probably_good` and others are one page by nature.
+
+Do not touch the filter ladder or the run summary; this is an extractor
+package. Watch that the WP10 politeness layer stays intact: extractors must
+fetch through `job_scraper.http`, and `tests/test_politeness.py` has a guard
+test that fails if one reaches for `requests` directly.
+
+Branch wp11-pagination. Commit, do not push. Update the plan file.
+```
 
 ---
 
