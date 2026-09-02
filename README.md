@@ -640,7 +640,7 @@ registry line.
 python -m pytest -q
 ```
 
-514 tests, no network access required.
+532 tests, no network access required.
 
 ## Scraping responsibly
 

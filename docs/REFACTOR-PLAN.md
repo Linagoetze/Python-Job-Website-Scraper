@@ -57,7 +57,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
-| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | not started | `wp11-pagination` |
+| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — the pager is now the walk's authority, a mid-walk empty page raises; same guard given to `smartrecruiters` and `tetrapak`; `jpal` fixture re-captured as the whole five-page walk (9 → 37 jobs); 532 tests pass | `wp11-pagination` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -464,6 +464,25 @@ Record any decision a future session would otherwise have to re-derive.
   thing in this project that fetches at volume, which is what makes that scope
   the right one.
 
+- **An empty page only ends a walk when something says how long the walk is**
+  (WP11). `extractors/pagination.py` holds the policy: an extractor that can
+  read a total — J-PAL's pager, SmartRecruiters' `totalFound`, Tetra Pak's
+  `totalJobs` — must raise `ShortWalkError` on an empty page before that point,
+  because "the listing ended" and "this page did not parse" look identical
+  otherwise and the second is silent data loss. The module deliberately holds
+  no shared loop: every listing announces its length differently, and only the
+  extractor knows how. Four extractors (`unops`, `niras`,
+  `successfactors_html`, `impactpool`) have no total to read and were left
+  unguarded on purpose — with none, an empty page after a full one is genuinely
+  ambiguous, and a guess would either cry wolf or keep losing rows.
+
+- **A paginated fixture must hold every page of its walk** (WP11). Replaying one
+  saved page and an empty body afterwards fakes the end of the listing, which is
+  how J-PAL's golden test passed on 9 of 37 postings. `capture_fixtures.py
+  --pages all` records the whole walk and `recorded_pages_fetch` replays it in
+  order. J-PAL is the only source captured this way today; re-capture it with
+  the flag.
+
 ---
 
 # How to run one session
@@ -689,6 +708,12 @@ refresh one or more fixtures:
 
 ```
 python scripts/capture_fixtures.py <source_name> [<source_name> ...]
+```
+
+A paginated source needs its whole walk, not its first page (WP11):
+
+```
+python scripts/capture_fixtures.py --pages all jpal
 ```
 
 Source names must match an entry in `job_scraper/config/sources.yaml`. The
@@ -4942,6 +4967,86 @@ test that fails if one reaches for `requests` directly.
 
 Branch wp11-pagination. Commit, do not push. Update the plan file.
 ```
+
+### Result (2026-09-02)
+
+**What page 1 actually was.** Nothing about the URL shape or the pager had
+changed, and the page does not need rendering: a fresh capture walks
+`?page=0` … `?page=4` and returns 37 postings, nine to a page but for the last.
+So the 93 KB body with no job nodes *and no pager* was a transient failure of
+the site's own view, not drift. The out-of-range response rules the alternative
+out — `?page=99` returns "Your search returned no results" and still carries
+its seven pager links. A J-PAL page inside the pager's range always has both
+postings and a pager; a page with neither has not rendered.
+
+That makes this the same animal as the Impactpool flaky 500s: an intermittent
+site fault, which must fail rather than shorten. There was no jpal-specific
+parsing bug to fix, so the fix is entirely in what the walk does about it.
+
+**Shared helper or one fix: neither, exactly.** `extractors/pagination.py` holds
+the *policy* — one exception type, `ShortWalkError`, and one function that
+phrases the refusal — but no shared loop. What counts as "more was promised"
+differs per listing (a pager, `totalFound`, `totalJobs`) and only the extractor
+knows it; a shared walk would have to take that as a callback and would be a
+worse version of the three-line guard it replaced. The exception type is the
+part worth sharing, because the pipeline treats it the same way each time.
+
+**J-PAL.** The pager is the authority. `_last_page` is now read only from a page
+that yielded postings, and the count never shrinks, so a broken page's missing
+pager can no longer end the walk — that was the mechanism, not the symptom. A
+page inside the range that yields nothing raises. Single-page listings are
+untouched: no pager means `last == 0`, the walk stops after one fetch, and
+`probably_good` and friends behave exactly as before. A pager pointing past 50
+pages raises rather than fetching on.
+
+**The other paginated extractors.** Two were broken the same way and are fixed;
+four cannot be, and were left alone rather than given a guess.
+
+| Extractor | End signal | Verdict |
+|---|---|---|
+| `jpal` | pager lists every page | **fixed** — the bug |
+| `smartrecruiters` | `totalFound` from the API | **fixed** — empty `content` before the total now raises |
+| `tetrapak` | `totalJobs` from the API | **fixed** — same, and it walks ten at a time so it has the most pages to lose |
+| `unops` | a short or empty page | left — no total anywhere on the page |
+| `niras` | a short or empty page | left — no total in the fixture either |
+| `successfactors_html` | a short or empty page, or all-duplicates | left — no total |
+| `impactpool` | an empty page, capped at 200 | left — no total; not in the brief's list but the same shape |
+
+The four left share one honest limitation: with no total, an empty page after a
+*full* one is genuinely ambiguous — it is the end when the posting count is an
+exact multiple of the page size, and a failure otherwise. Raising would cry wolf
+on one board in `page_size`; staying silent loses everything past the fault.
+Neither is acceptable as a guess, so nothing was guessed. What protects them
+today is WP10's source-health warning, which is what caught J-PAL. Finding a
+total to read on those pages is the real fix and is not this package's work.
+
+**The fixture harness was part of the bug.** `jpal`'s golden test passed on 9
+jobs because the replay fetcher served the saved page once and an empty body
+afterwards — it faked the end of the walk, which is precisely the lie the
+extractor now refuses. A fixture of one page cannot exercise a walk, and that is
+why the shortfall was invisible to a 500-test suite. So:
+
+- `scripts/capture_fixtures.py --pages all` records every response an extractor
+  asks for, saving them as `<name>.html`, `<name>.p1.html`, … Default is still
+  one response, so no other source's capture or fixture changes.
+- Replay is positional — `recorded_pages_fetch` serves the saved pages in order
+  — and a stale page file left by a longer previous walk is deleted on capture,
+  because a positional replay would happily serve yesterday's page 4 as today's.
+- `jpal.html` and four page files are the real walk, 440 KB, and the golden
+  count is 37 rather than 9.
+
+**Re-capturing J-PAL** therefore needs the flag:
+`python scripts/capture_fixtures.py --pages all jpal`. Forget it and the fixture
+is one page, the extractor raises on the faked end, and the golden test fails
+loudly — which is the right way round.
+
+**Numbers.** 532 tests pass (518 before), suite ~12 s. `ruff check .` passes.
+`python -m job_scraper.run --help` unchanged. The filter ladder, the run summary
+and `tests/test_run_summary.py` were not touched. Nothing new fetches for
+itself: `pagination.py` does no I/O and the politeness guard test still passes.
+
+**Noted, not fixed** (out of scope, per the working rules): the four
+totals-free extractors above.
 
 ---
 
