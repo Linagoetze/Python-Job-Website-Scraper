@@ -4751,14 +4751,13 @@ two pages. The site's paged responses changed; nothing in WP10 alters what a
 server returns except the User-Agent. **Worth its own package** —
 `extractors/jpal.py` trusts `_last_page` and a page that silently yields nothing.
 
-**Found while investigating, not fixed here (WP9's, not WP10's):** every test
-that calls `run_pipeline` opens `http_cache()` with no path, which resolves to
-the *real* `data/http_cache.sqlite3`. So the suite reads, writes and prunes the
-owner's live response cache — it emptied a 37 MB cache during this session (a
-cache is regenerable, so nothing was lost but a re-download), and a populated
-cache makes the suite four times slower (8 s → 35 s). `run_pipeline` should take
-a cache path the way it takes `out_db_path`, and the tests should point it at
-`tmp_path`.
+**Found while investigating (WP9's, not WP10's), fixed on 2026-09-02:** every
+test that called `run_pipeline` opened `http_cache()` with no path, which
+resolves to the *real* `data/http_cache.sqlite3`. So the suite read, wrote and
+pruned the owner's live response cache — it emptied a 37 MB cache during this
+session (a cache is regenerable, so nothing was lost but a re-download), and a
+populated cache made the suite four times slower (8 s → 35 s). See "Follow-up:
+the response cache the tests were using" below.
 
 ### Numbers
 
@@ -4782,6 +4781,40 @@ a cache path the way it takes `out_db_path`, and the tests should point it at
   because the schema DDL commits before the transaction opens. It contains no
   run, no job and no drop row. Worth knowing before anyone claims `--dry-run`
   touches the filesystem not at all.
+
+### Follow-up: the response cache the tests were using (2026-09-02)
+
+The finding above, fixed.
+
+**`run_pipeline` now takes `cache_path`.** It defaults to `None`, which means
+the real cache in `data/`, so a run started from `run.py` behaves exactly as it
+did. Every one of the eight test call sites passes `tmp_path /
+"http_cache.sqlite3"` instead. The parameter reads like `out_db_path`, which is
+the shape the finding asked for.
+
+**A parameter alone was not enough.** Nothing stopped the ninth call site from
+forgetting it, and forgetting it is silent: the run works, it just works on the
+owner's file. So `tests/conftest.py` — the suite's first — wraps `http_cache`
+for the duration of every test and raises if it is opened with no path, or with
+the live path spelled out. It is patched on both `job_scraper.http` and
+`job_scraper.pipeline`, because `pipeline.py` imported the name directly and
+rebinding it on `http` alone would have left the exact call that caused this
+unguarded. `tests/test_cache_path.py` pins both halves: the cache lands where
+it was told to, and a run that names no path is refused under test.
+
+**`--dry-run` deliberately keeps using the real cache.** The question was
+whether a dry run should get a scratch cache too, since it currently warms and
+prunes the owner's. It should not, on priority 3: a dry run followed by the
+real run is the normal way this flag gets used, and a scratch cache would make
+those two runs download every page twice from other people's servers. Sharing
+the cache means the second run pays nothing. The two things a scratch cache
+would protect against are not losses — the file holds public pages and is
+regenerable, and the prune on block exit is the housekeeping that keeps it from
+growing without bound, not a deletion of anything a run still wants. What
+`--dry-run` promises is that the *store* is not written, and that is unchanged.
+
+**Numbers.** 498 tests pass (496 before), suite ~8 s. `ruff check .` passes.
+New: `tests/conftest.py`, `tests/test_cache_path.py` (2).
 
 ---
 
