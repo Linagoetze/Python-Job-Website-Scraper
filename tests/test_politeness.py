@@ -291,6 +291,7 @@ def _run_against(tmp_path, monkeypatch, listing: str, *, ignore_robots: bool = F
         sources_path=tmp_path / "sources.yaml",
         rules_path=tmp_path / "rules.json",
         out_db_path=tmp_path / "jobs.sqlite3",
+        cache_path=tmp_path / "http_cache.sqlite3",
         host_delay=0,
     )
     return summary, extracted

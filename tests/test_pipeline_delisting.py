@@ -90,6 +90,7 @@ def _run(
         sources_path=sources_path,
         rules_path=rules_path,
         out_db_path=db_path,
+        cache_path=db_path.parent / "http_cache.sqlite3",
         allow_empty_delist=allow_empty_delist,
         delist_after=delist_after,
         # No robots.txt lookup: these fetchers are stubs and the host does not

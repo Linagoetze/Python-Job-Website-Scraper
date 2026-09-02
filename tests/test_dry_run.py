@@ -61,6 +61,7 @@ def _run(tmp_path: Path, *, dry_run: bool = False) -> RunSummary:
         sources_path=tmp_path / "sources.yaml",
         rules_path=tmp_path / "rules.json",
         out_db_path=tmp_path / "jobs.sqlite3",
+        cache_path=tmp_path / "http_cache.sqlite3",
         dry_run=dry_run,
         check_robots=False,  # stubbed fetchers, and the host does not exist
     )
