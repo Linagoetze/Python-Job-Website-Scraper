@@ -5371,13 +5371,22 @@ as formatting rather than hiding behind a lint failure. CLAUDE.md is the
 checklist a session reads; CI is what actually enforces, and this package is only
 really gated once both say it.
 
-One loose thread left deliberately: `requirements.txt` pins `ruff>=0.16.0` with
-no upper bound. A lint gate tolerates that, because new rules are opt-in via
-`select`. A *format* gate does not — the formatter's output is allowed to change
-between minor versions, and when it does, CI goes red on whatever unrelated pull
-request happens to be open. This package already saw the count move from the
-plan's 36 to 37 on 0.16.4. Pinning ruff to an exact version, and bumping it
-deliberately, is the fix. Not done here because it is a dependency change.
+Adding that step exposed a second problem, since fixed: `requirements.txt` had
+`ruff>=0.16.0`, no upper bound. A lint gate tolerates a floating version, because
+new rules are opt-in through pyproject's `select`. A *format* gate does not — the
+formatter's output is allowed to change between minor releases, and when it does
+CI goes red on whatever unrelated pull request happens to be open, blaming
+whoever opened it rather than whoever upgraded. This package had already watched
+the count move from the plan's 36 to 37 between ruff versions.
+
+`ruff` is now pinned exactly, at `==0.16.4`, and is the only pin in that file.
+The comment there says how to bump it: **raise the pin, run `ruff format .`, and
+commit the reformat on its own, the way this package did.** A formatter upgrade
+is its own work package, never a passenger on someone else's change.
+
+That is the whole shape of WP12, really: a mechanical diff is only reviewable
+when it arrives alone, and it only stays arrived if something enforces it and the
+tool producing it cannot move underfoot.
 
 ---
 
