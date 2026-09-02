@@ -8,6 +8,43 @@ The workflow it's built for: you tell it which employers to watch and what you'r
 after, it checks them all on every run, and it only ever shows you postings you
 haven't already seen and rejected. New postings are highlighted in green.
 
+It is a personal tool, run by hand or on a schedule by one person on one Mac.
+It has no server, no accounts and no users. The sources it watches, the rules it
+filters against and everything it has ever stored are gitignored; what is
+published is the machinery.
+
+## What it is built to get right
+
+Four priorities, in this order, and they decide the arguments:
+
+1. **Never lose data.** A stored posting that silently disappears is worse than
+   a scrape that fails. Nothing is ever deleted — a rejected posting keeps its
+   row, and one that has come off its career page is marked `delisted` rather
+   than removed. Writes go to a temp file and are swapped in atomically, and a
+   run is one database transaction that rolls back whole.
+2. **Fail loudly.** A broken extractor must produce an error, not an empty list
+   that reads as "no vacancies". A source that returns zero rows is named in the
+   run summary and its stored postings are left alone, because an empty result
+   and a broken selector look identical. Postings are only marked gone after two
+   consecutive *successful* runs missed them.
+3. **Be a good citizen.** These are other people's career sites. Two requests at
+   a time per host, a second apart, an honest User-Agent with a contact address,
+   `robots.txt` honoured per host, and a response cache so a re-run does not
+   re-fetch what it already has.
+4. **Then** speed and elegance.
+
+Two things follow from those that are worth pointing at, because they are the
+parts that make rule changes safe: every exclusion is logged with the exact rule
+that caused it ([Why was something dropped?](#why-was-something-dropped)), and
+there is an offline harness that replays the whole filter ladder over a
+hand-labelled set so a rule change can be *measured* rather than argued about
+([Would loosening that rule help?](#would-loosening-that-rule-help)).
+
+How the project got here, and why each of those decisions was made, is in
+[docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md) — see
+[How this is built and maintained](#how-this-is-built-and-maintained) at the
+bottom.
+
 ## How it works
 
 Each run fetches every source in `sources.yaml`, hands the HTML or JSON to that
@@ -432,9 +469,10 @@ shapes and the home-base wording (`Home base`, `Home based`, `home-based`) are
 recognised without configuration; `non_place_locations` is where you add the
 regions and countries no code list could guess. A value that combines the two,
 like `Home base - EMEA`, needs `EMEA` in the list — the wording alone is not
-enough, because what is left over is still a name this filter has to judge. Terms are matched whole-word and case-insensitively against each
-segment of the field, and a segment still counts as a place if anything is left
-once they are struck out — `Barcelona, Spain` is Barcelona, not a placeholder.
+enough, because what is left over is still a name this filter has to judge.
+Terms are matched whole-word and case-insensitively against each segment of the
+field, and a segment still counts as a place if anything is left once they are
+struck out — `Barcelona, Spain` is Barcelona, not a placeholder.
 
 The price is a detail fetch for jobs that used to cost nothing, mostly on the
 first run after switching it on: a job dropped this way is stored as rejected
@@ -499,13 +537,6 @@ Nothing is ever deleted from it. A posting you reject keeps its row and its
 history, and a posting that has disappeared from its career page is marked
 `delisted` rather than removed — that is what lets the archive sheet below show
 you everything the scraper has ever seen.
-
-### `data/jobs.csv`
-
-Frozen. This is the pre-SQLite store, left behind by the cutover; nothing reads
-or writes it any more. If you have one, it is an archive of what the scraper
-knew before the migration, and it is safe to delete once you are satisfied the
-migration carried everything across. A fresh setup never creates it.
 
 ### `data/jobs.xlsx`
 
@@ -580,14 +611,13 @@ every posting on the Jobs sheet.
 
 ## Maintenance commands
 
-**These two take no flags, but they now read their arguments.** Until WP10 they
-had no argument parser, so anything typed after the module name — `--help`
-included — was ignored and the command ran immediately against
-`data/jobs.sqlite3`; that is how one `blocklist_all --help` lost the record of
-which postings were unreviewed. Both now have a front door with no options in
-it: `--help` prints what the command does and exits, and anything else it does
-not recognise exits non-zero having changed nothing. Neither ever deletes a row,
-but both change review state, so read before running.
+**These two take no flags, but they do read their arguments.** `--help` prints
+what the command does and exits; anything else it does not recognise exits
+non-zero having changed nothing. That matters more than it sounds: a command
+with no argument parser runs immediately, whatever you typed after it, and
+`blocklist_all --help` once did exactly that and cost a record of which
+postings were unreviewed. Neither command ever deletes a row, but both change
+review state, so read before running.
 
 ```bash
 python -m job_scraper.tools.retrofilter
@@ -662,7 +692,30 @@ registry line.
 python -m pytest -q
 ```
 
-583 tests, no network access required.
+602 tests, about fourteen seconds, no network access required. Extractors are
+tested against saved copies of the real pages they read, in `tests/fixtures/`:
+each one must still parse to more than zero postings, and each is pinned to the
+exact output it produced when it was captured, so a site redesign fails the
+build instead of quietly returning less. `ruff check .` and
+`ruff format --check .` are the other two gates, and CI runs all three.
+
+To refresh a saved page after a site redesign:
+
+```bash
+python scripts/capture_fixtures.py <source_name>
+```
+
+A paginated source needs its whole walk, not its first page:
+
+```bash
+python scripts/capture_fixtures.py --pages all <source_name>
+```
+
+Captured pages go through a sanitiser first, which strips the inline
+third-party config that a whole-page save would otherwise commit. Not every
+source has one yet — thirteen of the twenty-six extractors are uncovered, and
+closing that gap is the first item under Future work in the
+[refactor plan](docs/REFACTOR-PLAN.md#future-work).
 
 ## Scraping responsibly
 
@@ -706,7 +759,27 @@ site:
 | `data/` | generated output: `jobs.sqlite3` (the store), `jobs.xlsx`, `jobs_sources.csv`. All regenerable from a scrape except the store's own review history |
 | `data/curated/` | hand-maintained, not regenerable and all gitignored: the `labels.csv` gold set the eval harness reads, and the legacy `blocklist.csv` (`blocklist.example.csv` is the tracked template) |
 | `scripts/` | the deprecated scrape-and-blocklist wrapper, and the fixture-capture helper the tests are built from |
-| `tests/` | pytest suite |
+| `tests/` | pytest suite, plus `tests/fixtures/` — saved copies of the real career pages each extractor is tested against |
+| `docs/` | `REFACTOR-PLAN.md` (the plan, the decisions log and what is left to do) and `AUDIT.md` (an independent read of the finished code) |
+
+## How this is built and maintained
+
+The interesting part of this repository is not the scraper — it is the paper
+trail beside it. Three documents, all public:
+
+| File | What it is |
+| --- | --- |
+| [CLAUDE.md](CLAUDE.md) | The standing instructions any Claude Code session reads before touching this repo: the four priorities above, the design principles the code has drifted against before, what must never be touched, and the definition of done. |
+| [docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md) | The plan for the twenty-six-package refactor that produced the current code, one session per package, written before the work and updated after it — including its **decisions log**, which records what was tried and rejected, with the measurement attached. |
+| [docs/AUDIT.md](docs/AUDIT.md) | An independent read of the finished code, checking every claim the plan makes against what is actually there rather than trusting the plan's own status table. Left exactly as written, including the findings that were later fixed. |
+
+The plan file is the one to read if you want the reasoning rather than the
+result. It records the mistakes in full — a live store modified by accident, a
+private file staged into a public repo, a golden test that passed on 9 of 37
+postings — because a fix without the reasoning behind it gets undone by the next
+person who finds it odd. It ends with a
+[Future work](docs/REFACTOR-PLAN.md#future-work) section; the refactor itself is
+closed.
 
 ## License
 
