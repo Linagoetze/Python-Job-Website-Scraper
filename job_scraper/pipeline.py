@@ -230,6 +230,7 @@ def run_pipeline(
     keep_drop_runs: int = DEFAULT_KEEP_DROP_RUNS,
     use_cache: bool = True,
     cache_ttl: int = DEFAULT_CACHE_TTL,
+    cache_path: Path | None = None,
     dry_run: bool = False,
     host_delay: float = DEFAULT_HOST_DELAY,
     per_host_requests: int = DEFAULT_PER_HOST_REQUESTS,
@@ -242,6 +243,13 @@ def run_pipeline(
     cache spares the sites a re-download when a run is repeated inside the TTL.
     `use_cache=False` is the owner's `--no-cache`, for when a run must see the
     sites as they are this second.
+
+    `cache_path` says where that cache lives, and defaults to the real one in
+    `data/`. It exists so a caller that is not a real run can point somewhere
+    else: the cache is written to *and pruned* by the block that opens it, so
+    leaving the default in place made the test suite share — and empty — the
+    owner's live cache. Anything that is not the owner's own scrape should pass
+    a path of its own.
 
     The third is WP10's `polite_fetching`, which gives the run a User-Agent that
     names the owner, holds every host to `per_host_requests` at a time spaced
@@ -263,7 +271,7 @@ def run_pipeline(
         )
         stack.enter_context(render_pool())
         if use_cache:
-            stack.enter_context(http_cache(ttl=cache_ttl))
+            stack.enter_context(http_cache(path=cache_path, ttl=cache_ttl))
         try:
             return _run_pipeline(
                 sources_path=sources_path,
