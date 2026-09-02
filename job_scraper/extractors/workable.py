@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import requests as _requests
+from job_scraper.http import post_json
 
 _API_HEADERS = {
     "Content-Type": "application/json",
@@ -30,9 +30,9 @@ def extract(
     slug = listing_url.rstrip("/").split("/")[-1]
     api_url = f"https://apply.workable.com/api/v3/accounts/{slug}/jobs"
 
-    resp = _requests.post(api_url, json=_EMPTY_BODY, headers=_API_HEADERS, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
+    # Through http.post_json, not requests directly: that is what carries the
+    # owner's contact details, the robots.txt check and the per-host spacing.
+    data = post_json(api_url, _EMPTY_BODY, headers=_API_HEADERS)
 
     out: list[dict[str, Any]] = []
     for job in data.get("results") or []:

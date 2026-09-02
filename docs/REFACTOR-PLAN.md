@@ -56,7 +56,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
-| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 491 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
+| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 511 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -4681,7 +4681,8 @@ behind a per-host lock so concurrent first hits do not fetch it eight times. The
 pipeline asks once per source and skips a disallowed one with a single clear
 line — a skipped source records no `source_health` row, so it can never look
 like a source that collapsed. `fetch_text` and `fetch_rendered` also check, so a
-detail page under a disallowed path fails loudly rather than silently. Override
+detail page under a disallowed path is kept but reported — see the review
+follow-up below for what that claim originally said and why it was wrong. Override
 per source with `ignore_robots: true` in `sources.yaml` (documented in
 `sources.example.yaml`); it exempts the whole host, deliberately.
 
@@ -4815,6 +4816,57 @@ growing without bound, not a deletion of anything a run still wants. What
 
 **Numbers.** 498 tests pass (496 before), suite ~8 s. `ruff check .` passes.
 New: `tests/conftest.py`, `tests/test_cache_path.py` (2).
+
+### Review follow-up (2026-09-02)
+
+A separate session reviewed the branch. Six points, all acted on; the first
+three were real holes rather than polish.
+
+**1. Three sources bypassed the whole package.** `nutrition_international`,
+`simprints` (both Workable) and `tetrapak` called `requests.post` directly, so
+they identified as `python-requests`, read no robots.txt and paid no per-host
+spacing — Tetra Pak's paginated loop, ten postings at a time with no pause,
+hardest of all. The politeness work sat in `fetch_text`, and these three never
+went through it. Fixed by `http.post_json`, which does the robots check, takes
+the host's turn and sends the run's User-Agent; both extractors now call it. A
+guard test walks `extractors/*.py` and fails on any direct `requests` /
+`urllib.request` / `httpx` use, so the next POST-only board cannot reopen the
+hole quietly.
+
+**2. `--dry-run` was untested where it protects the spreadsheet.** The pipeline
+half had six tests; the half in `run.py` — the export and the paid scoring call
+— had none, so reordering two lines would overwrite `jobs.xlsx` with every
+database test still green. `tests/test_run_dry_run.py` (7 tests) uses the
+harness already sitting in `test_run_scoring_gate.py`.
+
+**3. The plan claimed a blocked detail page "fails loudly". It did not.** Layer
+5 fails open by design, so a refused detail page kept its job — with no
+experience check, no PhD check and no stored description — behind a `debug`
+line nobody sees on a normal run. Because robots.txt blocks a *pattern*, that
+happens to every posting on a source at once, and the funnel still looks
+healthy. `_DetailSignals.robots_refused` now separates a policy refusal from a
+network failure, and `apply_detail_filter` logs one WARNING naming the count
+and the host to exempt. Fail-open behaviour itself is unchanged: nothing is
+lost, it is only no longer silent.
+
+**4. A revalidated response refunded a turn it had used.** `requests-cache`
+flags a 304 as `from_cache` — the body did come from disk — but the conditional
+request went to the site. `_refunds_its_turn` now refunds only a response that
+crossed no network at all.
+
+**5. robots.txt was fetched without the fetchers' TLS handling.** No certificate
+bundle, no curl fallback, so on the hosts with awkward SSL the read would fail,
+log a warning and be read as "no restrictions" — the check absent from exactly
+the sites that are fussiest. `RobotsPolicy` now takes the fetcher as a
+parameter and `polite_fetching` passes `http._fetch_robots`, which has both.
+The plain default keeps `robots.py` importable without `http`.
+
+**6. Small.** README said 491 tests; it now says 511. `sources.yaml` and
+`rules.json` were each parsed twice per run (once for the politeness config,
+once inside `_run_pipeline`); both are now read once and passed down.
+
+**Numbers after the follow-up.** 511 tests pass (498 before), suite ~8 s.
+`ruff check .` passes. `tests/test_run_summary.py` still untouched.
 
 ---
 

@@ -60,6 +60,21 @@ def server() -> Iterator[_Server]:
             self.end_headers()
             self.wfile.write(body)
 
+        def do_POST(self) -> None:  # noqa: N802 - stdlib's spelling
+            """Workable and Tetra Pak are POST-only JSON boards."""
+            length = int(self.headers.get("Content-Length") or 0)
+            self.rfile.read(length)
+            state.requests.append((self.path, self.headers.get("User-Agent")))
+            # The server does not enforce robots.txt — the client does — so it
+            # answers everything. A test asserting on a refusal therefore fails
+            # loudly if the request was ever actually made.
+            body = b'{"results": []}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, *args: object) -> None:
             pass
 
@@ -389,3 +404,110 @@ def test_the_refusal_names_the_host_that_has_to_be_exempted(server: _Server) -> 
             http_mod.fetch_text(f"{server.origin}/private/job/1")
     assert host_of(server.origin) in str(raised.value)
     assert "ignore_robots" in str(raised.value)
+
+
+# -- nothing fetches behind the politeness layer's back ----------------------
+
+
+def test_no_extractor_reaches_the_network_directly() -> None:
+    """The gap this package shipped with, kept shut.
+
+    `nutrition_international`, `simprints` (Workable) and `tetrapak` called
+    `requests.post` themselves, so they sent `python-requests` as their User-
+    Agent, read no robots.txt and paid no per-host spacing — Tetra Pak's
+    paginated loop hardest of all. An extractor must go through `job_scraper.
+    http`, which is the only place those three things live.
+    """
+    import pathlib
+    import re
+
+    offenders = {}
+    for path in sorted(pathlib.Path("job_scraper/extractors").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        hits = re.findall(r"^\s*(?:import requests|from requests|import urllib\.request)", source,
+                          flags=re.MULTILINE)
+        hits += re.findall(r"\b(?:urlopen|httpx)\b", source)
+        if hits:
+            offenders[path.name] = sorted(set(hits))
+    assert offenders == {}, f"extractors fetching outside job_scraper.http: {offenders}"
+
+
+def test_a_post_api_takes_its_turn_and_carries_the_user_agent(server: _Server) -> None:
+    """Workable and Tetra Pak are POST-only JSON boards; they get the same treatment."""
+    agent = "job-scraper/0.1 (test)"
+    with http_mod.polite_fetching(user_agent=agent, delay=0, check_robots=False):
+        http_mod.post_json(f"{server.origin}/api/jobs", {"q": ""})
+    assert server.requests == [("/api/jobs", agent)]
+
+
+def test_a_post_api_is_refused_when_robots_says_no(server: _Server) -> None:
+    with http_mod.polite_fetching(user_agent="job-scraper/0.1 (test)", delay=0):
+        with pytest.raises(RobotsDisallowed):
+            http_mod.post_json(f"{server.origin}/private/api/jobs", {"q": ""})
+
+
+def test_a_revalidated_response_keeps_its_turn() -> None:
+    """A 304 came from disk but the question went to the site, so it cost a turn."""
+
+    class _Revalidated:
+        from_cache = True
+        revalidated = True
+
+    class _Cached:
+        from_cache = True
+        revalidated = False
+
+    assert http_mod._refunds_its_turn(_Cached()) is True
+    assert http_mod._refunds_its_turn(_Revalidated()) is False
+    assert http_mod._refunds_its_turn(object()) is False
+
+
+def test_robots_is_fetched_with_the_tls_handling_the_fetchers_use(server: _Server) -> None:
+    """Otherwise the check is absent from exactly the hosts with awkward SSL."""
+    seen: list[tuple[str, str, int]] = []
+
+    def recording(url: str, user_agent: str, timeout: int) -> tuple[int, str]:
+        seen.append((url, user_agent, timeout))
+        return 200, "User-agent: *\nDisallow: /private\n"
+
+    policy = RobotsPolicy("job-scraper/0.1 (test)", fetch=recording)
+    assert policy.allows(f"{server.origin}/public")
+    assert not policy.allows(f"{server.origin}/private/x")
+    assert seen and seen[0][0] == f"{server.origin}/robots.txt"
+    # And the fetcher the run installs is the TLS-aware one, not requests.get.
+    with http_mod.polite_fetching(user_agent="job-scraper/0.1 (test)", delay=0) as installed:
+        assert installed is not None
+        assert installed._fetch_robots is http_mod._fetch_robots
+
+
+# -- a refused detail page is not allowed to be quiet ------------------------
+
+
+def test_detail_pages_refused_by_robots_are_reported_not_whispered(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Layer 5 fails open, deliberately — but silence would hide a whole source.
+
+    A job whose detail page is refused is kept with no experience check, no PhD
+    check and no stored description, and the funnel counts it among the ones
+    that passed. If robots.txt blocks the detail-page pattern that happens to
+    every job on the source at once, so it is said out loud, once, naming the
+    host to exempt.
+    """
+    from job_scraper.experience_filter import apply_detail_filter
+
+    def refused(url: str, *args: object, **kwargs: object) -> str:
+        raise RobotsDisallowed(f"robots.txt forbids {url}")
+
+    jobs = [
+        {"source_name": "oecd", "title": "Analyst", "location": "Berlin",
+         "detail_url": f"https://api.example.com/postings/{i}"}
+        for i in range(3)
+    ]
+    with caplog.at_level("WARNING"):
+        kept, excluded = apply_detail_filter(jobs, refused)
+
+    assert len(kept) == 3 and excluded == []  # fail-open is unchanged
+    assert "robots.txt refused the detail pages of 3 job(s)" in caplog.text
+    assert "https://api.example.com" in caplog.text
+    assert "ignore_robots" in caplog.text

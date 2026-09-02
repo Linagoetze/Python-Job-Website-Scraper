@@ -428,6 +428,33 @@ def _check_robots(url: str) -> None:
         )
 
 
+def _fetch_robots(url: str, user_agent: str, timeout: int) -> tuple[int, str]:
+    """GET a robots.txt with this module's TLS handling. Returns (status, text).
+
+    Plain `requests.get` was not enough: the fetchers carry a certificate bundle
+    and fall back to curl when a host's SSL is awkward, and a robots.txt fetched
+    without either fails on exactly the fussiest sites — which the policy then
+    reads as "no restrictions". The check would have been quietly absent from
+    the sites most in need of care.
+
+    Uncached and unthrottled on purpose: one small file per host per run, and
+    the answer gates the throttle rather than passing through it.
+    """
+    session = _session()
+    try:
+        response = session.get(
+            url, headers={"User-Agent": user_agent}, timeout=timeout, verify=certifi.where()
+        )
+        return response.status_code, response.text
+    except (SSLError, requests.exceptions.Timeout):
+        # The same escape hatch fetch_text uses. curl -f makes a 4xx/5xx a
+        # non-zero exit, which _fetch_text_curl raises — and an unreadable
+        # robots.txt is handled by the caller either way.
+        return 200, _fetch_text_curl(url, timeout=timeout, user_agent=user_agent)
+    finally:
+        session.close()
+
+
 @contextmanager
 def polite_fetching(
     *,
@@ -456,7 +483,9 @@ def polite_fetching(
             "wonders who is fetching can find out.",
             agent,
         )
-    policy = RobotsPolicy(agent, robots_overrides) if check_robots else None
+    policy = (
+        RobotsPolicy(agent, robots_overrides, fetch=_fetch_robots) if check_robots else None
+    )
     throttle = HostThrottle(delay=delay, per_host=per_host, policy=policy)
 
     with _POLITENESS_LOCK:
@@ -467,6 +496,19 @@ def polite_fetching(
     finally:
         with _POLITENESS_LOCK:
             _THROTTLE, _ROBOTS, _USER_AGENT = previous
+
+
+def _refunds_its_turn(response: Any) -> bool:
+    """True if this response put no load on the site and should give its slot back.
+
+    Only a response served wholly from disk qualifies. A revalidation is also
+    flagged `from_cache` — its body came from disk — but the conditional request
+    that earned the 304 went to the site, so it costs a turn like any other
+    request. A plain response (no cache in play) never refunds.
+    """
+    return bool(getattr(response, "from_cache", False)) and not bool(
+        getattr(response, "revalidated", False)
+    )
 
 
 _RETRY_ATTEMPTS = 5
@@ -499,7 +541,7 @@ def fetch_text(
         try:
             with _slot_for(url) as slot:
                 r = session.get(url, headers=headers, timeout=timeout, verify=certifi.where())
-                if slot is not None and getattr(r, "from_cache", False):
+                if slot is not None and _refunds_its_turn(r):
                     slot.refund()
             r.raise_for_status()
             _record_cache_outcome(url, r)
@@ -514,6 +556,41 @@ def fetch_text(
                 raise
             time.sleep(2 * attempt)
     raise AssertionError("unreachable")
+
+
+def post_json(
+    url: str,
+    payload: dict[str, Any],
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    headers: dict[str, str] | None = None,
+    user_agent: str | None = None,
+) -> Any:
+    """POST *payload* as JSON and return the decoded response. Raises on HTTP errors.
+
+    Exists so that the three sources whose boards are POST-only JSON APIs —
+    Workable (`nutrition_international`, `simprints`) and Tetra Pak — introduce
+    themselves and take their turn like every other fetch. They called
+    `requests.post` directly, which meant they identified as `python-requests`,
+    consulted no robots.txt and paid no per-host spacing; Tetra Pak's paginated
+    loop was the fastest thing in the run for exactly that reason.
+
+    Deliberately not cached: `requests-cache` does not cache POST by default,
+    and a search API's answers are not what the WP9 cache is for.
+    """
+    _check_robots(url)
+    agent = user_agent or current_user_agent()
+    with _SESSION_LOCK:
+        session = _SESSION
+    with _slot_for(url):
+        response = session.post(
+            url,
+            json=payload,
+            headers={"User-Agent": agent, **(headers or {})},
+            timeout=timeout,
+        )
+    response.raise_for_status()
+    return response.json()
 
 
 # ---------------------------------------------------------------------------

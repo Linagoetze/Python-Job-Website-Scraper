@@ -257,8 +257,11 @@ def run_pipeline(
     Sources marked `ignore_robots` in sources.yaml are exempted from that last
     check, host by host — see `_robots_overrides`.
     """
+    # Read once, here, and passed down. Both files are small, but a run that
+    # parses its own config twice invites the two copies to drift apart.
     rules = load_rules(rules_path)
-    robots_overrides = _robots_overrides(load_sources(sources_path))
+    sources = load_sources(sources_path)
+    robots_overrides = _robots_overrides(sources)
     with ExitStack() as stack:
         stack.enter_context(
             polite_fetching(
@@ -274,8 +277,8 @@ def run_pipeline(
             stack.enter_context(http_cache(path=cache_path, ttl=cache_ttl))
         try:
             return _run_pipeline(
-                sources_path=sources_path,
-                rules_path=rules_path,
+                sources=sources,
+                rules=rules,
                 out_db_path=out_db_path,
                 title_keywords_path=title_keywords_path,
                 allow_empty_delist=allow_empty_delist,
@@ -290,8 +293,8 @@ def run_pipeline(
 
 def _run_pipeline(
     *,
-    sources_path: Path,
-    rules_path: Path,
+    sources: list[dict[str, Any]],
+    rules: dict[str, Any],
     out_db_path: Path,
     title_keywords_path: Path | None,
     allow_empty_delist: bool,
@@ -300,8 +303,6 @@ def _run_pipeline(
     dry_run: bool = False,
 ) -> RunSummary:
     run_started_at = utc_now_iso()
-    sources = load_sources(sources_path)
-    rules = load_rules(rules_path)
     title_keywords = load_title_exclude_keywords(title_keywords_path) if title_keywords_path else []
     # Compiled once for the whole run and passed down — never rebuilt per job.
     hybrid_pattern = build_hybrid_pattern(rules)

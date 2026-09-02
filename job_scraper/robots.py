@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
@@ -38,6 +39,12 @@ logger = logging.getLogger(__name__)
 
 # Short: robots.txt is one small file and a slow one must not hold up a run.
 ROBOTS_TIMEOUT = 10
+
+
+def _plain_get(url: str, user_agent: str, timeout: int) -> tuple[int, str]:
+    """The default robots.txt fetch: no shared session, no TLS fallback."""
+    response = requests.get(url, headers={"User-Agent": user_agent}, timeout=timeout)
+    return response.status_code, response.text
 
 
 class RobotsDisallowed(RuntimeError):
@@ -87,8 +94,16 @@ class RobotsPolicy:
         self,
         user_agent: str,
         overrides: frozenset[str] | set[str] | None = None,
+        fetch: Callable[[str, str, int], tuple[int, str]] | None = None,
     ) -> None:
         self._user_agent = user_agent
+        # How to GET a robots.txt, as (url, user_agent, timeout) -> (status,
+        # text). `http.polite_fetching` passes its own, which carries the
+        # certificate bundle and the curl fallback the fetchers use; without it
+        # the check would fail on precisely the hosts with awkward TLS and read
+        # as "no restrictions". The plain default keeps this module usable on
+        # its own, and importable without importing `http`.
+        self._fetch_robots = fetch or _plain_get
         # Hosts the owner has exempted in sources.yaml. Stored as scheme+netloc,
         # the same shape `host_of` returns, so the lookup is an exact match
         # rather than a substring test that would exempt more than was asked.
@@ -151,28 +166,22 @@ class RobotsPolicy:
     def _fetch(self, host: str) -> RobotFileParser | None:
         url = f"{host}/robots.txt"
         try:
-            response = requests.get(
-                url,
-                headers={"User-Agent": self._user_agent},
-                timeout=ROBOTS_TIMEOUT,
-            )
+            status, text = self._fetch_robots(url, self._user_agent, ROBOTS_TIMEOUT)
         except Exception as exc:
             logger.warning("Could not read %s (%s); proceeding as if it allowed us", url, exc)
             return None
 
-        if response.status_code >= 500:
-            logger.warning(
-                "%s answered %d; proceeding as if it allowed us", url, response.status_code
-            )
+        if status >= 500:
+            logger.warning("%s answered %d; proceeding as if it allowed us", url, status)
             return None
         parser = RobotFileParser()
         parser.set_url(url)
-        if response.status_code >= 400:
+        if status >= 400:
             # No robots.txt is the ordinary case, and it means "no restrictions".
             parser.parse([])
             parser.modified()
             return parser
-        parser.parse(response.text.splitlines())
+        parser.parse(text.splitlines())
         # `parse` does not stamp the read time and `RobotFileParser.crawl_delay`
         # returns None without one — so a site's stated delay would be silently
         # dropped. Note also that the stdlib parser only accepts a whole number

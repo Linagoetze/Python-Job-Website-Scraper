@@ -34,6 +34,7 @@ from job_scraper.filtering import (
     build_title_keyword_matchers,
     title_keyword_rule,
 )
+from job_scraper.robots import RobotsDisallowed, host_of
 from job_scraper.storage.db import utc_now_iso
 
 logger = logging.getLogger(__name__)
@@ -276,6 +277,12 @@ class _DetailSignals:
     min_years: int | None = None
     phd_required: bool = False
     fetch_failed: bool = False
+    # A fetch refused by robots.txt, as opposed to one that merely failed. It is
+    # not transient and not per-job: if a site disallows one detail page it
+    # disallows the pattern, so the whole source loses its Layer 5 checks and
+    # its stored descriptions. Counted separately so that fact gets said out
+    # loud rather than left in a debug line (WP10 review).
+    robots_refused: bool = False
     # None means "the description could not be read at all" (no URL, fetch
     # failed, or no pattern configured) rather than read-and-not-found. Both
     # deferred states fail closed, so the caller must tell the two apart.
@@ -318,6 +325,9 @@ def _fetch_and_analyze(
             ),
             description_text=text[:_MAX_DESCRIPTION_CHARS],
         )
+    except RobotsDisallowed as exc:
+        logger.debug("%s: robots.txt refused %r — keeping job", layer_short(LAYER_DETAIL), exc)
+        return _DetailSignals(job=job, fetch_failed=True, robots_refused=True)
     except Exception as exc:
         logger.debug(
             "%s: fetch failed for %r — keeping job. Error: %s",
@@ -544,6 +554,28 @@ def apply_detail_filter(
                     **{DROP_RULE_KEY: f"experience: {min_years}+ years required"},
                 )
             )
+
+    refused = [sig.job for sig in results if sig.robots_refused]
+    if refused:
+        hosts = sorted(
+            {
+                host
+                for job in refused
+                if (host := host_of(str(job.get("detail_url") or job.get("apply_url") or "")))
+            }
+        )
+        # WARNING, not debug: these jobs are kept, but kept *unfiltered* — no
+        # experience check, no PhD check, no description stored for scoring —
+        # and the funnel counts them among the ones that passed this layer. A
+        # run that quietly stops filtering a whole source must not look healthy.
+        logger.warning(
+            "%s: robots.txt refused the detail pages of %d job(s) on %s. They are kept, "
+            "but unchecked and with no description stored. If those rules are not meant "
+            "for us, exempt the host in that source's `ignore_robots` list.",
+            layer_short(LAYER_DETAIL),
+            len(refused),
+            ", ".join(hosts) or "an unparseable host",
+        )
 
     if jobs:
         logger.debug(
