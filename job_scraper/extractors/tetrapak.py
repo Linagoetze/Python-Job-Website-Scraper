@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import requests
+from job_scraper.http import post_json
 
 _API_URL = "https://jobs.tetrapak.com/services/recruiting/v1/jobs"
 _DETAIL_BASE = "https://jobs.tetrapak.com/job-detail"
@@ -30,13 +30,14 @@ def extract(
     page = 0
 
     while True:
-        resp = requests.post(
+        # Through http.post_json, not requests directly. This loop walks the
+        # whole board ten postings at a time and used to do it as fast as the
+        # API would answer; it now takes its turn at the host like everything
+        # else, which is the point of the package that added it.
+        data = post_json(
             _API_URL,
-            json={"q": "", "locale": "en_GB", "location": "Sweden", "pageNum": page},
-            timeout=30,
+            {"q": "", "locale": "en_GB", "location": "Sweden", "pageNum": page},
         )
-        resp.raise_for_status()
-        data = resp.json()
 
         results = data.get("jobSearchResult", [])
         if not results:

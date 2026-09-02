@@ -4,6 +4,10 @@ regenerate jobs.xlsx. Failing rows are marked 'rejected', never deleted.
 Usage: python -m job_scraper.tools.retrofilter
 """
 
+from __future__ import annotations
+
+import argparse
+
 from job_scraper.config_loader import (
     default_jobs_db_path,
     default_jobs_xlsx_path,
@@ -16,7 +20,24 @@ from job_scraper.storage.db import JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
 
 
+def _parse_args() -> None:
+    """The front door this script did not have (WP10).
+
+    It takes no options, and that is the point: without a parser `main()` read
+    no `sys.argv` at all, so `--help` was not a flag it rejected but text it
+    never looked at — and the command ran. That is how WP8b lost the record of
+    which postings were unreviewed. An unrecognised argument now exits non-zero
+    having done nothing, and `--help` prints this module's docstring.
+    """
+    argparse.ArgumentParser(
+        prog="python -m job_scraper.tools.retrofilter",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    ).parse_args()
+
+
 def main() -> None:
+    _parse_args()
     db_path = default_jobs_db_path()
     xlsx_path = default_jobs_xlsx_path()
 

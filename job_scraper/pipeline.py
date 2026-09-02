@@ -42,13 +42,27 @@ from job_scraper.filtering import (
 )
 from job_scraper.http import (
     DEFAULT_CACHE_TTL,
+    DEFAULT_HOST_DELAY,
+    DEFAULT_PER_HOST_REQUESTS,
     cache_stats,
+    current_robots_policy,
+    current_user_agent,
     fetch_rendered,
     fetch_text,
     http_cache,
+    polite_fetching,
     render_pool,
+    user_agent_from_rules,
 )
-from job_scraper.storage.db import JobStore, dedupe_key_for_job, job_to_row, utc_now_iso
+from job_scraper.robots import as_origin, host_of
+from job_scraper.storage.db import (
+    DEFAULT_HEALTH_DROP,
+    JobStore,
+    SourceDrop,
+    dedupe_key_for_job,
+    job_to_row,
+    utc_now_iso,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +116,13 @@ class RunSummary:
     jobs_still_listed: int
     jobs_unreviewed: int
     exclusions_logged: int
+    # Sources whose row count collapsed against their last successful scrape
+    # (WP10). Empty on a healthy run, which is why it defaults: the funnel's
+    # golden layout is unchanged unless something is actually wrong.
+    health_warnings: tuple[SourceDrop, ...] = ()
+    # True when nothing was written: the whole store transaction was rolled
+    # back and no spreadsheet was produced. Every count above is still real.
+    dry_run: bool = False
 
 
 def refilter_stored_jobs(
@@ -161,6 +182,43 @@ def refilter_stored_jobs(
     return counts, drops
 
 
+def _robots_overrides(sources: list[dict[str, Any]]) -> set[str]:
+    """Hosts exempted from the robots.txt check by `ignore_robots` in sources.yaml.
+
+    `true` exempts the source's own host. That is not always the host the work
+    happens on: the SmartRecruiters extractor reads a listing page on
+    `careers.smartrecruiters.com` and then its postings from
+    `api.smartrecruiters.com`, and an API host commonly carries a blanket
+    `Disallow: /` meant for search-engine crawlers. So the key also accepts the
+    hosts to exempt, written the way a person would type them:
+
+        ignore_robots: true
+        ignore_robots: [careers.smartrecruiters.com, api.smartrecruiters.com]
+
+    Exemptions are collected across all sources and applied by host, because
+    that is the only thing a fetch deep inside an extractor can be matched on —
+    a request does not know which source asked for it.
+    """
+    overrides: set[str] = set()
+    for src in sources:
+        value = src.get("ignore_robots")
+        if value is True:
+            if host := host_of(str(src.get("url") or "")):
+                overrides.add(host)
+        elif isinstance(value, str):
+            if host := as_origin(value):
+                overrides.add(host)
+        elif isinstance(value, list):
+            overrides |= {host for item in value if (host := as_origin(str(item)))}
+        elif value:
+            logger.warning(
+                "Source %r: ignore_robots should be true or a list of hosts, not %r; ignoring it",
+                src.get("name"),
+                value,
+            )
+    return overrides
+
+
 def run_pipeline(
     *,
     sources_path: Path,
@@ -172,28 +230,61 @@ def run_pipeline(
     keep_drop_runs: int = DEFAULT_KEEP_DROP_RUNS,
     use_cache: bool = True,
     cache_ttl: int = DEFAULT_CACHE_TTL,
+    cache_path: Path | None = None,
+    dry_run: bool = False,
+    host_delay: float = DEFAULT_HOST_DELAY,
+    per_host_requests: int = DEFAULT_PER_HOST_REQUESTS,
+    check_robots: bool = True,
 ) -> RunSummary:
-    """Run one full scrape, holding the run's two shared fetch resources open.
+    """Run one full scrape, holding the run's shared fetch resources open.
 
-    Both come from WP9 and both are scoped to exactly this call: the render pool
+    Two come from WP9 and both are scoped to exactly this call: the render pool
     keeps a handful of browsers alive instead of one per page, and the response
     cache spares the sites a re-download when a run is repeated inside the TTL.
     `use_cache=False` is the owner's `--no-cache`, for when a run must see the
     sites as they are this second.
+
+    `cache_path` says where that cache lives, and defaults to the real one in
+    `data/`. It exists so a caller that is not a real run can point somewhere
+    else: the cache is written to *and pruned* by the block that opens it, so
+    leaving the default in place made the test suite share — and empty — the
+    owner's live cache. Anything that is not the owner's own scrape should pass
+    a path of its own.
+
+    The third is WP10's `polite_fetching`, which gives the run a User-Agent that
+    names the owner, holds every host to `per_host_requests` at a time spaced
+    `host_delay` apart, and refuses anything the host's robots.txt forbids.
+    Sources marked `ignore_robots` in sources.yaml are exempted from that last
+    check, host by host — see `_robots_overrides`.
     """
+    # Read once, here, and passed down. Both files are small, but a run that
+    # parses its own config twice invites the two copies to drift apart.
+    rules = load_rules(rules_path)
+    sources = load_sources(sources_path)
+    robots_overrides = _robots_overrides(sources)
     with ExitStack() as stack:
+        stack.enter_context(
+            polite_fetching(
+                user_agent=user_agent_from_rules(rules),
+                delay=host_delay,
+                per_host=per_host_requests,
+                check_robots=check_robots,
+                robots_overrides=robots_overrides,
+            )
+        )
         stack.enter_context(render_pool())
         if use_cache:
-            stack.enter_context(http_cache(ttl=cache_ttl))
+            stack.enter_context(http_cache(path=cache_path, ttl=cache_ttl))
         try:
             return _run_pipeline(
-                sources_path=sources_path,
-                rules_path=rules_path,
+                sources=sources,
+                rules=rules,
                 out_db_path=out_db_path,
                 title_keywords_path=title_keywords_path,
                 allow_empty_delist=allow_empty_delist,
                 delist_after=delist_after,
                 keep_drop_runs=keep_drop_runs,
+                dry_run=dry_run,
             )
         finally:
             if use_cache:
@@ -202,17 +293,16 @@ def run_pipeline(
 
 def _run_pipeline(
     *,
-    sources_path: Path,
-    rules_path: Path,
+    sources: list[dict[str, Any]],
+    rules: dict[str, Any],
     out_db_path: Path,
     title_keywords_path: Path | None,
     allow_empty_delist: bool,
     delist_after: int,
     keep_drop_runs: int,
+    dry_run: bool = False,
 ) -> RunSummary:
     run_started_at = utc_now_iso()
-    sources = load_sources(sources_path)
-    rules = load_rules(rules_path)
     title_keywords = load_title_exclude_keywords(title_keywords_path) if title_keywords_path else []
     # Compiled once for the whole run and passed down — never rebuilt per job.
     hybrid_pattern = build_hybrid_pattern(rules)
@@ -257,6 +347,24 @@ def _run_pipeline(
         extractor = get_extractor(name)
         if extractor is None:
             logger.info("Skipping source %r: no extractor registered", name)
+            skipped += 1
+            continue
+
+        # Asked once per source rather than left to the fetcher, so a
+        # disallowed site produces one clear line instead of an exception per
+        # page. Like the config skips above it gets no source_health row: we
+        # never scraped it, so it has no row count to compare against and must
+        # not look like a source that collapsed.
+        policy = current_robots_policy()
+        if policy is not None and not policy.allows(url):
+            logger.warning(
+                "Skipping source %r: %s/robots.txt disallows %s for %s. If that rule "
+                "is not meant for us, set `ignore_robots: true` on this source.",
+                name,
+                host_of(url),
+                url,
+                current_user_agent(),
+            )
             skipped += 1
             continue
 
@@ -357,14 +465,18 @@ def _run_pipeline(
         )
 
     sources_csv_path = out_db_path.parent / "jobs_sources.csv"
-    # First write of the run — the output directory may not exist yet (fresh
-    # clone, or --output-db pointing somewhere new).
-    sources_csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with sources_csv_path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["source_name", "listing_url"])
-        writer.writeheader()
-        writer.writerows(processed_sources)
-    logger.info("Wrote %d sources to %s", len(processed_sources), sources_csv_path)
+    if dry_run:
+        # "Writes nothing" has to mean nothing, not "nothing important".
+        logger.info("Dry run: not writing %s", sources_csv_path)
+    else:
+        # First write of the run — the output directory may not exist yet (fresh
+        # clone, or --output-db pointing somewhere new).
+        sources_csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with sources_csv_path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=["source_name", "listing_url"])
+            writer.writeheader()
+            writer.writerows(processed_sources)
+        logger.info("Wrote %d sources to %s", len(processed_sources), sources_csv_path)
 
     # Layer 2 + Layer 3 — combined title pass (keyword exclusions and seniority)
     kept_rows, keyword_excluded, title_excluded = apply_combined_title_filter(
@@ -401,7 +513,7 @@ def _run_pipeline(
     # Everything from here on is one store transaction: the run's health rows,
     # upserts, delisting and re-filtering commit together or roll back together,
     # so a crash mid-run cannot leave a half-written run behind.
-    with JobStore(out_db_path) as store:
+    with JobStore(out_db_path, dry_run=dry_run) as store:
         run_id = store.begin_run(run_started_at)
         for name, rows_found, ok, error in source_health:
             store.record_source_health(run_id, name, rows_found, ok, error)
@@ -584,6 +696,18 @@ def _run_pipeline(
         jobs_still_listed = store.count_sighted_in_run(run_id)
         jobs_unreviewed = store.count_with_status(("new",))
 
+        # Read inside the transaction, where this run's health rows exist: a
+        # source that halves has not failed and nothing else in the run says so.
+        health_warnings = tuple(store.source_health_regressions(run_id, DEFAULT_HEALTH_DROP))
+        for drop in health_warnings:
+            logger.warning(
+                "Source %r returned %d rows, down from %d in its last successful run "
+                "— check its extractor before trusting this run's funnel",
+                drop.source_name,
+                drop.current_rows,
+                drop.previous_rows,
+            )
+
         store.finish_run(run_id)
 
     return RunSummary(
@@ -608,4 +732,6 @@ def _run_pipeline(
         jobs_still_listed=jobs_still_listed,
         jobs_unreviewed=jobs_unreviewed,
         exclusions_logged=exclusions_logged,
+        health_warnings=health_warnings,
+        dry_run=dry_run,
     )

@@ -8,6 +8,11 @@ they behave exactly as they did before WP9.
   whole run, rather than launching and tearing one down around every page.
 * `http_cache()` puts a short-TTL, ETag-aware cache in front of `fetch_text`,
   so a re-run inside the TTL costs no network round trip at all.
+
+WP10 adds a third, in the same shape: `polite_fetching()` gives the run its
+User-Agent, caps how hard any one host is hit, and refuses what that host's
+robots.txt forbids. Outside the block the fetchers are unchanged, so a test or
+a one-off script pays for none of it.
 """
 
 from __future__ import annotations
@@ -23,12 +28,14 @@ from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import certifi
 import requests
 from requests.adapters import HTTPAdapter
 from requests.exceptions import SSLError
+
+from job_scraper.robots import RobotsDisallowed, RobotsPolicy
 
 try:
     from urllib3.util.ssl_ import create_urllib3_context
@@ -40,10 +47,38 @@ if TYPE_CHECKING:  # playwright is imported lazily, so its types are too
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_USER_AGENT = (
-    "job-scraper/0.1 (+https://example.com; contact=you@example.com)"
-)
+# The honest fallback: a name and a version, and no contact details, because
+# inventing them is worse than omitting them — a site owner who follows a made-up
+# URL learns nothing about who is fetching. Real details come from `rules.json`'s
+# `contact_url` / `contact_email` via `build_user_agent`, which is where they
+# belong: `rules.json` is gitignored, so the owner's address does not enter a
+# public commit. `polite_fetching` warns once per run when they are unset.
+DEFAULT_USER_AGENT = "job-scraper/0.1 (no contact configured)"
 DEFAULT_TIMEOUT = 30
+
+
+def build_user_agent(contact_url: str = "", contact_email: str = "") -> str:
+    """A User-Agent naming whoever is fetching, from whatever contact config exists.
+
+    Both parts are optional and each is included only if given, so a half-filled
+    config still produces something honest rather than a string with an empty
+    field in it.
+    """
+    parts: list[str] = []
+    if contact_url.strip():
+        parts.append(f"+{contact_url.strip()}")
+    if contact_email.strip():
+        parts.append(f"contact={contact_email.strip()}")
+    if not parts:
+        return DEFAULT_USER_AGENT
+    return f"job-scraper/0.1 ({'; '.join(parts)})"
+
+
+def user_agent_from_rules(rules: dict[str, object]) -> str:
+    """The run's User-Agent, read from `rules.json`'s two contact keys."""
+    return build_user_agent(
+        str(rules.get("contact_url") or ""), str(rules.get("contact_email") or "")
+    )
 
 
 class _TLSAdapter(HTTPAdapter):
@@ -237,11 +272,260 @@ def _fetch_text_curl(url: str, *, timeout: int, user_agent: str) -> str:
     return r.stdout
 
 
+# ---------------------------------------------------------------------------
+# Politeness (WP10)
+# ---------------------------------------------------------------------------
+
+# How many requests this run may have in flight *to one host*, and how long it
+# waits between starting two of them. Before WP10 the only cap was the Layer 5
+# detail pool's ten threads, which is a cap on us, not on any one site: ten
+# detail pages from one employer meant ten simultaneous requests to that
+# employer. Two at a time, a second apart, is a rate a career site does not
+# notice; the ten threads remain, so ten *different* hosts still progress at
+# once and the run is no slower for sources that are not each other's neighbours.
+DEFAULT_PER_HOST_REQUESTS = 2
+DEFAULT_HOST_DELAY = 1.0
+
+
+class _HostState:
+    __slots__ = ("semaphore", "lock", "next_allowed")
+
+    def __init__(self, per_host: int) -> None:
+        self.semaphore = threading.Semaphore(per_host)
+        self.lock = threading.Lock()
+        self.next_allowed = 0.0  # time.monotonic() before which no request starts
+
+
+class _Slot:
+    """One reserved turn at a host. `refund()` gives the turn back."""
+
+    def __init__(self, state: _HostState, claimed: float, previous: float) -> None:
+        self._state = state
+        self._claimed = claimed
+        self._previous = previous
+
+    def refund(self) -> None:
+        """This fetch never touched the network, so it should not have cost a turn.
+
+        A response served from the WP9 cache puts no load on anybody's server,
+        and making the next real request wait behind it would be politeness
+        theatre that only slows the owner down. Only refunds our own claim: if
+        another thread has since booked a later turn, its booking stands.
+        """
+        with self._state.lock:
+            if self._state.next_allowed == self._claimed:
+                self._state.next_allowed = self._previous
+
+
+class HostThrottle:
+    """Per-host concurrency cap and minimum spacing between requests.
+
+    One instance is shared by every fetching thread in a run: the source loop,
+    the Layer 5 detail workers, and the render threads. Hosts are independent —
+    a slow site holds up only its own pages.
+    """
+
+    def __init__(
+        self,
+        delay: float = DEFAULT_HOST_DELAY,
+        per_host: int = DEFAULT_PER_HOST_REQUESTS,
+        policy: Any = None,
+    ) -> None:
+        self._delay = max(0.0, delay)
+        self._per_host = max(1, per_host)
+        self._policy = policy  # RobotsPolicy, for a site-stated Crawl-delay
+        self._states: dict[str, _HostState] = {}
+        self._guard = threading.Lock()
+
+    def _state(self, host: str) -> _HostState:
+        with self._guard:
+            state = self._states.get(host)
+            if state is None:
+                state = self._states[host] = _HostState(self._per_host)
+            return state
+
+    def _delay_for(self, url: str) -> float:
+        """Our delay, or the site's own Crawl-delay when it asks for a longer one."""
+        stated = self._policy.crawl_delay(url) if self._policy is not None else None
+        return max(self._delay, stated) if stated is not None else self._delay
+
+    @contextmanager
+    def slot(self, url: str) -> Iterator[_Slot]:
+        from job_scraper.robots import host_of  # local: robots imports nothing from here
+
+        host = host_of(url) or url
+        state = self._state(host)
+        state.semaphore.acquire()
+        try:
+            delay = self._delay_for(url)
+            with state.lock:
+                # The wait happens under the host's lock so that two workers
+                # arriving together take turns rather than both reading the same
+                # "clear to go" and starting at the same instant.
+                wait = state.next_allowed - time.monotonic()
+                if wait > 0:
+                    time.sleep(wait)
+                previous = state.next_allowed
+                claimed = state.next_allowed = time.monotonic() + delay
+            yield _Slot(state, claimed, previous)
+        finally:
+            state.semaphore.release()
+
+
+_POLITENESS_LOCK = threading.Lock()
+_THROTTLE: HostThrottle | None = None
+_ROBOTS: Any = None  # RobotsPolicy | None
+_USER_AGENT: str = DEFAULT_USER_AGENT
+
+
+def current_robots_policy() -> RobotsPolicy | None:
+    """This run's robots policy, or None outside a `polite_fetching` block.
+
+    The pipeline consults it directly so a disallowed source is skipped once,
+    with one clear line, rather than raising `RobotsDisallowed` from every page
+    of it in turn.
+    """
+    with _POLITENESS_LOCK:
+        return _ROBOTS
+
+
+def current_user_agent() -> str:
+    """The User-Agent this run introduces itself with."""
+    with _POLITENESS_LOCK:
+        return _USER_AGENT
+
+
+@contextmanager
+def _slot_for(url: str) -> Iterator[_Slot | None]:
+    """The throttle's turn-taking, or a no-op outside a `polite_fetching` block."""
+    with _POLITENESS_LOCK:
+        throttle = _THROTTLE
+    if throttle is None:
+        yield None
+        return
+    with throttle.slot(url) as slot:
+        yield slot
+
+
+def _check_robots(url: str) -> None:
+    """Raise if the host's robots.txt forbids *url*. A no-op outside a run."""
+    with _POLITENESS_LOCK:
+        policy = _ROBOTS
+    if policy is None:
+        return
+    if not policy.allows(url):
+        # The host is named because it is not always the source's own: an
+        # extractor may read its listing from one host and its postings from
+        # another, and `ignore_robots: true` exempts only the host in
+        # sources.yaml. Telling the owner to set the flag without saying which
+        # host to name is advice that does not work.
+        from job_scraper.robots import host_of
+
+        raise RobotsDisallowed(
+            f"robots.txt forbids {url} for this user agent. If that rule is not "
+            f"meant for us, exempt {host_of(url)} by naming it in the source's "
+            "`ignore_robots` list in sources.yaml."
+        )
+
+
+def _fetch_robots(url: str, user_agent: str, timeout: int) -> tuple[int, str]:
+    """GET a robots.txt with this module's TLS handling. Returns (status, text).
+
+    Plain `requests.get` was not enough: the fetchers carry a certificate bundle
+    and fall back to curl when a host's SSL is awkward, and a robots.txt fetched
+    without either fails on exactly the fussiest sites — which the policy then
+    reads as "no restrictions". The check would have been quietly absent from
+    the sites most in need of care.
+
+    Uncached and unthrottled on purpose: one small file per host per run, and
+    the answer gates the throttle rather than passing through it.
+    """
+    session = _session()
+    try:
+        response = session.get(
+            url, headers={"User-Agent": user_agent}, timeout=timeout, verify=certifi.where()
+        )
+        return response.status_code, response.text
+    except (SSLError, requests.exceptions.Timeout):
+        # The same escape hatch fetch_text uses. curl -f makes a 4xx/5xx a
+        # non-zero exit, which _fetch_text_curl raises — and an unreadable
+        # robots.txt is handled by the caller either way.
+        return 200, _fetch_text_curl(url, timeout=timeout, user_agent=user_agent)
+    finally:
+        session.close()
+
+
+@contextmanager
+def polite_fetching(
+    *,
+    user_agent: str | None = None,
+    delay: float = DEFAULT_HOST_DELAY,
+    per_host: int = DEFAULT_PER_HOST_REQUESTS,
+    check_robots: bool = True,
+    robots_overrides: frozenset[str] | set[str] | None = None,
+) -> Iterator[RobotsPolicy | None]:
+    """Fetch as a good guest for the duration of the block, and yield the robots policy.
+
+    Inside it, every `fetch_text` and `fetch_rendered` call introduces itself
+    with the run's User-Agent, waits its turn at the host, and is refused
+    outright if that host's robots.txt says no. Outside it — a test, a one-off
+    script, the fixture capture tool — nothing here applies and a single fetch
+    costs nothing, which is the same shape WP9 gave the cache and the render
+    pool.
+    """
+    global _THROTTLE, _ROBOTS, _USER_AGENT
+
+    agent = user_agent or DEFAULT_USER_AGENT
+    if agent == DEFAULT_USER_AGENT:
+        logger.warning(
+            "No contact details configured: this run identifies itself as %r. Set "
+            "`contact_url` and `contact_email` in rules.json so a site owner who "
+            "wonders who is fetching can find out.",
+            agent,
+        )
+    policy = (
+        RobotsPolicy(agent, robots_overrides, fetch=_fetch_robots) if check_robots else None
+    )
+    throttle = HostThrottle(delay=delay, per_host=per_host, policy=policy)
+
+    with _POLITENESS_LOCK:
+        previous = (_THROTTLE, _ROBOTS, _USER_AGENT)
+        _THROTTLE, _ROBOTS, _USER_AGENT = throttle, policy, agent
+    try:
+        yield policy
+    finally:
+        with _POLITENESS_LOCK:
+            _THROTTLE, _ROBOTS, _USER_AGENT = previous
+
+
+def _refunds_its_turn(response: Any) -> bool:
+    """True if this response put no load on the site and should give its slot back.
+
+    Only a response served wholly from disk qualifies. A revalidation is also
+    flagged `from_cache` — its body came from disk — but the conditional request
+    that earned the 304 went to the site, so it costs a turn like any other
+    request. A plain response (no cache in play) never refunds.
+    """
+    return bool(getattr(response, "from_cache", False)) and not bool(
+        getattr(response, "revalidated", False)
+    )
+
+
 _RETRY_ATTEMPTS = 5
 
 
+def _retry_delay(attempt: int) -> float:
+    """Seconds to wait before retrying a transient 5xx. Linear, and deliberately dull.
+
+    A function rather than an expression so both fetchers share one policy and a
+    test can flatten it to zero without waiting twenty real seconds to prove a
+    retry happened.
+    """
+    return 2.0 * attempt
+
+
 def fetch_text(
-    url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str = DEFAULT_USER_AGENT
+    url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None
 ) -> str:
     """GET *url* and return response text. Raises on HTTP errors.
 
@@ -252,24 +536,84 @@ def fetch_text(
     conditional request the site closes with a 304, in which case no body
     crosses the network. Outside one it is a plain request, as before. Either
     way a site that fails still raises: the cache never stands in for an error.
+
+    Inside a `polite_fetching()` block (WP10) the URL is checked against the
+    host's robots.txt first and the request waits its turn at that host. A
+    response the cache answered refunds that turn: it cost the site nothing, so
+    it must not delay the next request that does reach them.
     """
-    headers = {"User-Agent": user_agent}
+    agent = user_agent or current_user_agent()
+    headers = {"User-Agent": agent}
+    _check_robots(url)
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
         with _SESSION_LOCK:
             session = _SESSION
         try:
-            r = session.get(url, headers=headers, timeout=timeout, verify=certifi.where())
+            with _slot_for(url) as slot:
+                r = session.get(url, headers=headers, timeout=timeout, verify=certifi.where())
+                if slot is not None and _refunds_its_turn(r):
+                    slot.refund()
             r.raise_for_status()
             _record_cache_outcome(url, r)
             r.encoding = r.apparent_encoding or "utf-8"
             return r.text
         except (SSLError, requests.exceptions.Timeout):
-            return _fetch_text_curl(url, timeout=timeout, user_agent=user_agent)
+            with _slot_for(url):
+                return _fetch_text_curl(url, timeout=timeout, user_agent=agent)
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else 0
             if status < 500 or attempt == _RETRY_ATTEMPTS:
                 raise
-            time.sleep(2 * attempt)
+            time.sleep(_retry_delay(attempt))
+    raise AssertionError("unreachable")
+
+
+def post_json(
+    url: str,
+    payload: dict[str, Any],
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    headers: dict[str, str] | None = None,
+    user_agent: str | None = None,
+) -> Any:
+    """POST *payload* as JSON and return the decoded response. Raises on HTTP errors.
+
+    Exists so that the three sources whose boards are POST-only JSON APIs —
+    Workable (`nutrition_international`, `simprints`) and Tetra Pak — introduce
+    themselves and take their turn like every other fetch. They called
+    `requests.post` directly, which meant they identified as `python-requests`,
+    consulted no robots.txt and paid no per-host spacing; Tetra Pak's paginated
+    loop was the fastest thing in the run for exactly that reason.
+
+    Deliberately not cached: `requests-cache` does not cache POST by default,
+    and a search API's answers are not what the WP9 cache is for. Transient 5xx
+    responses are retried, as in `fetch_text`; there is no curl fallback, which
+    is the one thing this path does not share with it — that hatch exists for
+    hosts whose TLS the Python stack cannot negotiate, and none of the three
+    POST boards is one.
+    """
+    _check_robots(url)
+    agent = user_agent or current_user_agent()
+    request_headers = {"User-Agent": agent, **(headers or {})}
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        with _SESSION_LOCK:
+            session = _SESSION
+        with _slot_for(url):
+            response = session.post(
+                url, json=payload, headers=request_headers, timeout=timeout
+            )
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            # The same 5xx retry `fetch_text` has, and for a sharper reason here:
+            # Tetra Pak walks its whole board ten postings at a time, so one
+            # transient 500 on page seven would abandon every page after it and
+            # the source would report a short list rather than an error.
+            if response.status_code < 500 or attempt == _RETRY_ATTEMPTS:
+                raise
+            time.sleep(_retry_delay(attempt))
+            continue
+        return response.json()
     raise AssertionError("unreachable")
 
 
@@ -321,7 +665,7 @@ class RenderPool:
     """
 
     def __init__(
-        self, workers: int = _RENDER_WORKERS, user_agent: str = DEFAULT_USER_AGENT
+        self, workers: int = _RENDER_WORKERS, user_agent: str | None = None
     ) -> None:
         self._queue: queue.Queue[_RenderRequest | None] = queue.Queue()
         self._workers = max(1, workers)
@@ -458,10 +802,14 @@ class RenderPool:
     def _render(self, browser: Browser, req: _RenderRequest) -> str:
         # A context per fetch, not a browser per fetch: a fresh context is as
         # isolated (its own cookies and storage) at roughly a tenth of the cost.
-        context = browser.new_context(user_agent=self._user_agent)
+        context = browser.new_context(user_agent=self._user_agent or current_user_agent())
         try:
             page = context.new_page()
-            page.goto(req.url, wait_until="domcontentloaded", timeout=req.timeout)
+            # The navigation itself takes the host's turn (WP10). Everything
+            # after it — the selector wait, the settle delay — is the page
+            # talking to its own origin, which no throttle of ours governs.
+            with _slot_for(req.url):
+                page.goto(req.url, wait_until="domcontentloaded", timeout=req.timeout)
             if req.wait_for_selector:
                 try:
                     page.wait_for_selector(req.wait_for_selector, timeout=req.timeout)
@@ -502,7 +850,7 @@ _POOL_DEPTH = 0
 
 @contextmanager
 def render_pool(
-    workers: int = _RENDER_WORKERS, user_agent: str = DEFAULT_USER_AGENT
+    workers: int = _RENDER_WORKERS, user_agent: str | None = None
 ) -> Iterator[RenderPool]:
     """Reuse browsers across every `fetch_rendered` call made inside the block.
 
@@ -548,8 +896,9 @@ def _render_once(
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         try:
-            page = browser.new_page(user_agent=DEFAULT_USER_AGENT)
-            page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            page = browser.new_page(user_agent=current_user_agent())
+            with _slot_for(url):
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout)
             if wait_for_selector:
                 try:
                     page.wait_for_selector(wait_for_selector, timeout=timeout)
@@ -578,7 +927,12 @@ def fetch_rendered(
     Inside a `render_pool()` block this borrows a running browser and pays only
     for a new context. Outside one it launches and tears down its own, exactly
     as it did before WP9.
+
+    Checked against robots.txt inside a `polite_fetching()` block, before a
+    browser is involved at all: a page we may not fetch should cost nobody a
+    render.
     """
+    _check_robots(url)
     with _POOL_LOCK:
         pool = _POOL
     if pool is not None:

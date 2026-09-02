@@ -143,6 +143,11 @@ def _run(tmp_path: Path, **kwargs: Any):
         rules_path=tmp_path / "rules.json",
         out_db_path=tmp_path / "jobs.sqlite3",
         title_keywords_path=tmp_path / "title_exclude_keywords.csv",
+        cache_path=tmp_path / "http_cache.sqlite3",
+        # No robots.txt lookup: these fetchers are stubs and the host does not
+        # exist. WP10's robots check is covered against a real origin in
+        # tests/test_politeness.py and tests/test_source_health.py.
+        check_robots=False,
         **kwargs,
     )
 

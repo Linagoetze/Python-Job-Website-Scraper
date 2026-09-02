@@ -56,7 +56,8 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8i | `--layer` refuses a display number | 0.5 hr | Sonnet 5 | none | done — a bare digit is refused before the store opens and named its stored id; every other argument unchanged; 414 tests pass | `wp8i-layer-guard` |
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
-| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | not started | `wp10-politeness` |
+| 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
+| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | not started | `wp11-pagination` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -423,6 +424,45 @@ Record any decision a future session would otherwise have to re-derive.
   for belongs to `fetch_text`'s 5xx retry, which is still there and is pinned by
   the same test. It will look like free resilience to a future session; it is
   not, and this is the entry saying so.
+
+- **An unreadable robots.txt allows the crawl** (WP10). RFC 9309 says a 5xx
+  should be read as a site-wide "do not crawl", and for a search engine that is
+  right. Here it is not: impactpool.org intermittently 500s, and a transient
+  error that skips a source silently produces exactly the "no vacancies" shape
+  priority 2 forbids. So an unreachable or erroring robots.txt is logged as a
+  WARNING and the source is scraped; a *readable* one that says no is obeyed,
+  because that is the case actually carrying the site owner's intent. Do not
+  "harden" this into a fail-closed check without re-reading that argument.
+
+- **The contact details live in `rules.json`, not in `http.py`** (WP10, put to
+  the owner and chosen by them). The repo is public, so a real address in
+  tracked code publishes it; `rules.json` is gitignored. `build_user_agent`
+  assembles the header from `contact_url` / `contact_email`, and the fallback
+  says `no contact configured` rather than naming a domain nobody owns — an
+  invented contact is worse than an absent one, since following it teaches an
+  administrator nothing. Every run without them logs a WARNING.
+
+- **A cache hit refunds its turn at the host** (WP10). The throttle books the
+  next slot before the request; a response `requests-cache` answered from disk
+  put no load on the site, so it hands the booking back and the next real
+  request does not queue behind it. Without the refund a warm-cache run would
+  pay the full per-host delay for pages nobody was asked for — politeness
+  theatre that costs the owner time and buys the site nothing.
+
+- **`_DETAIL_WORKERS = 10` was never the politeness cap, and still is not**
+  (WP10). It bounds this tool's threads; the per-host semaphore
+  (`DEFAULT_PER_HOST_REQUESTS = 2`, `DEFAULT_HOST_DELAY = 1.0` in `http.py`)
+  bounds what any one site sees. Ten workers now means up to ten *different*
+  employers in parallel. Lowering `_DETAIL_WORKERS` to be kinder to a site is
+  the wrong lever and makes every other source slower.
+
+- **Politeness is run-scoped, like the WP9 resources** (WP10). `polite_fetching`
+  installs the User-Agent, the throttle and the robots policy for the length of
+  `run_pipeline` only. Outside it — tests, the fixture capture script, a one-off
+  `fetch_text` — nothing applies, so no test pays a second per request and none
+  of them reaches for robots.txt over the network. The pipeline is the only
+  thing in this project that fetches at volume, which is what makes that scope
+  the right one.
 
 ---
 
@@ -4599,6 +4639,308 @@ Two notes before you touch run.py's output, both from WP8h:
   ordinal — a warning that looks like a filter line will be read as one.
 
 Branch wp10-politeness. Commit, do not push. Update the plan file.
+```
+
+### Prompt drift found before starting (2026-08-31)
+
+The prompt was audited against the code as it stands after WP9. Four things had
+moved; none changed what the package does, and all four are corrected above in
+substance:
+
+- **The two tools are at `job_scraper/tools/`,** not `tools/`. The prompt's
+  paths predate the move.
+- **`_DETAIL_WORKERS` lives in `experience_filter.py`,** not `http.py`.
+- **WP9 took rendered fetches off the detail pool.** A rendered page is now
+  queued to `http.RenderPool`'s four threads, so a cap applied only to the
+  detail pool would have missed every dynamic source. The throttle therefore
+  sits at the fetchers — `fetch_text` and the render pool's `page.goto` — where
+  both paths pass through it.
+- **WP9's response cache changes what "a request" means.** A page answered from
+  disk must not consume a host's turn; see the refund decision in the log.
+
+### What was done
+
+**The User-Agent.** `DEFAULT_USER_AGENT` no longer contains `example.com`. The
+owner was asked where the real details should live and chose `rules.json` (the
+repo is public; `rules.json` is gitignored), so `build_user_agent` /
+`user_agent_from_rules` assemble the header from two new keys, documented in
+`rules.example.json`. The owner filled the real values into `rules.json` and
+verified them on 2026-08-31 (this session did not touch that file — CLAUDE.md
+forbids it), so runs now identify themselves properly. A clone without those
+keys warns and identifies itself as `job-scraper/0.1 (no contact configured)`.
+
+**The per-host cap.** `HostThrottle` in `http.py`: two requests at a time per
+host, one second between the starts of two requests to the same host, hosts
+independent of each other. `_DETAIL_WORKERS` stays at 10 — it is a cap on this
+tool, not on any one site, and now means ten different employers in parallel. A
+site that states a longer `Crawl-delay` in robots.txt gets it (the stdlib parser
+accepts only whole seconds there, and needs `parser.modified()` called or it
+returns None — that cost a debugging round and is commented in `robots.py`).
+
+**robots.txt.** New `job_scraper/robots.py`: one fetch per host per run, cached
+behind a per-host lock so concurrent first hits do not fetch it eight times. The
+pipeline asks once per source and skips a disallowed one with a single clear
+line — a skipped source records no `source_health` row, so it can never look
+like a source that collapsed. `fetch_text` and `fetch_rendered` also check, so a
+detail page under a disallowed path is kept but reported — see the review
+follow-up below for what that claim originally said and why it was wrong. Override
+per source with `ignore_robots: true` in `sources.yaml` (documented in
+`sources.example.yaml`); it exempts the whole host, deliberately.
+
+**Source health warnings.** `JobStore.source_health_regressions` compares each
+source's row count against its own last *successful* run and reports anything
+that lost more than half; `run_pipeline` logs each one and puts them on
+`RunSummary.health_warnings`.
+
+**`--dry-run`.** `JobStore(path, dry_run=True)` rolls its transaction back
+instead of committing, `jobs_sources.csv` is not written, `run.py` skips the
+xlsx export and the scoring stage (its verdicts would be discarded and its
+tokens would not). The funnel it prints is the one a real run would print.
+
+**The two tools.** `retrofilter` and `blocklist_all` now call `_parse_args()`
+first: `--help` prints the docstring and exits 0, anything unrecognised exits
+non-zero having done nothing. `tests/test_tool_front_doors.py` proves it with
+every route to the store monkeypatched to raise — WP8b's mistake is not one to
+repeat inside a test suite. The two tools were **not** invoked for real against
+`data/jobs.sqlite3` to check, for the same reason.
+
+### The golden summary test
+
+`tests/test_run_summary.py` is untouched, and its `EXPECTED` block did **not**
+need regenerating: neither new block renders on a healthy, writing run. The
+health warnings and the dry-run notice append only when they have something to
+say, so the pinned layout is byte-for-byte what it was. The invariant tests
+beside it still pass unchanged.
+
+The health block deliberately does not borrow a ladder ordinal (the WP8h note in
+the prompt):
+
+```
+────────────────────────────────────────────────────
+!  Source health: 1 source returned far fewer rows than last time
+!  impactpool: 4 rows this run, was 120 (-97%)
+```
+
+`!` rather than `L5  −`, no right-aligned number column, and an ASCII `-97%`
+rather than the funnel's `−`. A source that shrank is not a filter that fired,
+and `tests/test_source_health.py` asserts the warning lines carry no `L`
+ordinal and no drop marker.
+
+### Follow-up after the owner's first dry run (2026-08-31)
+
+That run turned up three things, one of which was a defect in this package.
+
+**`ignore_robots: true` could not express the case that actually occurred.**
+The OECD source's listing lives on `careers.smartrecruiters.com` and its
+postings on `api.smartrecruiters.com`, whose robots.txt carries the blanket
+`Disallow` an API host usually does. The override exempted only the host in
+`sources.yaml`, so the flag the refusal message told the owner to set would not
+have worked — and the message did not name the host that needed exempting. Both
+fixed: `ignore_robots` now takes `true` *or* a list of hosts
+(`_robots_overrides` in `pipeline.py`), and `RobotsDisallowed` names the host.
+Five tests added. `RobotsPolicy.exempt()` was dead on arrival and is deleted.
+
+**UNDP disallows its job board to everyone**
+(`jobs.undp.org/robots.txt` vs `cj_view_jobs.cfm`). That is not a rule aimed at
+the wrong crawler, it is the site saying no; the source stays skipped. Recorded
+here so nobody re-adds it as a bug later.
+
+**J-PAL's 44 → 9 was real, and is not this package's doing.** Diagnosed offline
+from the WP9 response cache rather than by re-scraping: page 0 returned 9 jobs
+and pager links through `?page=4`, while `?page=1` returned 200 with a 93 KB
+body containing no job nodes and no pager at all, so the extractor stopped after
+two pages. The site's paged responses changed; nothing in WP10 alters what a
+server returns except the User-Agent. **Worth its own package** —
+`extractors/jpal.py` trusts `_last_page` and a page that silently yields nothing.
+
+**Found while investigating (WP9's, not WP10's), fixed on 2026-09-02:** every
+test that called `run_pipeline` opened `http_cache()` with no path, which
+resolves to the *real* `data/http_cache.sqlite3`. So the suite read, wrote and
+pruned the owner's live response cache — it emptied a 37 MB cache during this
+session (a cache is regenerable, so nothing was lost but a re-download), and a
+populated cache made the suite four times slower (8 s → 35 s). See "Follow-up:
+the response cache the tests were using" below.
+
+### Numbers
+
+- 496 tests pass (443 before), suite ~8 s. `ruff check .` passes.
+- New: `tests/test_politeness.py` (25), `tests/test_source_health.py` (10),
+  `tests/test_dry_run.py` (6), `tests/test_tool_front_doors.py` (12).
+- The six existing `run_pipeline` call sites in tests now pass
+  `check_robots=False`. Their fetchers are stubs and their hosts do not exist,
+  so the alternative was a DNS lookup per test for an answer nothing asserts.
+  The real path is covered against a localhost origin in `test_politeness.py`.
+- No new dependencies: `urllib.robotparser` is stdlib and `requests` was already
+  there.
+
+### Not done, and why
+
+- **No `--host-delay` or global `--ignore-robots` flag.** The prompt asked for a
+  per-source override and that is what exists. A global switch is the one a
+  tired owner reaches for at 11pm, and it turns the check off for every site
+  rather than the one that was wrong.
+- **A dry run still creates `data/jobs.sqlite3` if it does not exist**, empty,
+  because the schema DDL commits before the transaction opens. It contains no
+  run, no job and no drop row. Worth knowing before anyone claims `--dry-run`
+  touches the filesystem not at all.
+
+### Follow-up: the response cache the tests were using (2026-09-02)
+
+The finding above, fixed.
+
+**`run_pipeline` now takes `cache_path`.** It defaults to `None`, which means
+the real cache in `data/`, so a run started from `run.py` behaves exactly as it
+did. Every one of the eight test call sites passes `tmp_path /
+"http_cache.sqlite3"` instead. The parameter reads like `out_db_path`, which is
+the shape the finding asked for.
+
+**A parameter alone was not enough.** Nothing stopped the ninth call site from
+forgetting it, and forgetting it is silent: the run works, it just works on the
+owner's file. So `tests/conftest.py` — the suite's first — wraps `http_cache`
+for the duration of every test and raises if it is opened with no path, or with
+the live path spelled out. It is patched on both `job_scraper.http` and
+`job_scraper.pipeline`, because `pipeline.py` imported the name directly and
+rebinding it on `http` alone would have left the exact call that caused this
+unguarded. `tests/test_cache_path.py` pins both halves: the cache lands where
+it was told to, and a run that names no path is refused under test.
+
+**`--dry-run` deliberately keeps using the real cache.** The question was
+whether a dry run should get a scratch cache too, since it currently warms and
+prunes the owner's. It should not, on priority 3: a dry run followed by the
+real run is the normal way this flag gets used, and a scratch cache would make
+those two runs download every page twice from other people's servers. Sharing
+the cache means the second run pays nothing. The two things a scratch cache
+would protect against are not losses — the file holds public pages and is
+regenerable, and the prune on block exit is the housekeeping that keeps it from
+growing without bound, not a deletion of anything a run still wants. What
+`--dry-run` promises is that the *store* is not written, and that is unchanged.
+
+**Numbers.** 498 tests pass (496 before), suite ~8 s. `ruff check .` passes.
+New: `tests/conftest.py`, `tests/test_cache_path.py` (2).
+
+### Review follow-up (2026-09-02)
+
+A separate session reviewed the branch. Six points, all acted on; the first
+three were real holes rather than polish.
+
+**1. Three sources bypassed the whole package.** `nutrition_international`,
+`simprints` (both Workable) and `tetrapak` called `requests.post` directly, so
+they identified as `python-requests`, read no robots.txt and paid no per-host
+spacing — Tetra Pak's paginated loop, ten postings at a time with no pause,
+hardest of all. The politeness work sat in `fetch_text`, and these three never
+went through it. Fixed by `http.post_json`, which does the robots check, takes
+the host's turn and sends the run's User-Agent; both extractors now call it. A
+guard test walks `extractors/*.py` and fails on any direct `requests` /
+`urllib.request` / `httpx` use, so the next POST-only board cannot reopen the
+hole quietly.
+
+**2. `--dry-run` was untested where it protects the spreadsheet.** The pipeline
+half had six tests; the half in `run.py` — the export and the paid scoring call
+— had none, so reordering two lines would overwrite `jobs.xlsx` with every
+database test still green. `tests/test_run_dry_run.py` (7 tests) uses the
+harness already sitting in `test_run_scoring_gate.py`.
+
+**3. The plan claimed a blocked detail page "fails loudly". It did not.** Layer
+5 fails open by design, so a refused detail page kept its job — with no
+experience check, no PhD check and no stored description — behind a `debug`
+line nobody sees on a normal run. Because robots.txt blocks a *pattern*, that
+happens to every posting on a source at once, and the funnel still looks
+healthy. `_DetailSignals.robots_refused` now separates a policy refusal from a
+network failure, and `apply_detail_filter` logs one WARNING naming the count
+and the host to exempt. Fail-open behaviour itself is unchanged: nothing is
+lost, it is only no longer silent.
+
+**4. A revalidated response refunded a turn it had used.** `requests-cache`
+flags a 304 as `from_cache` — the body did come from disk — but the conditional
+request went to the site. `_refunds_its_turn` now refunds only a response that
+crossed no network at all.
+
+**5. robots.txt was fetched without the fetchers' TLS handling.** No certificate
+bundle, no curl fallback, so on the hosts with awkward SSL the read would fail,
+log a warning and be read as "no restrictions" — the check absent from exactly
+the sites that are fussiest. `RobotsPolicy` now takes the fetcher as a
+parameter and `polite_fetching` passes `http._fetch_robots`, which has both.
+The plain default keeps `robots.py` importable without `http`.
+
+**6. Small.** README said 491 tests; it now says 511. `sources.yaml` and
+`rules.json` were each parsed twice per run (once for the politeness config,
+once inside `_run_pipeline`); both are now read once and passed down.
+
+**Numbers after the follow-up.** 511 tests pass (498 before), suite ~8 s.
+`ruff check .` passes. `tests/test_run_summary.py` still untouched.
+
+### Second review pass (2026-09-02)
+
+Two points on the fixes themselves, both taken.
+
+- **`post_json` did not retry a 5xx**, so one transient 500 on page seven of
+  Tetra Pak's pagination would abandon every page after it and report a short
+  list rather than an error — the exact shape `source_health` warnings exist to
+  catch, arriving by a route the commit message had claimed was closed ("the
+  same treatment as every other fetch"). It retries now, on the same policy as
+  `fetch_text`, which is shared as `_retry_delay` so a test can flatten it
+  rather than wait twenty seconds. Still no curl fallback, and that is
+  deliberate: that hatch is for hosts whose TLS the Python stack cannot
+  negotiate, and none of the three POST boards is one.
+- **The extractor guard could pass vacuously.** It globbed a path relative to
+  the working directory, so from anywhere but the project root it matched no
+  files and reported safety it had not checked. It now locates the package from
+  `extractors.__file__` and asserts it found more than twenty modules, so a
+  guard that is looking in the wrong place fails instead of passing.
+
+514 tests pass.
+
+---
+
+## WP11 — J-PAL pagination, and silent short walks
+
+```
+think
+
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP11 only.
+
+WP10's source-health warning fired on its first real run: `jpal` returned 9
+rows, down from 44. That was diagnosed offline from the WP9 response cache and
+is a real shortfall, not a WP10 side effect. What the cache held:
+
+- `https://www.povertyactionlab.org/careers` — 200, 9 job nodes, pager links
+  through `?page=4`.
+- `https://www.povertyactionlab.org/careers?page=1` — 200, a 93 KB body, zero
+  job nodes, and no pager links at all.
+
+So `extract` walked page 0, saw a pager, fetched page 1, parsed nothing from it,
+asked `_last_page` where the end was, got 0, and stopped — returning 9 of about
+44 postings without failing. The cache that held this evidence has since been
+pruned; capture a fresh fixture with `scripts/` rather than assuming those
+numbers still describe the site.
+
+The narrow bug is in `extractors/jpal.py`. The general one is the shape:
+**a paginated walk that ends because a page yielded nothing cannot tell "we
+reached the end" from "this page did not parse".** Priority 2 says the second
+must fail, not silently shorten the list. Five extractors have a `while True`
+page loop — `jpal`, `smartrecruiters`, `tetrapak`, `unops`, `niras`,
+`successfactors_html` — so decide deliberately whether this is one fix or a
+shared helper, and say which in the plan.
+
+- Work out why `?page=1` parses to nothing: a changed pager, a different URL
+  shape, or a page that needs rendering. Fix `jpal` accordingly. Do not scrape
+  the live site to build a fixture by hand — use the capture script.
+- Make a mid-walk empty page loud. A first page that yields nothing is already
+  handled (the pipeline's zero-row guard refuses to delist); a *later* page
+  that yields nothing while the pager says there is more is the case with no
+  guard at all, and it should raise so the source fails rather than shortens.
+- Check the other paginated extractors against the same question. Report what
+  you find; fix only what is actually broken, and note the rest.
+- `_last_page` returning 0 from a page with no links is indistinguishable from
+  a genuine single-page listing. Whatever you do about that, it has to keep the
+  single-page case working — `probably_good` and others are one page by nature.
+
+Do not touch the filter ladder or the run summary; this is an extractor
+package. Watch that the WP10 politeness layer stays intact: extractors must
+fetch through `job_scraper.http`, and `tests/test_politeness.py` has a guard
+test that fails if one reaches for `requests` directly.
+
+Branch wp11-pagination. Commit, do not push. Update the plan file.
 ```
 
 ---

@@ -91,6 +91,11 @@ def test_configured_company_fills_in_where_extractor_left_it_blank(env: Path) ->
         sources_path=env / "sources.yaml",
         rules_path=env / "rules.json",
         out_db_path=env / "jobs.sqlite3",
+        cache_path=env / "http_cache.sqlite3",
+        # No robots.txt lookup: these fetchers are stubs and the host does not
+        # exist. WP10's robots check is covered against a real origin in
+        # tests/test_politeness.py and tests/test_source_health.py.
+        check_robots=False,
     )
 
     by_title = {r["title"]: r["company"] for r in _rows(env)}
@@ -102,6 +107,11 @@ def test_extractor_company_wins_over_configured_company(env: Path) -> None:
         sources_path=env / "sources.yaml",
         rules_path=env / "rules.json",
         out_db_path=env / "jobs.sqlite3",
+        cache_path=env / "http_cache.sqlite3",
+        # No robots.txt lookup: these fetchers are stubs and the host does not
+        # exist. WP10's robots check is covered against a real origin in
+        # tests/test_politeness.py and tests/test_source_health.py.
+        check_robots=False,
     )
 
     by_title = {r["title"]: r["company"] for r in _rows(env)}
