@@ -391,24 +391,28 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "jpal": {
-        "count": 9,
+        # WP11 (2026-09-02): re-captured as the whole five-page walk, not just
+        # page 0, so the count is the listing's real length. The old count of 9
+        # was one page — and a golden test that only ever saw page 0 is why the
+        # walk could stop after it without any test noticing.
+        "count": 37,
         "first_job": {
             "source_name": "jpal",
-            "title": "Field-Based Research Associate - Democratic Republic of Congo",
+            "title": "Training and Education Associate - J-PAL Latin America and the Caribbean",
             "department": "",
-            "location": "Democratic Republic of the Congo",
+            "location": "Guatemala",
             "listing_url": "https://www.povertyactionlab.org/careers",
             "detail_url": (
                 "https://www.povertyactionlab.org/careers/"
-                "field-based-research-associate-democratic-republic-congo-job-105604"
+                "training-and-education-associate-j-pal-latin-america-and-caribbean-job-105605"
             ),
             "apply_url": (
                 "https://www.povertyactionlab.org/careers/"
-                "field-based-research-associate-democratic-republic-congo-job-105604"
+                "training-and-education-associate-j-pal-latin-america-and-caribbean-job-105605"
             ),
             "raw_snippet": (
-                "Field-Based Research Associate - Democratic Republic of Congo "
-                "Democratic Republic of the Congo"
+                "Training and Education Associate - J-PAL Latin America and the "
+                "Caribbean Guatemala"
             ),
         },
     },
