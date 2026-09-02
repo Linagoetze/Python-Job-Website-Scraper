@@ -118,4 +118,15 @@ def extract(
 
         page += 1
 
+    if expects_more:
+        # Fell out of the loop at the page cap with the listing still offering
+        # another page. Whatever that is — a pager gone haywire, a board that
+        # really has grown past 8,000 postings — it is not a finished walk, and
+        # J-PAL's equivalent cap does not pass one off as one either.
+        raise pagination.ShortWalkError(
+            f"{source_name}: stopped at the {_MAX_PAGES}-page limit holding "
+            f"{len(out)} posting(s), with page {page} still linked. Refusing a "
+            "short list: raise the cap or find out why the listing is that long."
+        )
+
     return out

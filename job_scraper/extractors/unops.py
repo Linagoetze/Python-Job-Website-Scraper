@@ -31,10 +31,22 @@ from bs4 import BeautifulSoup
 from job_scraper.extractors import pagination
 
 _PAGE_SIZE = 6
-# "1-6 of 74 results" in the list controls, and `aria-label="74 results"` on the
-# same element. Either spelling gives the same number; the text is tried first
-# because an aria-label is the more likely of the two to be restyled away.
-_TOTAL_PATTERN = re.compile(r"([\d\s,]+)\s*results\b", re.I)
+# The marketplace states its length twice on the same control: "1-6 of 74
+# results" in the text, and `aria-label="74 results"`. Two patterns rather than
+# one loose one, because "a number then the word results" is not specific enough
+# to be safe on a page of prose:
+#
+#   "Search results"      no number at all — matched anyway, and the empty
+#                         capture group crashed int()
+#   "10 results per page" a real number that is not the total — the walk would
+#                         then be checked against 10, pass trivially, and the
+#                         guard would be off while still looking on
+#
+# So the running text is only read in the "of N results" form the summary uses,
+# and the aria-label only when the whole label is the count. Both require at
+# least one digit.
+_TOTAL_IN_TEXT = re.compile(r"\bof\s+([\d,\s]*\d)\s+results\b", re.I)
+_TOTAL_IN_LABEL = re.compile(r"^\s*([\d,\s]*\d)\s+results\s*$", re.I)
 
 
 def _paginate_url(base_url: str, offset: int) -> str:
@@ -48,13 +60,13 @@ def _paginate_url(base_url: str, offset: int) -> str:
 
 def _declared_total(soup: BeautifulSoup) -> int | None:
     """How many vacancies the marketplace says it is showing, if it says."""
-    for candidate in (
-        soup.get_text(" ", strip=True),
-        *(str(tag.get("aria-label")) for tag in soup.select("[aria-label]")),
-    ):
-        match = _TOTAL_PATTERN.search(candidate)
+    match = _TOTAL_IN_TEXT.search(soup.get_text(" ", strip=True))
+    if match:
+        return int(re.sub(r"\D", "", match.group(1)))
+    for tag in soup.select("[aria-label]"):
+        match = _TOTAL_IN_LABEL.match(str(tag.get("aria-label")))
         if match:
-            return int(re.sub(r"[^\d]", "", match.group(1)))
+            return int(re.sub(r"\D", "", match.group(1)))
     return None
 
 

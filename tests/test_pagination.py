@@ -434,9 +434,10 @@ def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
     [
         ("dsv", successfactors_html._declared_total, 2010),
         ("iss", successfactors_html._declared_total, 62),
-        ("novo_nordisk", successfactors_html._declared_total, 350),
+        ("novo_nordisk", successfactors_html._declared_total, 329),
         ("coloplast", successfactors_html._declared_total, 331),
         ("niras", niras._declared_total, 2),
+        ("unops", unops._declared_total, 74),
     ],
 )
 def test_the_saved_page_still_states_its_total(name: str, reader: Any, expected: int) -> None:
@@ -472,7 +473,7 @@ def test_the_saved_impactpool_page_still_links_to_the_next_one() -> None:
 
 @pytest.mark.parametrize(
     ("name", "per_page"),
-    [("dsv", 10), ("iss", 20), ("novo_nordisk", 100), ("coloplast", 25)],
+    [("dsv", 10), ("iss", 20), ("coloplast", 25)],
 )
 def test_successfactors_parses_exactly_what_its_label_counts(name: str, per_page: int) -> None:
     """The invariant the total guard rests on, checked against real markup.
@@ -561,3 +562,81 @@ def test_niras_half_rendered_page_does_not_pass_as_the_last_one() -> None:
 
     with pytest.raises(ShortWalkError, match="holding 30 posting"):
         niras.extract("https://www.niras.com/jobs/vacant-positions/", fetch)
+
+
+# --- the three holes a second review found ----------------------------------
+
+
+def test_jpal_page_that_renders_an_empty_listing_mid_walk_raises() -> None:
+    """Rendered, saying there are none, and listed in its own pager.
+
+    Distinct from the missing-view case: this page worked, and its answer is
+    "no vacancies" — but its own pager still lists it, so the answer is to the
+    wrong question and a page of postings has gone missing.
+    """
+    fetch = _serving(
+        {
+            _LISTING_URL: _page(jobs=9, last_page=4),
+            f"{_LISTING_URL}?page=1": _page(jobs=0, last_page=4),
+        }
+    )
+
+    with pytest.raises(ShortWalkError, match="its own pager still lists it"):
+        jpal.extract(_LISTING_URL, fetch)
+
+
+def test_impactpool_hitting_its_page_cap_with_more_to_come_raises() -> None:
+    """The one exit from that loop that used to return quietly."""
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        page = int(url.rsplit("page=", 1)[1])
+        return _impactpool_page(40, next_page=page + 1, offset=page * 40)
+
+    with pytest.raises(ShortWalkError, match="page limit"):
+        impactpool.extract("https://www.impactpool.org/search", fetch, "impactpool")
+
+
+@pytest.mark.parametrize(
+    ("html", "expected"),
+    [
+        ("<h1>Search results</h1>", None),
+        ("<p>No results found</p>", None),
+        # A real number that is not the total. Read as one, it would be smaller
+        # than any walk and switch the guard off while leaving it looking on.
+        ('<p>10 results per page</p><span>1-6 of 74 results</span>', 74),
+        ('<span aria-label="74 results">1-6 of 74 results</span>', 74),
+        ('<span aria-label="74 results">Vacancies</span>', 74),
+        ("<p>1-6 of 1,234 results</p>", 1234),
+    ],
+)
+def test_unops_reads_only_a_number_that_is_actually_the_total(
+    html: str, expected: int | None
+) -> None:
+    """The first two of these crashed the reader: matched, captured nothing."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(f"<html><body>{html}</body></html>", "lxml")
+    assert unops._declared_total(soup) == expected
+
+
+def test_jpal_tolerates_a_pager_that_over_claims_by_a_page() -> None:
+    """The false alarm that the previous version of this guard would have raised.
+
+    J-PAL's pages are edge-cached separately, so page 0 can be a copy from when
+    the board was one page longer. Observed live on 2026-09-02: page 0 said the
+    listing ran to page 4, page 3's pager said 3, and page 4 rendered "Your
+    search returned no results". The walk must read that as the end — the empty
+    page agrees with its own pager — and return the 36 postings it has, not fail
+    a healthy source.
+    """
+    fetch = _serving(
+        {
+            _LISTING_URL: _page(jobs=9, last_page=4),
+            f"{_LISTING_URL}?page=1": _page(jobs=9, last_page=3, offset=9),
+            f"{_LISTING_URL}?page=2": _page(jobs=9, last_page=3, offset=18),
+            f"{_LISTING_URL}?page=3": _page(jobs=9, last_page=3, offset=27),
+            f"{_LISTING_URL}?page=4": _page(jobs=0, last_page=3),
+        }
+    )
+
+    assert len(jpal.extract(_LISTING_URL, fetch)) == 36

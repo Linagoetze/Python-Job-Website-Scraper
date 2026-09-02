@@ -130,12 +130,35 @@ def extract(
             )
 
         jobs = _parse_jobs(soup, listing_url, source_name)
+        # Every page carries a pager, and the one on *this* page is the freshest
+        # statement of where the listing ends. That matters: J-PAL's pages are
+        # edge-cached separately, so page 0 can be a copy from when the board was
+        # a page longer, and following it walks one page past the end. Observed
+        # live on 2026-09-02, when the board went from 37 postings to 36 between
+        # two fetches of the same walk.
+        this_page_last = _last_page(soup)
+
+        if not jobs:
+            if this_page_last is not None and page <= this_page_last:
+                # The page lists itself in its own pager and still shows nothing.
+                # That is not the end of the listing; it is a page of it missing.
+                pagination.short_walk(
+                    source_name,
+                    url,
+                    collected=len(out),
+                    promised=f"its own pager still lists it, and runs to page {this_page_last}",
+                )
+            # Otherwise this page is past the end — which is what J-PAL's
+            # "Your search returned no results" state means when the pager
+            # agrees — or page 0 of a board with no vacancies at all. Both are
+            # answers, and the second is the pipeline's zero-row guard to judge.
+            break
+
         out.extend(jobs)
 
-        # Read the pager only from a page that rendered its listing, and never
-        # shrink the count: a truncated pager cannot cut a walk that an earlier
-        # page said was longer.
-        this_page_last = _last_page(soup)
+        # Never shrink the count: a pager that under-claims (the same caching,
+        # the other way round) must not cut a walk an earlier page said was
+        # longer. Over-claiming is handled above, by the empty page itself.
         if this_page_last is not None:
             last = max(last, this_page_last)
         if page >= last:
