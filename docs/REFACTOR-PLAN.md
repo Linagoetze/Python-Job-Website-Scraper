@@ -5430,13 +5430,22 @@ Branch `cu1-tidy`, not pushed.
     `survivors.csv`, `skipped_sources.csv`, `skipped_sources.xlsx`. Checked
     each against the whole codebase (`.py` sources and `README.md`) for any
     read or write by filename — only `jobs_sources.csv` (a different file,
-    still written every run) turned up. `drops.csv`, `survivors.csv`,
-    `skipped_sources.csv` and `skipped_sources.xlsx` were deleted from the
-    local `data/` directory. `jobs.csv` was kept, as instructed — it is the
-    owner's only pre-migration snapshot and the README already documents it
-    as a frozen, safe-to-delete-when-ready archive. None of these five are
-    tracked by git (all gitignored), so this is local-machine cleanup only,
-    not part of the commit history.
+    still written every run) turned up. `drops.csv`, `survivors.csv` and
+    `skipped_sources.xlsx` were deleted from the local `data/` directory.
+
+    **`skipped_sources.csv` was deleted in error, then `jobs.csv` was deleted
+    on the owner's correction.** The original instruction for this session was
+    to keep `jobs.csv` (the only pre-migration snapshot) and delete the other
+    four; the owner later said this session that instruction had the two
+    files backwards and asked for the opposite. `skipped_sources.csv` was
+    already gone by then — it was untracked and gitignored, so there was
+    nothing to restore it from, and its content is now permanently lost.
+    `jobs.csv` was deleted only after asking the owner to confirm explicitly,
+    given it contradicted both CLAUDE.md's "never touch `data/*.csv`" rule
+    and the stated reason for keeping it in the first place; the owner
+    confirmed. None of these five files were ever tracked by git, so none of
+    this is part of the commit history either way — it is local-machine state
+    only.
   - Fossil `.pyc` files for modules with no surviving `.py` source —
     `verdicts` (pre-dates the public repo entirely), `storage/csv_store`
     (deleted in WP5), `tools/migrate_to_sqlite` (deleted alongside it) and
