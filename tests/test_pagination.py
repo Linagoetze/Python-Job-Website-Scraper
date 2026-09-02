@@ -603,7 +603,7 @@ def test_impactpool_hitting_its_page_cap_with_more_to_come_raises() -> None:
         ("<p>No results found</p>", None),
         # A real number that is not the total. Read as one, it would be smaller
         # than any walk and switch the guard off while leaving it looking on.
-        ('<p>10 results per page</p><span>1-6 of 74 results</span>', 74),
+        ("<p>10 results per page</p><span>1-6 of 74 results</span>", 74),
         ('<span aria-label="74 results">1-6 of 74 results</span>', 74),
         ('<span aria-label="74 results">Vacancies</span>', 74),
         ("<p>1-6 of 1,234 results</p>", 1234),

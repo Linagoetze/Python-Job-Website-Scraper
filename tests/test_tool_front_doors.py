@@ -59,9 +59,7 @@ def test_an_unrecognised_argument_exits_non_zero_having_done_nothing(
 
 
 @_TOOLS
-def test_no_arguments_still_runs_the_tool(
-    module: object, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_no_arguments_still_runs_the_tool(module: object, monkeypatch: pytest.MonkeyPatch) -> None:
     """The front door must not become a lock: the bare command still works."""
     monkeypatch.setattr("sys.argv", [module.__name__])  # type: ignore[attr-defined]
     with pytest.raises(AssertionError, match="the tool ran"):

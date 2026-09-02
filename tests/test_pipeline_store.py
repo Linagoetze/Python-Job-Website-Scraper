@@ -231,6 +231,7 @@ def test_failed_source_is_recorded_in_source_health(env: dict[str, Any]) -> None
 
     def get_extractor(name: str):
         if name == "broken":
+
             def boom(url: str, fetch_fn: Any) -> list[dict[str, str]]:
                 raise RuntimeError("selector drift")
 

@@ -142,8 +142,10 @@ def main() -> int:
 
     print(f"{len(rows)} labelled rows, {len(rows) - missing} found in the store.")
     if missing:
-        print(f"{missing} not in the store — left untouched (delisted, or pruned "
-              f"from the drop log's retained runs).")
+        print(
+            f"{missing} not in the store — left untouched (delisted, or pruned "
+            f"from the drop log's retained runs)."
+        )
     print(f"{len(changed)} locations {'updated' if args.apply else 'would change'}.")
 
     # A judgement made without a location may not survive learning one. Only the
@@ -168,15 +170,19 @@ def main() -> int:
             f"Correct or re-judge these by hand:\n"
         )
         for row, run in stale:
-            print(f"  [{row[LABEL_COL]:8}] last seen run {run:>3}  "
-                  f"{row.get('company', '')[:16]:18} {row.get('title', '')[:34]:36} "
-                  f"{row[LOCATION_COL]!r}")
+            print(
+                f"  [{row[LABEL_COL]:8}] last seen run {run:>3}  "
+                f"{row.get('company', '')[:16]:18} {row.get('title', '')[:34]:36} "
+                f"{row[LOCATION_COL]!r}"
+            )
 
     if args.report_all and changed:
         print(f"\nAll {len(changed)} changed rows:\n")
         for row, old, new in changed:
-            print(f"  [{row[LABEL_COL]:8}] {row.get('company', '')[:18]:20} "
-                  f"{row.get('title', '')[:36]:38} {old!r} -> {new!r}")
+            print(
+                f"  [{row[LABEL_COL]:8}] {row.get('company', '')[:18]:20} "
+                f"{row.get('title', '')[:36]:38} {old!r} -> {new!r}"
+            )
 
     if not args.apply:
         print("\nDry run — nothing written. Re-run with --apply to write it.")

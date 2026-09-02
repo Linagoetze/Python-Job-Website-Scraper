@@ -181,9 +181,7 @@ _SESSION: requests.Session = _session()
 
 
 @contextmanager
-def http_cache(
-    path: Path | None = None, ttl: int = DEFAULT_CACHE_TTL
-) -> Iterator[CacheStats]:
+def http_cache(path: Path | None = None, ttl: int = DEFAULT_CACHE_TTL) -> Iterator[CacheStats]:
     """Route `fetch_text` through an on-disk response cache for the duration of the block.
 
     Yields the live `CacheStats` so the caller can report what the cache did.
@@ -483,9 +481,7 @@ def polite_fetching(
             "wonders who is fetching can find out.",
             agent,
         )
-    policy = (
-        RobotsPolicy(agent, robots_overrides, fetch=_fetch_robots) if check_robots else None
-    )
+    policy = RobotsPolicy(agent, robots_overrides, fetch=_fetch_robots) if check_robots else None
     throttle = HostThrottle(delay=delay, per_host=per_host, policy=policy)
 
     with _POLITENESS_LOCK:
@@ -524,9 +520,7 @@ def _retry_delay(attempt: int) -> float:
     return 2.0 * attempt
 
 
-def fetch_text(
-    url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None
-) -> str:
+def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None) -> str:
     """GET *url* and return response text. Raises on HTTP errors.
 
     Transient 5xx responses are retried (some hosts, e.g. impactpool.org,
@@ -599,9 +593,7 @@ def post_json(
         with _SESSION_LOCK:
             session = _SESSION
         with _slot_for(url):
-            response = session.post(
-                url, json=payload, headers=request_headers, timeout=timeout
-            )
+            response = session.post(url, json=payload, headers=request_headers, timeout=timeout)
         try:
             response.raise_for_status()
         except requests.HTTPError:
@@ -664,9 +656,7 @@ class RenderPool:
     nothing.
     """
 
-    def __init__(
-        self, workers: int = _RENDER_WORKERS, user_agent: str | None = None
-    ) -> None:
+    def __init__(self, workers: int = _RENDER_WORKERS, user_agent: str | None = None) -> None:
         self._queue: queue.Queue[_RenderRequest | None] = queue.Queue()
         self._workers = max(1, workers)
         self._user_agent = user_agent
@@ -885,9 +875,7 @@ def render_pool(
                 )
 
 
-def _render_once(
-    url: str, *, timeout: int, settle_ms: int, wait_for_selector: str | None
-) -> str:
+def _render_once(url: str, *, timeout: int, settle_ms: int, wait_for_selector: str | None) -> str:
     """Render one page in a browser of its own. The no-pool path: a script, a test, a one-off."""
     from playwright.sync_api import (
         sync_playwright,  # lazy import — rest of module works without playwright

@@ -66,5 +66,13 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # Separate from the lint step so a formatting drift is reported as
+      # formatting rather than hiding behind a lint failure. WP12 ran the
+      # formatter over the whole repo; this is what stops it drifting back one
+      # session at a time. Note it also covers the ```python blocks in the
+      # tracked Markdown, which ruff formats too.
+      - name: Format
+        run: ruff format --check .
+
       - name: Test
         run: pytest -q

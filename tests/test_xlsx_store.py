@@ -157,8 +157,11 @@ def test_the_export_records_which_job_each_row_holds(tmp_path: Path) -> None:
 
 def test_a_new_export_replaces_the_previous_row_mapping(tmp_path: Path) -> None:
     db, xlsx = tmp_path / "jobs.sqlite3", tmp_path / "jobs.xlsx"
-    _seed(db, [_job(f"https://x/jobs/{i}", f"Job {i}") for i in range(3)],
-          now="2026-08-01T00:00:00+00:00")
+    _seed(
+        db,
+        [_job(f"https://x/jobs/{i}", f"Job {i}") for i in range(3)],
+        now="2026-08-01T00:00:00+00:00",
+    )
     write_xlsx(db, xlsx)
 
     with JobStore(db) as store:

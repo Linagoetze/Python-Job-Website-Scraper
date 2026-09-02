@@ -78,8 +78,7 @@ def server() -> Iterator[_Server]:
     # poll_interval, not a detail: shutdown() blocks until the serve_forever loop
     # notices, and the 0.5s default was costing half a second per test — about
     # ten seconds across this file, dwarfing the work being tested.
-    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01},
-                     daemon=True).start()
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     try:
         yield state
     finally:
@@ -142,9 +141,7 @@ def test_cache_survives_the_block_and_is_reused_by_the_next_run(server, tmp_path
     assert stats.hits == 1
 
 
-def test_a_failing_site_still_fails_even_with_a_cached_copy_to_hand(
-    server, tmp_path, monkeypatch
-):
+def test_a_failing_site_still_fails_even_with_a_cached_copy_to_hand(server, tmp_path, monkeypatch):
     """Priority 2. The cache must never stand in for a site that is down.
 
     requests-cache will happily serve the previous copy when the origin errors
@@ -201,9 +198,10 @@ def test_a_zero_ttl_revalidates_every_page_rather_than_caching_none(server, tmp_
     revalidation comes back flagged expired. Counted on `is_expired` alone, every
     page here is reported as the site having failed.
     """
-    with caplog.at_level(logging.WARNING), http_mod.http_cache(
-        path=tmp_path / "c.sqlite3", ttl=0
-    ) as stats:
+    with (
+        caplog.at_level(logging.WARNING),
+        http_mod.http_cache(path=tmp_path / "c.sqlite3", ttl=0) as stats,
+    ):
         for _ in range(3):
             assert http_mod.fetch_text(server.url) == server.body
 

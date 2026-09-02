@@ -86,6 +86,7 @@ def job_to_row(job: dict[str, Any]) -> dict[str, Any] | None:
         "description_fetched_at": str(job.get("description_fetched_at") or ""),
     }
 
+
 # jobs.status is a TEXT column with a CHECK rather than a lookup table: five
 # fixed values, one user, and a constraint violation is the loud failure we
 # want if a typo'd status ever reaches the store.
@@ -287,8 +288,10 @@ class JobStore:
         A source with no earlier successful run is not reported: there is
         nothing to compare it against, and a first sighting is not a drop.
         """
-        rows = self._c().execute(
-            """
+        rows = (
+            self._c()
+            .execute(
+                """
             SELECT h.source_name AS name,
                    h.rows_found  AS current_rows,
                    (SELECT p.rows_found
@@ -302,8 +305,10 @@ class JobStore:
              WHERE h.run_id = ? AND h.ok = 1
              ORDER BY h.source_name
             """,
-            (run_id,),
-        ).fetchall()
+                (run_id,),
+            )
+            .fetchall()
+        )
         drops: list[SourceDrop] = []
         for row in rows:
             previous = row["previous_rows"]
@@ -436,9 +441,7 @@ class JobStore:
         delisted = 0
         for source, keys in seen_keys_by_source.items():
             stored = list(
-                conn.execute(
-                    "SELECT dedupe_key, status FROM jobs WHERE source_name = ?", (source,)
-                )
+                conn.execute("SELECT dedupe_key, status FROM jobs WHERE source_name = ?", (source,))
             )
             sighted = [(r["dedupe_key"],) for r in stored if r["dedupe_key"] in keys]
             missing = [
@@ -679,9 +682,11 @@ class JobStore:
         jobs the owner has already decided about is not a run that found
         nothing.
         """
-        row = self._c().execute(
-            "SELECT COUNT(*) AS n FROM jobs WHERE last_run_id = ?", (run_id,)
-        ).fetchone()
+        row = (
+            self._c()
+            .execute("SELECT COUNT(*) AS n FROM jobs WHERE last_run_id = ?", (run_id,))
+            .fetchone()
+        )
         return int(row["n"])
 
     def count_with_status(self, statuses: tuple[str, ...]) -> int:
@@ -689,9 +694,11 @@ class JobStore:
         if unknown:
             raise ValueError(f"unknown statuses {sorted(unknown)!r}")
         placeholders = ", ".join("?" for _ in statuses)
-        row = self._c().execute(
-            f"SELECT COUNT(*) AS n FROM jobs WHERE status IN ({placeholders})", statuses
-        ).fetchone()
+        row = (
+            self._c()
+            .execute(f"SELECT COUNT(*) AS n FROM jobs WHERE status IN ({placeholders})", statuses)
+            .fetchone()
+        )
         return int(row["n"])
 
     # -- export addressing ----------------------------------------------------
@@ -705,9 +712,7 @@ class JobStore:
         """
         conn = self._c()
         conn.execute("DELETE FROM export_rows")
-        conn.executemany(
-            "INSERT INTO export_rows (row_number, dedupe_key) VALUES (?, ?)", rows
-        )
+        conn.executemany("INSERT INTO export_rows (row_number, dedupe_key) VALUES (?, ?)", rows)
 
     def export_row_map(self) -> dict[int, str]:
         """row_number -> dedupe_key for the last export (empty if never exported)."""
@@ -729,8 +734,7 @@ class JobStore:
             raise ValueError(f"unknown statuses {sorted(unknown)!r}")
         placeholders = ", ".join("?" for _ in statuses)
         rows = self._c().execute(
-            f"SELECT * FROM jobs WHERE status IN ({placeholders})"
-            " ORDER BY source_name, dedupe_key",
+            f"SELECT * FROM jobs WHERE status IN ({placeholders}) ORDER BY source_name, dedupe_key",
             statuses,
         )
         return [dict(r) for r in rows]

@@ -44,7 +44,7 @@ def test_a_source_that_more_than_halves_is_reported(tmp_path: Path) -> None:
 
 
 def test_exactly_half_is_not_a_collapse(tmp_path: Path) -> None:
-    """"More than 50%" is the threshold, so the boundary case stays quiet."""
+    """ "More than 50%" is the threshold, so the boundary case stays quiet."""
     with JobStore(tmp_path / "jobs.sqlite3") as store:
         _record(store, 100)
         run_id = _record(store, 50)
@@ -138,12 +138,26 @@ def test_a_steady_source_says_nothing(env: Path, monkeypatch: pytest.MonkeyPatch
 
 def _summary(**overrides: Any) -> RunSummary:
     fields: dict[str, Any] = dict(
-        sources_total=30, sources_skipped=0, sources_processed=30, jobs_extracted=8000,
-        jobs_kept=1200, jobs_keyword_excluded=200, jobs_title_excluded=100,
-        jobs_blocklist_excluded=50, jobs_already_stored=300, jobs_new_checked=1200,
-        jobs_stored_rechecked=10, jobs_detail_excluded=1200, jobs_phd_excluded=20,
-        jobs_hybrid_excluded=100, jobs_location_excluded=1100, jobs_kept_new=0,
-        rows_written=0, rows_delisted=5, jobs_still_listed=4000, jobs_unreviewed=100,
+        sources_total=30,
+        sources_skipped=0,
+        sources_processed=30,
+        jobs_extracted=8000,
+        jobs_kept=1200,
+        jobs_keyword_excluded=200,
+        jobs_title_excluded=100,
+        jobs_blocklist_excluded=50,
+        jobs_already_stored=300,
+        jobs_new_checked=1200,
+        jobs_stored_rechecked=10,
+        jobs_detail_excluded=1200,
+        jobs_phd_excluded=20,
+        jobs_hybrid_excluded=100,
+        jobs_location_excluded=1100,
+        jobs_kept_new=0,
+        rows_written=0,
+        rows_delisted=5,
+        jobs_still_listed=4000,
+        jobs_unreviewed=100,
         exclusions_logged=2380,
     )
     fields.update(overrides)
@@ -173,10 +187,6 @@ def test_a_warning_does_not_borrow_a_ladder_ordinal() -> None:
 
 
 def test_the_heading_counts_the_sources_it_names() -> None:
-    text = format_summary(
-        _summary(health_warnings=(_drop("one", 10, 1), _drop("two", 80, 2)))
-    )
+    text = format_summary(_summary(health_warnings=(_drop("one", 10, 1), _drop("two", 80, 2))))
     assert "2 sources returned far fewer rows than last time" in text
-    assert "1 source returned" in format_summary(
-        _summary(health_warnings=(_drop("one", 10, 1),))
-    )
+    assert "1 source returned" in format_summary(_summary(health_warnings=(_drop("one", 10, 1),)))

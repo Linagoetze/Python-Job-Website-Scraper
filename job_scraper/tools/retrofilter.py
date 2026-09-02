@@ -51,10 +51,7 @@ def main() -> None:
         counts, _ = refilter_stored_jobs(store, rules, title_keywords, hybrid_pattern)
 
     print(f"Marked {counts['title_keywords']} rows rejected by title keywords")
-    print(
-        f"Marked {counts['rules']} rows rejected by rules, "
-        f"{counts['title']} by seniority"
-    )
+    print(f"Marked {counts['rules']} rows rejected by rules, {counts['title']} by seniority")
     print(f"Total rows marked rejected (kept in the database): {sum(counts.values())}")
 
     write_xlsx(db_path, xlsx_path)

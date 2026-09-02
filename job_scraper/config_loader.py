@@ -74,8 +74,7 @@ def _require(p: Path) -> Path:
         example = p.with_suffix(f".example{p.suffix}")
         if example.is_file():
             raise FileNotFoundError(
-                f"{p} not found. Start from the shipped example:\n"
-                f"    cp {example} {p}"
+                f"{p} not found. Start from the shipped example:\n    cp {example} {p}"
             )
         raise FileNotFoundError(f"{p} not found.")
     return p

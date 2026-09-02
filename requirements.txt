@@ -31,4 +31,15 @@ httpx>=0.28.0
 
 # Tests and linting. Configured in pyproject.toml; CI runs both.
 pytest>=8.0.0
-ruff>=0.16.0
+
+# Pinned exactly, and the only pin in this file. Since WP12, CI runs `ruff
+# format --check .` as well as `ruff check .`. A lint gate tolerates a floating
+# version because new rules are opt-in through pyproject's `select`, but a
+# format gate does not: the formatter's output is allowed to change between
+# minor releases, and when it does the failure lands on whoever happens to have
+# a pull request open rather than on whoever upgraded. WP12 itself saw the count
+# of unformatted files move from 36 to 37 between ruff versions.
+#
+# So bump this deliberately: raise the pin, run `ruff format .`, and commit the
+# reformat on its own as WP12 did. Never bundled with a real change.
+ruff==0.16.4

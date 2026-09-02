@@ -280,9 +280,7 @@ def test_capture_keeps_the_rendering_mark_through_the_wrapper(
     The capture script hands it a wrapper, so the mark has to survive wrapping
     or dynamic pages get captured before their job cards exist.
     """
-    fake = _FakeFetcher(
-        (FIXTURES_DIR / "busuu.html").read_text(encoding="utf-8"), renders=True
-    )
+    fake = _FakeFetcher((FIXTURES_DIR / "busuu.html").read_text(encoding="utf-8"), renders=True)
     monkeypatch.setattr(capture_fixtures, "fetch_rendered", fake)
 
     ok, message = capture_one(

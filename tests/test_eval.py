@@ -421,9 +421,7 @@ def test_cli_prints_the_baseline_report(capsys) -> None:
     assert "False negatives: 3 jobs" in out
 
 
-def test_cli_compare_distinguishes_two_directories_of_the_same_name(
-    tmp_path: Path, capsys
-) -> None:
+def test_cli_compare_distinguishes_two_directories_of_the_same_name(tmp_path: Path, capsys) -> None:
     """Two dirs both called 'config' must not print two identically-named columns."""
     a = tmp_path / "a" / "config"
     b = tmp_path / "b" / "config"
@@ -470,6 +468,7 @@ def test_costly_rules_names_the_rule_to_loosen_first(gold, config) -> None:
         assert rule in text
     # …and a rule that only ever dropped unwanted jobs is not. The seniority
     # layer drops 'Senior Data Engineer' (discard) without costing anything.
-    assert "seniority: 'Senior' (word)" not in text.split("Rules that cost wanted jobs")[1].split(
-        "False negatives"
-    )[0]
+    assert (
+        "seniority: 'Senior' (word)"
+        not in text.split("Rules that cost wanted jobs")[1].split("False negatives")[0]
+    )

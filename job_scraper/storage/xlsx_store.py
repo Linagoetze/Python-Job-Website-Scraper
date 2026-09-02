@@ -163,9 +163,9 @@ def write_xlsx(db_path: Path, xlsx_path: Path, *, show_all: bool = False) -> int
             list(archive_rows) if show_all else store.jobs_with_status(("new",))
         )
 
-        recent_seen = sorted(
-            {str(r.get("first_seen") or "") for r in review_rows}, reverse=True
-        )[:2]
+        recent_seen = sorted({str(r.get("first_seen") or "") for r in review_rows}, reverse=True)[
+            :2
+        ]
 
         review_fields = [_ROW_FIELD, *_DISPLAY_FIELDS] + ([_STATUS_FIELD] if show_all else [])
 
