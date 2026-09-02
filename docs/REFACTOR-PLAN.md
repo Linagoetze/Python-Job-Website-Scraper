@@ -60,7 +60,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 | CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
-| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and is proposed for the excluded-sources record; zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 598 tests pass | `cu2-dead-sources` |
+| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 598 tests pass | `cu2-dead-sources` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5594,6 +5594,16 @@ Worth noting when weighing it up: `probably_good` is an **aggregator** of other
 organisations' vacancies, not an employer career page, and its postings link
 off-site. The loss is coverage of a curated board, not of an employer this
 project follows.
+
+**Acted on, same session.** The owner removed `probably_good` from
+`sources.yaml` (50 sources → 49) and asked for the code to go with it, so
+`job_scraper/extractors/probably_good.py` and its two `registry.py` lines are
+deleted. The module read `<h4>` titles from a static listing that the site no
+longer serves at all, so keeping it would have meant keeping a reader for
+markup that does not exist. Nothing else referenced it: a grep across `.py`,
+`.md`, `.yaml` and `.csv` found only the registry and the module itself, and
+it had no fixture, no golden and no test — which is precisely how it managed
+to be dead for nineteen runs.
 
 ### The zero-row check (audit §7A, part 2)
 
