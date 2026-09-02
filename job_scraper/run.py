@@ -70,10 +70,13 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     left gutter (WP8h; see `drops.LAYERS`), so "L3  − senior-level title" is
     Layer 3 of 5 — the three detail-page lines all share Layer 5.
 
-    Two blocks (WP10) appear only when they have something to say, which is why
-    the funnel's pinned layout in tests/test_run_summary.py is unchanged: the
-    source-health warnings, in a marker of their own so a shrinking source is
-    never mistaken for a filter that fired, and the dry-run notice."""
+    Three blocks appear only when they have something to say, which is why the
+    funnel's pinned layout in tests/test_run_summary.py is unchanged: the
+    source-health warnings (WP10), in a marker of their own so a shrinking
+    source is never mistaken for a filter that fired; the empty sources (CU2),
+    which is the same marker asking the question health warnings structurally
+    cannot — "did this return anything at all?" rather than "did it shrink?";
+    and the dry-run notice."""
 
     # All numeric columns end at the same character position for vertical
     # scanning. Wide enough for the longest label plus a six-figure count:
@@ -175,6 +178,19 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
                 f"!  {drop.source_name}: {drop.current_rows:,} rows this run, "
                 f"was {drop.previous_rows:,} ({change:+.0f}%)"
             )
+    if summary.empty_sources:
+        # Its own block rather than a line inside the one above, because it
+        # answers a different question: not "did this source shrink?" but "did
+        # it return anything at all this run?". The distinction is the whole
+        # point — a source that has never worked cannot shrink, and three of
+        # them stayed silent for nineteen runs on exactly that technicality.
+        n = len(summary.empty_sources)
+        lines.append(_RULE)
+        lines.append(
+            f"!  Empty sources: {n} source{'' if n == 1 else 's'} returned zero rows this run"
+        )
+        for name in summary.empty_sources:
+            lines.append(f"!  {name}: 0 rows — nothing delisted; check its extractor")
     if summary.dry_run:
         lines.append(_RULE)
         lines.extend(

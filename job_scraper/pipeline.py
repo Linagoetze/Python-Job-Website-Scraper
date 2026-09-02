@@ -118,6 +118,14 @@ class RunSummary:
     # (WP10). Empty on a healthy run, which is why it defaults: the funnel's
     # golden layout is unchanged unless something is actually wrong.
     health_warnings: tuple[SourceDrop, ...] = ()
+    # Sources that were scraped cleanly this run and returned nothing (CU2).
+    # Deliberately separate from `health_warnings`, which asks whether a source
+    # collapsed *against its own history*: a source that has never worked has
+    # no history to collapse from, so it can never appear there. That blind
+    # spot let three sources return zero rows for nineteen consecutive runs
+    # (docs/AUDIT.md §7A). Sources whose extractor *raised* are absent — that
+    # already fails loudly and separately, and naming it twice is noise.
+    empty_sources: tuple[str, ...] = ()
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -419,6 +427,16 @@ def _run_pipeline(
             job["matched_reasons"] = reason_list
             kept_rows.append(job)
             jobs_kept += 1
+
+    # Read off this run alone, deliberately: `source_health_regressions` asks
+    # the historical question ("did this collapse?") and cannot answer for a
+    # source with no successful run to collapse from. This asks the current
+    # one, so a source that has never worked is named on every run rather than
+    # never (CU2; docs/AUDIT.md §7A). Only clean scrapes count — a source whose
+    # extractor raised is already reported as a failure above.
+    empty_sources = tuple(
+        name for name, rows_found, ok, _ in source_health if ok and not rows_found
+    )
 
     conditional_admits = sum(
         1
@@ -722,5 +740,6 @@ def _run_pipeline(
         jobs_unreviewed=jobs_unreviewed,
         exclusions_logged=exclusions_logged,
         health_warnings=health_warnings,
+        empty_sources=empty_sources,
         dry_run=dry_run,
     )
