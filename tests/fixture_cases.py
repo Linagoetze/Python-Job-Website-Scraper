@@ -16,16 +16,19 @@ is nothing to hoist if there is only one import.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from bs4 import BeautifulSoup
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
 import capture_fixtures  # noqa: E402
-from capture_fixtures import single_response_fetch  # noqa: E402
+from capture_fixtures import recorded_pages_fetch, single_response_fetch  # noqa: E402
 
 from job_scraper.extractors import (  # noqa: E402
     against_malaria,
@@ -38,6 +41,7 @@ from job_scraper.extractors import (  # noqa: E402
     niras,
     successfactors_html,
     teamtailor,
+    unops,
     workday,
 )
 
@@ -45,7 +49,9 @@ __all__ = [
     "FIXTURES_DIR",
     "FIXTURE_CASES",
     "capture_fixtures",
+    "fixture_pages",
     "parse_fixture",
+    "recorded_pages_fetch",
     "single_response_fetch",
 ]
 
@@ -78,28 +84,34 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "dsv": (
         "dsv.html",
         "https://jobs.dsv.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="dsv",
-            page_step=10,
-            base_search_url="https://jobs.dsv.com/search/",
+        # The parser, not the walk: 201 pages, which is far too much markup to
+        # store. The walk itself is `novo_nordisk`'s to cover.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), "https://jobs.dsv.com/search/", "dsv"
         ),
     ),
     "iss": (
         "iss.html",
         "https://jobs.issworld.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="iss",
-            page_step=20,
-            base_search_url="https://jobs.issworld.com/search/",
+        # The parser, not the walk. This board is only four pages and could
+        # have been captured whole; it is not, because the walk is one shared
+        # module and `novo_nordisk` already exercises it against real markup.
+        # What ISS is here for is its tile skin, which is the layout the other
+        # three instances do not have.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), "https://jobs.issworld.com/search/", "iss"
         ),
     ),
     "novo_nordisk": (
         "novo_nordisk.html",
         "https://careers.novonordisk.com/search",
+        # The one SuccessFactors instance captured as its whole walk (four
+        # pages). The walk is a single shared module, so capturing all five
+        # instances' walks would test the same loop five times over; this one
+        # exercises it against real markup — pagination, the last short page,
+        # and the reconciliation against the board's own total — while the other
+        # four pin their skins' parsing, which is what actually differs between
+        # them.
         lambda url, fetch: successfactors_html.extract(
             url,
             fetch,
@@ -111,18 +123,26 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     "coloplast": (
         "coloplast.html",
         "https://careers.coloplast.com/search/",
-        lambda url, fetch: successfactors_html.extract(
-            url,
-            fetch,
-            source_name="coloplast",
-            page_step=25,
-            base_search_url="https://careers.coloplast.com/search/",
+        # The parser, not the walk. Fourteen pages could have been captured;
+        # this one is here for its sub-brand postings (/Kerecis/job/…), pinned
+        # by `test_coloplast_keeps_sub_brand_postings`, and the walk is
+        # `novo_nordisk`'s to cover.
+        lambda url, fetch: successfactors_html._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), "https://careers.coloplast.com/search/", "coloplast"
         ),
     ),
     "impactpool": (
+        # The parser, not the walk: roughly a hundred pages, which would be
+        # ten megabytes of someone else's HTML. This walk is not shared with
+        # anything, so it is covered synthetically in `tests/test_pagination.py`
+        # — the one source here whose walk no captured markup exercises.
+        # Replaying a single page through `extract` would now raise, and rightly:
+        # page 1 links to page 2 and the harness has no page 2 to give it.
         "impactpool.html",
         "https://www.impactpool.org/search",
-        lambda url, fetch: impactpool.extract(url, fetch, source_name="impactpool"),
+        lambda url, fetch: impactpool._parse_page(
+            BeautifulSoup(fetch(url), "lxml"), url, "impactpool"
+        ),
     ),
     "against_malaria_foundation": (
         "against_malaria_foundation.html",
@@ -178,6 +198,14 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://careers.eatplanted.com/jobs",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="planted"),
     ),
+    "unops": (
+        # Captured as the whole thirteen-page walk. UNOPS had no fixture at all
+        # until WP11's review pointed out that the one source with a hand-rolled
+        # total-reader was also the one with no real markup behind it.
+        "unops.html",
+        "https://careers.unops.org/careersmarketplace/SearchJobs",
+        lambda url, fetch: unops.extract(url, fetch, source_name="unops"),
+    ),
     "seven_perigee": (
         "seven_perigee.html",
         "https://careers.perigee.se",
@@ -186,8 +214,27 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
 }
 
 
+def fixture_pages(name: str) -> list[Path]:
+    """Every saved page of *name*'s fixture, in the order the extractor asked.
+
+    A single-page fixture is one file, `name.ext`. A paginated one adds
+    `name.p1.ext`, `name.p2.ext`, … (see scripts/capture_fixtures.py). Sorting
+    numerically rather than by filename matters once a walk passes ten pages.
+    """
+    filename = FIXTURE_CASES[name][0]
+    first = FIXTURES_DIR / filename
+    stem, _, ext = filename.rpartition(".")
+    page_file = re.compile(rf"^{re.escape(stem)}\.p(\d+)\.{re.escape(ext)}$")
+    numbered = [
+        (int(match.group(1)), path)
+        for path in FIXTURES_DIR.glob(f"{stem}.p*.{ext}")
+        if (match := page_file.match(path.name))
+    ]
+    return [first, *(path for _, path in sorted(numbered))]
+
+
 def parse_fixture(name: str) -> list[dict[str, Any]]:
     """Run *name*'s extractor over its saved fixture. Never touches the network."""
-    filename, listing_url, extractor = FIXTURE_CASES[name]
-    path = FIXTURES_DIR / filename
-    return extractor(listing_url, single_response_fetch(path.read_text(encoding="utf-8")))
+    _, listing_url, extractor = FIXTURE_CASES[name]
+    pages = [path.read_text(encoding="utf-8") for path in fixture_pages(name)]
+    return extractor(listing_url, recorded_pages_fetch(pages))

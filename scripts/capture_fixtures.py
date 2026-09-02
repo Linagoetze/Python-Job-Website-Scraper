@@ -12,11 +12,20 @@ Captured HTML is sanitised before it is written: third-party inline scripts
 (analytics, front-end config) are stripped, and only scripts carrying a job-data
 payload are kept. See `sanitise_html` for why that distinction matters.
 
+Most sources are captured as a single response, which is all their extractor
+reads before the first page's jobs are in hand. A paginated source is different:
+its extractor keeps asking until the listing runs out, and a walk replayed from
+one saved page is a walk whose end has been faked. `--pages` records more than
+the first response and saves them as `<name>.p1.<ext>`, `<name>.p2.<ext>`, … so
+the fixture replays the real walk. J-PAL is captured this way; see
+docs/REFACTOR-PLAN.md, WP11.
+
 Run this by hand whenever a fixture goes stale; see docs/REFACTOR-PLAN.md, WP0,
 for the how-to.
 
 Usage:
     python scripts/capture_fixtures.py <source_name> [<source_name> ...]
+    python scripts/capture_fixtures.py --pages all jpal
 """
 
 from __future__ import annotations
@@ -26,7 +35,7 @@ import json
 import logging
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -99,31 +108,42 @@ def sanitise_html(html: str) -> str:
     return str(soup)
 
 
-def single_response_fetch(text: str) -> Callable[..., str]:
-    """A fetcher that serves *text* once, then empty responses.
+def recorded_pages_fetch(texts: Sequence[str]) -> Callable[..., str]:
+    """A fetcher that serves *texts* in order, then empty responses.
 
-    A fixture is a single response, so replaying it for every page a paginating
-    extractor asks for would loop until the extractor's own page cap. Returning
-    an empty body for later pages ends the loop the way a real last page does.
+    Extractors ask for their pages in order, so replaying by position needs no
+    URL bookkeeping and no fixture knows its own URL.
+
+    Running past the end returns an empty body. For a single-page source that
+    is how a real last page reads; for a paginated one it is a lie the walk is
+    now entitled to reject — which is the point. A paginated fixture must hold
+    every page its extractor asks for, and if it does not, the extractor raises
+    here rather than in a quietly short run months later.
     """
-    served = False
+    remaining = list(texts)
 
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
-        nonlocal served
-        if served:
-            return ""
-        served = True
-        return text
+        return remaining.pop(0) if remaining else ""
 
     return fetch
 
 
+def single_response_fetch(text: str) -> Callable[..., str]:
+    """A fetcher that serves *text* once, then empty responses."""
+    return recorded_pages_fetch([text])
+
+
 class _CaptureComplete(Exception):
-    """Raised to stop an extractor once its first request has been recorded."""
+    """Raised to stop an extractor once enough requests have been recorded."""
 
 
-def capture_one(source: dict[str, str]) -> tuple[bool, str]:
-    """Fetch and save the fixture for one source. Returns (ok, message)."""
+def capture_one(source: dict[str, str], pages: int = 1) -> tuple[bool, str]:
+    """Fetch and save the fixture for one source. Returns (ok, message).
+
+    *pages* is how many responses to record before cutting the extractor short;
+    0 means "however many it asks for", which is what a paginated source needs
+    if its fixture is to replay the whole walk rather than a faked end.
+    """
     name = source["name"]
     listing_url = source["url"]
     strategy = source.get("strategy", "static")
@@ -133,8 +153,13 @@ def capture_one(source: dict[str, str]) -> tuple[bool, str]:
     recorded: list[tuple[str, str]] = []
 
     def recording_fetch(url: str, *args: Any, **kwargs: Any) -> str:
-        recorded.append((url, fetch(url, *args, **kwargs)))
-        raise _CaptureComplete
+        text = fetch(url, *args, **kwargs)
+        recorded.append((url, text))
+        if pages and len(recorded) >= pages:
+            raise _CaptureComplete
+        # Let the extractor read what it just asked for and decide whether
+        # there is another page; an unbounded capture ends when the walk does.
+        return text
 
     # Carry the rendering mark through the wrapper, so extractors that add a
     # selector wait for JS-heavy pages still do so during capture.
@@ -155,41 +180,83 @@ def capture_one(source: dict[str, str]) -> tuple[bool, str]:
     if not recorded:
         return False, f"{name}: FAILED (extractor made no request)"
 
-    fetched_url, text = recorded[0]
-    ext = _guess_extension(text)
-    if ext == "html":
-        text = sanitise_html(text)
+    ext = _guess_extension(recorded[0][1])
+    texts = [sanitise_html(text) if ext == "html" else text for _, text in recorded]
 
-    dest = FIXTURES_DIR / f"{name}.{ext}"
-    tmp = dest.with_suffix(dest.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(dest)
+    written: list[Path] = []
+    for index, text in enumerate(texts):
+        dest = FIXTURES_DIR / _page_filename(name, index, ext)
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(dest)
+        written.append(dest)
 
-    stale = _remove_stale_sibling(name, ext)
+    stale = _remove_stale(name, ext, kept=len(texts))
 
-    size = dest.stat().st_size
-    jobs = _verify(extractor, listing_url, text)
-    rel = dest.relative_to(default_project_root())
-    message = f"{name}: saved {rel} ({size:,} bytes, {jobs} jobs) from {fetched_url}"
+    total_size = sum(dest.stat().st_size for dest in written)
+    jobs = _verify(extractor, listing_url, texts)
+    rel = written[0].relative_to(default_project_root())
+    pages_note = f" +{len(written) - 1} more page(s)" if len(written) > 1 else ""
+    fetched_from = recorded[0][0]
+    message = (
+        f"{name}: saved {rel}{pages_note} ({total_size:,} bytes, {jobs} jobs) from {fetched_from}"
+    )
     if stale:
-        message += f"; removed stale {stale}"
+        message += f"; removed stale {', '.join(stale)}"
     return True, message
 
 
-def _remove_stale_sibling(name: str, ext: str) -> str | None:
-    """Delete a previous fixture for *name* saved under the other extension.
+def _page_filename(name: str, index: int, ext: str) -> str:
+    """`name.ext` for the first response, `name.pN.ext` for the ones after it.
+
+    The first page keeps the plain name so that every single-page fixture, and
+    every test that names one, is untouched by paginated capture existing.
+    """
+    return f"{name}.{ext}" if index == 0 else f"{name}.p{index}.{ext}"
+
+
+def _remove_stale(name: str, ext: str, kept: int) -> list[str]:
+    """Delete previous fixtures for *name* that this capture has superseded.
+
+    Two kinds go: the other extension entirely, and any page file past the
+    *kept* pages just written.
 
     A source changes artefact type when its extractor is corrected — givewell
     went from listing HTML to the Greenhouse API's JSON. Leaving the old file
-    behind is a trap: it looks like a valid fixture and nothing parses it.
-    Only ever removes the sibling this script itself would have written.
+    behind is a trap: it looks like a valid fixture and nothing parses it. A
+    left-behind page file is worse than a trap, because it *is* parsed: replay
+    is positional, so yesterday's page 4 would be served as today's, and the
+    fixture would hold postings the site no longer lists.
+
+    Only ever removes files this script itself would have written.
     """
+    removed: list[str] = []
     other = "json" if ext == "html" else "html"
-    sibling = FIXTURES_DIR / f"{name}.{other}"
-    if not sibling.exists():
+    for candidate in sorted(FIXTURES_DIR.glob(f"{name}.*")):
+        page = _page_of(candidate.name, name)
+        if page is None:
+            continue  # not a file this script writes for this source
+        index, suffix = page
+        if suffix == other or index >= kept:
+            candidate.unlink()
+            removed.append(candidate.name)
+    return removed
+
+
+def _page_of(filename: str, name: str) -> tuple[int, str] | None:
+    """Read *filename* as one of this script's fixtures for *name*.
+
+    Returns (page index, extension) for `name.ext` and `name.pN.ext`, or None
+    for anything else in the directory.
+    """
+    parts = filename.split(".")
+    if parts[0] != name:
         return None
-    sibling.unlink()
-    return sibling.name
+    if len(parts) == 2:
+        return 0, parts[1]
+    if len(parts) == 3 and parts[1].startswith("p") and parts[1][1:].isdigit():
+        return int(parts[1][1:]), parts[2]
+    return None
 
 
 def _guess_extension(text: str) -> str:
@@ -204,16 +271,19 @@ def _guess_extension(text: str) -> str:
     return "html"
 
 
-def _verify(extractor: Any, listing_url: str, text: str) -> str:
+def _verify(extractor: Any, listing_url: str, texts: Sequence[str]) -> str:
     """Re-parse what was just saved, so an empty or wrong capture is visible now.
 
     A cookie wall or an unrendered dynamic page is a successful HTTP response of
     a plausible size; only running the extractor over it shows it is useless.
+
+    Replays every page captured, so a paginated capture that stopped short is
+    reported here too: its extractor refuses a walk that ends on nothing.
     """
     if extractor is None:
         return "?"
     try:
-        return str(len(extractor(listing_url, single_response_fetch(text))))
+        return str(len(extractor(listing_url, recorded_pages_fetch(texts))))
     except Exception as exc:  # noqa: BLE001 — a parse failure is a result, not a crash
         return f"UNPARSEABLE: {exc}"
 
@@ -221,7 +291,24 @@ def _verify(extractor: Any, listing_url: str, text: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("names", nargs="+", help="source names from sources.yaml")
+    parser.add_argument(
+        "--pages",
+        default="1",
+        metavar="N",
+        help=(
+            "responses to record per source: 1 (default), a number, or 'all' to "
+            "record the whole walk. Paginated sources need 'all' if their fixture "
+            "is to replay the real walk rather than a faked end."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.pages == "all":
+        pages = 0
+    elif args.pages.isdigit() and int(args.pages) >= 1:
+        pages = int(args.pages)
+    else:
+        parser.error("--pages takes a positive number or 'all'")
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -234,7 +321,7 @@ def main() -> int:
 
     exit_code = 0
     for i, name in enumerate(args.names):
-        ok, message = capture_one(sources_by_name[name])
+        ok, message = capture_one(sources_by_name[name], pages=pages)
         print(message)
         if not ok:
             exit_code = 1

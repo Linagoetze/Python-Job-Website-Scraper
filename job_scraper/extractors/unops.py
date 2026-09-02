@@ -13,19 +13,40 @@ HTML structure per listing:
       </div>
     </article>
 
-Pagination: uses ?jobOffset=N with 6 results per page. Loop until a page
-returns no article elements.
+Pagination: uses ?jobOffset=N with 6 results per page. The listing states its
+own length — "1-6 of 74 results", and the same number in the control's
+aria-label — and the walk is checked against it before it returns. See
+`pagination.py`.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 
+from job_scraper.extractors import pagination
+
 _PAGE_SIZE = 6
+# The marketplace states its length twice on the same control: "1-6 of 74
+# results" in the text, and `aria-label="74 results"`. Two patterns rather than
+# one loose one, because "a number then the word results" is not specific enough
+# to be safe on a page of prose:
+#
+#   "Search results"      no number at all — matched anyway, and the empty
+#                         capture group crashed int()
+#   "10 results per page" a real number that is not the total — the walk would
+#                         then be checked against 10, pass trivially, and the
+#                         guard would be off while still looking on
+#
+# So the running text is only read in the "of N results" form the summary uses,
+# and the aria-label only when the whole label is the count. Both require at
+# least one digit.
+_TOTAL_IN_TEXT = re.compile(r"\bof\s+([\d,\s]*\d)\s+results\b", re.I)
+_TOTAL_IN_LABEL = re.compile(r"^\s*([\d,\s]*\d)\s+results\s*$", re.I)
 
 
 def _paginate_url(base_url: str, offset: int) -> str:
@@ -37,8 +58,19 @@ def _paginate_url(base_url: str, offset: int) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
-def _parse_page(html: str, listing_url: str, source_name: str) -> list[dict[str, Any]]:
-    soup = BeautifulSoup(html, "lxml")
+def _declared_total(soup: BeautifulSoup) -> int | None:
+    """How many vacancies the marketplace says it is showing, if it says."""
+    match = _TOTAL_IN_TEXT.search(soup.get_text(" ", strip=True))
+    if match:
+        return int(re.sub(r"\D", "", match.group(1)))
+    for tag in soup.select("[aria-label]"):
+        match = _TOTAL_IN_LABEL.match(str(tag.get("aria-label")))
+        if match:
+            return int(re.sub(r"\D", "", match.group(1)))
+    return None
+
+
+def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for article in soup.find_all("article"):
         title_a = article.find("a", href=lambda h: h and "JobDetail" in h)
@@ -74,13 +106,19 @@ def extract(
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     offset = 0
+    total: int | None = None
 
     while True:
         url = _paginate_url(listing_url, offset)
         html = fetch_text(url)
-        page_jobs = _parse_page(html, listing_url, source_name)
+        soup = BeautifulSoup(html, "lxml")
+        page_jobs = _parse_page(soup, listing_url, source_name)
         if not page_jobs:
             break
+
+        # Read the total only from a page that parsed: a page that did not
+        # render carries neither postings nor the count of them.
+        total = _declared_total(soup) or total
         for job in page_jobs:
             key = job["detail_url"]
             if key not in seen:
@@ -90,4 +128,9 @@ def extract(
             break
         offset += _PAGE_SIZE
 
+    # However the loop ended — empty page, short page, or the last full one —
+    # the marketplace stated its own length and this walk either matched it or
+    # did not. A page that half-renders ends the walk short without ever coming
+    # back empty, which is why this is checked here and not in the loop.
+    pagination.reconcile(source_name, url, collected=len(out), total=total)
     return out

@@ -57,7 +57,8 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
-| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | not started | `wp11-pagination` |
+| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
+| 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | not started | `wp12-ruff-format` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -464,6 +465,27 @@ Record any decision a future session would otherwise have to re-derive.
   thing in this project that fetches at volume, which is what makes that scope
   the right one.
 
+- **An empty page only ends a walk when something says how long the walk is**
+  (WP11). `extractors/pagination.py` holds the policy: an extractor that can
+  read a total must raise `ShortWalkError` on an empty page before that point,
+  because "the listing ended" and "this page did not parse" look identical
+  otherwise and the second is silent data loss. The module deliberately holds
+  no shared loop: every listing announces its length differently, and only the
+  extractor knows how. **Every paginated source here publishes something** — a
+  pager, `totalFound`, `totalJobs`, "1-6 of 74 results", "Vacant positions: 2",
+  "Results 1 to 10 of 2010", or a next-page link — so all six are guarded. The
+  first pass through WP11 concluded four of them had nothing to read; that was
+  a failure to look, not a fact about the sites. Where the count and a
+  deduplicated walk legitimately disagree (Impactpool, an aggregator with
+  postings promoted onto every page) the guard is the next-page link instead.
+
+- **A paginated fixture must hold every page of its walk** (WP11). Replaying one
+  saved page and an empty body afterwards fakes the end of the listing, which is
+  how J-PAL's golden test passed on 9 of 37 postings. `capture_fixtures.py
+  --pages all` records the whole walk and `recorded_pages_fetch` replays it in
+  order. J-PAL is the only source captured this way today; re-capture it with
+  the flag.
+
 ---
 
 # How to run one session
@@ -689,6 +711,12 @@ refresh one or more fixtures:
 
 ```
 python scripts/capture_fixtures.py <source_name> [<source_name> ...]
+```
+
+A paginated source needs its whole walk, not its first page (WP11):
+
+```
+python scripts/capture_fixtures.py --pages all jpal
 ```
 
 Source names must match an entry in `job_scraper/config/sources.yaml`. The
@@ -4941,6 +4969,313 @@ fetch through `job_scraper.http`, and `tests/test_politeness.py` has a guard
 test that fails if one reaches for `requests` directly.
 
 Branch wp11-pagination. Commit, do not push. Update the plan file.
+```
+
+### Result (2026-09-02)
+
+**What page 1 actually was.** Nothing about the URL shape or the pager had
+changed, and the page does not need rendering: a fresh capture walks
+`?page=0` … `?page=4` and returns 37 postings, nine to a page but for the last.
+So the 93 KB body with no job nodes *and no pager* was a transient failure of
+the site's own view, not drift. The out-of-range response rules the alternative
+out — `?page=99` returns "Your search returned no results" and still carries
+its seven pager links. A J-PAL page inside the pager's range always has both
+postings and a pager; a page with neither has not rendered.
+
+That makes this the same animal as the Impactpool flaky 500s: an intermittent
+site fault, which must fail rather than shorten. There was no jpal-specific
+parsing bug to fix, so the fix is entirely in what the walk does about it.
+
+**Shared helper or one fix: neither, exactly.** `extractors/pagination.py` holds
+the *policy* — one exception type, `ShortWalkError`, and one function that
+phrases the refusal — but no shared loop. What counts as "more was promised"
+differs per listing (a pager, `totalFound`, `totalJobs`) and only the extractor
+knows it; a shared walk would have to take that as a callback and would be a
+worse version of the three-line guard it replaced. The exception type is the
+part worth sharing, because the pipeline treats it the same way each time.
+
+**J-PAL.** The pager is the authority, and the ambiguity behind the original bug
+is now settled where it arises rather than worked around by the caller. The
+listing is one Drupal view among several on the page, `div.view-id-jobs`, and it
+distinguishes its own three states: `.view-content` (postings rendered),
+`.view-empty` (rendered, genuinely none), and neither (the view did not render
+at all). The walk reads that directly, so it no longer has to infer anything
+from a missing pager — which both a single-page listing and a broken page have.
+`_last_page` returns `None` for "no pager here" rather than 0, and the count
+never shrinks.
+
+Consequence worth flagging: a missing jobs view now raises on **page 0** too,
+where it used to fall through to the pipeline's zero-row guard and be reported
+as a healthy source with nothing on it. A career page with genuinely no
+vacancies renders `.view-empty` and still returns cleanly, so the two are no
+longer the same observation. Single-page listings are otherwise untouched — no
+pager means one fetch and no complaint, which `probably_good` and friends rely
+on.
+
+**The other paginated extractors.** All five were broken the same way, and all
+five are fixed. The first pass left four alone on the grounds that they had no
+total to check themselves against; that was wrong, and looking properly found a
+published count or a next-page link on every one of them.
+
+| Extractor | What says there is more | Guard |
+|---|---|---|
+| `jpal` | the pager lists every page | page in range yielding nothing raises |
+| `smartrecruiters` | `totalFound` | empty `content` before the total raises |
+| `unops` | "1-6 of 74 results", and `aria-label="74 results"` | the finished walk is measured against the total |
+| `niras` | "Vacant positions: 2" (`span.filter-result-text`) | same |
+| `successfactors_html` | "Results 1 to 10 of 2010" (classic aria-label), "Showing 1 to 20 of 62 Jobs" (tile) | same, covering all three ways out of the loop |
+| `impactpool` | a link to the next page | a page that was linked to and came back empty raises |
+
+**The last three check the walk, not the page.** A page that renders three of
+its six rows is *short*, not empty, and a short page is how most of these walks
+legitimately end — so nothing inside the loop can tell those apart. The total
+can: `pagination.reconcile` runs once the loop has ended, however it ended, and
+fails the source unless the walk holds everything the listing said it had. That
+also subsumes the all-duplicates exit on SuccessFactors, where a board serving
+page one again has stuck rather than finished.
+
+Two of those need their reasoning written down, because the obvious guard is
+wrong for both.
+
+**Impactpool is guarded by its link, not by its count.** It publishes "3973 jobs
+match your search", and comparing that with what the walk collects would fail
+the source on every single run: it is an aggregator, promoted postings repeat
+across pages, and the deduplicated result is legitimately smaller — 3381 against
+3973 on 2026-09-02. The next-page link has no such slack. Note the walk still
+fetches the page after the last one rather than stopping when the link is
+absent: trusting the link to *end* the walk would let a restyled pager truncate
+it silently, which is the whole failure being fixed here.
+
+**SuccessFactors is guarded by its count, and that rests on an invariant worth
+stating.** Comparing a finished walk with "of 2010" is only safe if this
+extractor sees exactly the postings the site is counting. It does: on all four
+captured instances the rows parsed off a page equal the upper bound in that
+page's own label — DSV 10, ISS 20, Novo Nordisk 100, Coloplast 25. That
+agreement is pinned by a test, and it carries the weight of the whole
+reconciliation: if it ever breaks, every walk on that instance ends one row
+short of the total and the source fails on every run.
+
+Where a total cannot be read on the day, `pagination.unverifiable_end` logs a
+warning instead of raising. An extractor that cannot see how long the listing is
+has no grounds to call a short walk a failure — but a source that has quietly
+lost its guard should say so while its count still looks plausible.
+
+**The fixture harness was part of the bug.** `jpal`'s golden test passed on 9
+jobs because the replay fetcher served the saved page once and an empty body
+afterwards — it faked the end of the walk, which is precisely the lie the
+extractors now refuse. A fixture of one page cannot exercise a walk, and that is
+why the shortfall was invisible to a 500-test suite. So:
+
+- `scripts/capture_fixtures.py --pages all` records every response an extractor
+  asks for, saving them as `<name>.html`, `<name>.p1.html`, … Default is still
+  one response, so no other source's capture changes.
+- Replay is positional — `recorded_pages_fetch` serves the saved pages in order
+  — and a stale page file left by a longer previous walk is deleted on capture,
+  because a positional replay would happily serve yesterday's page 4 as today's.
+- `jpal.html` and four page files are the real walk, 440 KB, and the golden
+  count is 37 rather than 9.
+
+**Where a walk is too long to store, the fixture pins the parser instead.** DSV
+is 201 pages and Impactpool about a hundred; capturing those the way J-PAL is
+captured would be tens of megabytes of someone else's HTML. Their fixture cases
+now call `_parse_page` rather than `extract`, and the walk around it is covered
+synthetically in `tests/test_pagination.py`. Two consequences:
+
+- `impactpool` and `successfactors_html` gained a real `_parse_page`, and
+  deduplication was split: a posting shown twice on one page is settled by the
+  parser (DSV renders every row three times, once per breakpoint), a posting
+  shown on two pages by the walk. The golden counts did not move.
+- What the fixtures pin about pagination is the *evidence*, not the walk: tests
+  assert that each captured page still states its total (DSV 2010, ISS 62, Novo
+  Nordisk 350, Coloplast 331, NIRAS 2) and that Impactpool's page still links to
+  its next. A restyled label would otherwise fail nothing and quietly drop the
+  source back to an unguarded walk.
+
+**Re-capturing J-PAL** needs the flag:
+`python scripts/capture_fixtures.py --pages all jpal`. Forget it and the fixture
+is one page, the extractor raises on the faked end, and the golden test fails
+loudly — which is the right way round.
+
+**Tetra Pak moved off the endpoint its robots.txt disallows.** Not a pagination
+fault, but it surfaced here: the source failed in run 18 with `robots.txt
+forbids …/services/recruiting/v1/jobs`. Their robots.txt says
+`Disallow: /services/` to every automated visitor, and WP10's check was right to
+refuse it. The bespoke `tetrapak.py` had been calling that endpoint since before
+the politeness layer existed, which is why nobody noticed.
+
+The same postings are published at `/search/`, which robots.txt allows, and
+Tetra Pak is a SuccessFactors board like DSV, ISS, Novo Nordisk and Coloplast.
+So the source now goes through `successfactors_html` against
+`https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden` — the location
+filter that used to sit in the old module's request body, moved into the URL —
+and `tetrapak.py` is deleted. Live check: **7 postings, all Lund**, with
+locations and departments populated (run 17, the last success, had 8).
+
+An `ignore_robots` exemption was the alternative and was rejected: robots.txt is
+the only machine-readable way a site can say "not this path", and deciding they
+did not mean it is how an exemption list starts. One honest caveat: `/search/`
+needs rendering, and the headless browser fills the page from `/services/`
+itself. Our robots check only sees the top-level URL. A browser loading a page
+the way a visitor's browser does is a different act from a script harvesting an
+API, but it is not *no* act, and if the owner disagrees the remaining choices
+are a deliberate exemption or dropping the source.
+
+**Two consequences of the switch, both worth knowing before the next run.**
+
+- **Every Tetra Pak posting gets a new dedupe key.** The key comes from
+  `detail_url`, and the route changed it from `/job-detail/{id}/{slug}` to
+  `/job/{Slug}/{id}-en_GB`. The eight rows stored under the old URLs will be
+  delisted and the seven current ones will arrive as new. Nothing is deleted —
+  but the first run after this will show Tetra Pak churning, and that is why,
+  not a site change.
+- **One entry in `sources.yaml` must change by hand**, because that file is
+  gitignored and holds the owner's real config:
+
+      - name: tetrapak
+        url: https://jobs.tetrapak.com/search/?searchResultView=LIST
+        strategy: dynamic        # was: static
+
+  Until that is done the source fetches without rendering, finds no job links
+  and returns nothing — loudly, since the zero-row guard refuses to delist on it.
+
+**Verified against the live sites**, not just fixtures:
+
+- `jpal` returned **37 rows, ok**, in run 18 (2026-09-02) — the fix confirmed in
+  a real run, not only in the capture. Its recent history is 61 → 53 → 44 → 38 →
+  37 over two weeks, which is the board shrinking, not the walk.
+- `unops` walked its 13 pages and returned **74**, matching run 18 exactly and
+  matching its own "74 results" — so the reconciliation does not fire on a
+  healthy walk. `niras` returned **2**, also matching. Both were re-checked
+  after the walk-level guard replaced the page-level one.
+- `tetrapak` through its new route returned **7**, all Lund.
+- `impactpool`'s pager was checked directly: page 1 links to page 2, and a page
+  past the end (`?page=200`) returns no postings and no next link.
+- Not walked live: `smartrecruiters` (an ad-hoc harness lacks the pipeline's
+  per-source `ignore_robots`, and the API is robots-disallowed without it) and
+  the SuccessFactors boards (201 pages). Their guards rest on unit tests and on
+  the totals pinned against captured markup.
+
+**Numbers.** 583 tests pass (518 before), suite ~13 s. `ruff check .` passes.
+`python -m job_scraper.run --help` unchanged. The filter ladder, the run summary
+and `tests/test_run_summary.py` were not touched. Nothing new fetches for
+itself: `pagination.py` does no I/O and the politeness guard test still passes.
+
+### Second review pass (2026-09-02)
+
+Another session read the branch and found three real defects, all in code this
+package added. All three are the same shape as the bug the package exists to
+fix — a walk that stops without saying so — which is worth noting: the guards
+were easier to get subtly wrong than the thing they guard.
+
+**1. UNOPS's total-reader crashed on ordinary page wording, and could switch
+itself off.** The pattern was "a number, then the word results", which is not
+specific enough for a page of prose. "Search results" matched with no number in
+it and `int("")` raised. Worse and quieter: "10 results per page" would have
+been read as a total of 10, which any walk beats, so the guard would have been
+off while still appearing to work. Now two patterns, both requiring a digit: the
+running text is read only in the "of N results" form the summary uses, and an
+aria-label only when the whole label is the count.
+
+**2. J-PAL lost a page that rendered an empty listing mid-walk — but the obvious
+fix was wrong, and the live check caught it.** The reported hole is real: the
+new code caught the jobs view being *absent* and let its "no results" state
+pass on any page, carrying on to the next and losing that page's postings
+quietly. The obvious fix — raise on any empty page inside the pager's range —
+was written, and failed against the live site within the minute: J-PAL returned
+`ShortWalkError` on `?page=4` for a board that was perfectly healthy.
+
+What that turned up is worth recording, because it would have failed runs. The
+board went from 37 postings to 36 during the day, and **J-PAL's pages are
+edge-cached separately**, so page 0 was still a copy claiming five pages while
+page 3's pager — fetched seconds later — said four. Following page 0's pager
+walks one page past the end, where the site correctly answers "Your search
+returned no results". An over-claiming pager is normal, not a fault.
+
+So the discriminator is not the pager the walk started with; it is the pager on
+*the empty page itself*. If that page lists itself, it is a page of the listing
+gone missing and the source fails. If its own pager says the listing ended
+earlier, the walk is simply one page past the end and stops. Both directions of
+cache skew are covered: an under-claiming pager still cannot shorten a walk,
+because the page count never shrinks. Verified live afterwards: 36 postings, no
+error.
+
+**3. Impactpool could still hit its 200-page cap and return quietly.** Every
+other exit from that loop was guarded and this one was not, while J-PAL's
+equivalent cap did raise — the two now behave the same.
+
+**And a fair hit on the fixtures.** Five golden tests had been switched from the
+whole extractor to its parsing half, justified by "the walk is too long to
+store". True for DSV (201 pages) and Impactpool (~100); copy-pasted onto ISS (4
+pages), Novo Nordisk (4) and Coloplast (14), where it plainly was not. Two
+things changed:
+
+- `novo_nordisk` is captured as its whole four-page walk and runs the real
+  extractor again. The honest argument for the other three was never page count
+  — it is that the SuccessFactors walk is *one shared module*, so capturing five
+  instances' walks tests the same loop five times. One does it end to end; the
+  others pin the four skins' parsing, which is what actually differs. That is
+  what their comments now say.
+- **UNOPS is captured at last**, as its whole thirteen-page walk. It had no
+  fixture at all, which is precisely how defect 1 survived: the one source with
+  a hand-rolled total-reader was the one whose reader had never met real markup.
+  The captured walk parses 74 postings and reconciles against its own stated 74.
+
+Fixture directory 3.5 MB → 5.0 MB. `novo_nordisk`, `unops` and `jpal` all need
+`--pages all` when recaptured; the golden comments say so.
+
+Also fixed: the summary table said 552 tests where the result section said 554
+(neither is current — see Numbers), and `capture_one` shadowed its own `source`
+parameter with a URL.
+
+**Left for later.** `ruff format` has never been run on this repo, so 36 files
+disagree with it and the ones this package touched could not be formatted
+without burying the diff in unrelated churn. That is WP12.
+
+
+---
+
+## WP12 — Run the formatter
+
+`ruff check` has been the gate since WP2 and passes. `ruff format` has never
+been run, so the repo is formatted by hand and 36 of its 86 tracked Python
+files disagree with the formatter — mostly line breaks the formatter would join,
+because they were written to a narrower margin than the configured 100.
+
+This is not a defect. Nothing is broken, and it is deliberately its own package
+because the diff is large, entirely mechanical, and would make any real change
+it was bundled with unreviewable. WP11 hit this: files it touched could not be
+formatted without also reformatting lines it never went near.
+
+```
+Read CLAUDE.md and docs/REFACTOR-PLAN.md, then work on WP12 only.
+
+`ruff check .` passes and always has. `ruff format` has never been run, so 36
+files are formatted by hand and disagree with it. Fix that, in a way the owner
+can review in one sitting.
+
+- Run `ruff format .`. One commit, nothing else in it. The diff will be large
+  and every hunk should be whitespace, line breaks, or trailing commas — read
+  it, and if any hunk changes a string, a number or the order of anything,
+  stop and say so rather than committing it.
+- `pytest` must pass with exactly the same number of tests before and after.
+  Say both numbers. A formatter cannot change behaviour, so if a test moves,
+  something else is wrong.
+- Add the formatter to the gate so it does not drift again: a `ruff format
+  --check .` line in the Definition of done in CLAUDE.md, beside `ruff check`.
+- Check whether the fixture files and `docs/` are affected — they should not
+  be, and `ruff format` should not be pointed at anything outside the Python
+  source.
+
+Do not change any code while you are in there. If you notice something that
+wants fixing, note it at the end of your response; a formatting commit that
+also fixes a bug is a formatting commit nobody can review.
+
+Two things not to touch: `tests/test_run_summary.py` pins exact rendering and
+`tests/test_extractors_golden.py` pins exact extractor output. The formatter
+will rewrap the string literals in both. That is fine — the *values* must not
+change, and the tests passing afterwards is what proves it.
+
+Branch wp12-ruff-format. Commit, do not push. Update the plan file.
 ```
 
 ---

@@ -91,6 +91,29 @@ class _FakeFetcher:
         return self.body
 
 
+def _jpal_page(jobs: int, last_page: int | None) -> str:
+    """Minimal J-PAL listing markup: the jobs view, *jobs* postings, a pager.
+
+    The `view-id-jobs` wrapper is not decoration — the extractor reads it to
+    tell a rendered listing from a page whose view is missing.
+    """
+    nodes = "".join(
+        '<div class="node node--type-job">'
+        f'<h3 class="job-teaser-title"><a href="/careers/job-{i}">Job {i}</a></h3>'
+        "</div>"
+        for i in range(jobs)
+    )
+    pager = ""
+    if last_page is not None:
+        links = "".join(f'<a href="?page={n}">{n}</a>' for n in range(last_page + 1))
+        pager = f'<nav class="pager">{links}</nav>'
+    return (
+        '<html><body><div class="view view-id-jobs">'
+        f'<div class="view-content">{nodes}</div>{pager}'
+        "</div></body></html>"
+    )
+
+
 @pytest.fixture
 def capture_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the capture script at a throwaway fixtures directory."""
@@ -181,6 +204,57 @@ def test_capture_removes_the_stale_sibling(
     assert ok, message
     assert not (capture_env / "givewell.html").exists()
     assert "removed stale givewell.html" in message
+
+
+def test_capture_records_the_whole_walk_when_asked(
+    capture_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--pages all` saves every page, so the fixture replays the real walk.
+
+    Without this a paginated fixture is one page and a faked end, which is how
+    the J-PAL shortfall (WP11) stayed invisible to the golden test.
+    """
+    pages = {
+        "https://www.povertyactionlab.org/careers": _jpal_page(1, last_page=1),
+        "https://www.povertyactionlab.org/careers?page=1": _jpal_page(1, last_page=1),
+    }
+
+    def fake(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[url]
+
+    fake.renders = False  # type: ignore[attr-defined]
+    monkeypatch.setattr(capture_fixtures, "fetch_text", fake)
+
+    ok, message = capture_one(
+        {"name": "jpal", "url": "https://www.povertyactionlab.org/careers", "strategy": "static"},
+        pages=0,
+    )
+
+    assert ok, message
+    assert (capture_env / "jpal.html").exists()
+    assert (capture_env / "jpal.p1.html").exists()
+    assert "2 jobs" in message
+
+
+def test_capture_removes_page_files_a_shorter_walk_left_behind(
+    capture_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay is positional, so yesterday's page 2 must not outlive the walk."""
+    (capture_env / "jpal.p1.html").write_text("<html>old page 2</html>", encoding="utf-8")
+    (capture_env / "jpal.p2.html").write_text("<html>old page 3</html>", encoding="utf-8")
+    fake = _FakeFetcher(_jpal_page(1, last_page=None))
+    monkeypatch.setattr(capture_fixtures, "fetch_text", fake)
+
+    ok, message = capture_one(
+        {"name": "jpal", "url": "https://www.povertyactionlab.org/careers", "strategy": "static"},
+        pages=0,
+    )
+
+    assert ok, message
+    assert (capture_env / "jpal.html").exists()
+    assert not (capture_env / "jpal.p1.html").exists()
+    assert not (capture_env / "jpal.p2.html").exists()
+    assert "removed stale jpal.p1.html, jpal.p2.html" in message
 
 
 def test_capture_falls_back_to_the_listing_url_without_a_registry_entry(

@@ -4,8 +4,11 @@ These portals serve job listings as server-rendered HTML at a /search/ or
 /search URL. Job links follow the pattern:
     <a href="/job/{Location}-{Title}/{ID}/">…</a>
 
-Pagination uses a ?startrow=N query parameter. Loop until a page returns no
-job links or the page_step would exceed a reasonable upper bound.
+Pagination uses a ?startrow=N query parameter. Loop until a page returns no job
+links or the page_step would exceed a reasonable upper bound. Both layouts state
+how many postings there are — "Page 1 of 201, Results 1 to 10 of 2010" in the
+classic pagination label, "Showing 1 to 20 of 62 Jobs" on the tile skin — so a
+walk is checked against that count before it returns; see `pagination.py`.
 
 Whether a page needs JavaScript is the caller's business, not this module's:
 `sources.yaml`'s `strategy` picks the fetcher, and this extractor uses whatever
@@ -32,7 +35,17 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 
+from job_scraper.extractors import pagination
+
 _WAIT_SELECTOR = 'a[href*="/job/"]'
+
+# "Results 1 to 10 of 2010" (classic, in an aria-label) and "Showing 1 to 20 of
+# 62 Jobs" (tile, in visible text). One pattern reads both, and it is anchored
+# on the run of numbers rather than on the wording around them so that a
+# rephrasing does not silently turn the total into None.
+_TOTAL_PATTERN = re.compile(
+    r"(?:results|showing)\s+[\d,]+\s*(?:to|-|–)\s*[\d,]+\s+of\s+([\d,]+)", re.I
+)
 
 # Job links are usually rooted at /job/, but an instance hosting sub-brands
 # prefixes them with the brand: Coloplast serves Kerecis and Atos postings as
@@ -134,6 +147,22 @@ def _tile_field(row: Any, kinds: tuple[str, ...]) -> str | None:
     return None
 
 
+def _declared_total(soup: Any) -> int | None:
+    """How many postings this board says it has, if it says.
+
+    Looks in the page's text and in its aria-labels: the classic skin puts the
+    sentence in an attribute, the tile skin in a visible span, and an instance
+    may carry either.
+    """
+    candidates = [soup.get_text(" ", strip=True)]
+    candidates.extend(str(tag.get("aria-label")) for tag in soup.select("[aria-label]"))
+    for candidate in candidates:
+        match = _TOTAL_PATTERN.search(candidate)
+        if match:
+            return int(match.group(1).replace(",", ""))
+    return None
+
+
 def _set_startrow(base_url: str, startrow: int) -> str:
     parsed = urlparse(base_url)
     params = parse_qs(parsed.query, keep_blank_values=True)
@@ -175,12 +204,15 @@ def _read_fields(container: Any, title: str) -> tuple[str, str]:
 
 
 def _parse_page(
-    html: str,
+    soup: BeautifulSoup,
     base_search_url: str,
     source_name: str,
 ) -> list[dict[str, Any]]:
-    soup = BeautifulSoup(html, "lxml")
     out: list[dict[str, Any]] = []
+    # DSV renders every row three times, once per breakpoint (desktop, tablet,
+    # phone). That is one posting shown thrice, not three postings, so it is
+    # settled here; the walk's own `seen` is for repeats *across* pages.
+    on_this_page: set[str] = set()
 
     # Derive the host root from the search URL so relative hrefs resolve correctly
     parsed = urlparse(base_search_url)
@@ -189,10 +221,13 @@ def _parse_page(
     for a in soup.find_all("a", href=lambda h: h and _JOB_HREF.match(h.strip())):
         href = str(a["href"]).strip()
         detail_url = urljoin(host_root, href)
+        if detail_url in on_this_page:
+            continue
 
         title = a.get_text(" ", strip=True)
         if not title:
             continue
+        on_this_page.add(detail_url)
 
         # Walk up to the row that holds the whole posting, not the innermost
         # box that happens to wrap the link. On the tile layout the nearest
@@ -243,12 +278,18 @@ def extract(
     seen: set[str] = set()
     startrow = 0
 
+    total: int | None = None
+
     while True:
         url = _set_startrow(base_search_url, startrow)
-        html = fetch_fn(url)
-        jobs = _parse_page(html, base_search_url, source_name)
+        soup = BeautifulSoup(fetch_fn(url), "lxml")
+        jobs = _parse_page(soup, base_search_url, source_name)
         if not jobs:
             break
+
+        # Only a page that parsed can be asked how long the board is.
+        total = _declared_total(soup) or total
+
         new_jobs = 0
         for job in jobs:
             key = job["detail_url"]
@@ -257,9 +298,18 @@ def extract(
                 out.append(job)
                 new_jobs += 1
         if new_jobs == 0:
-            break  # all duplicates — we've lapped the list
+            # All duplicates: the board is serving the same page over again,
+            # which is the end of the list only if we have the whole list —
+            # settled below, like every other way out of this loop.
+            break
         if len(jobs) < page_step:
             break
         startrow += page_step
 
+    # Whichever of the three exits was taken, the board published a count and
+    # this walk is measured against it. The short-page exit is the one that
+    # needs it most: a page that half-renders is short, never empty, so nothing
+    # inside the loop would have noticed.
+    pagination.reconcile(source_name, url, collected=len(out), total=total)
     return out
+
