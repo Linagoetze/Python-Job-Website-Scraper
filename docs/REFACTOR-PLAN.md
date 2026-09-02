@@ -58,7 +58,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
-| 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | not started | `wp12-ruff-format` |
+| 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5277,6 +5277,92 @@ change, and the tests passing afterwards is what proves it.
 
 Branch wp12-ruff-format. Commit, do not push. Update the plan file.
 ```
+
+### Result (2026-09-02)
+
+Done on branch `wp12-ruff-format`, one commit for the reformat and one for the
+gate. 37 of 86 tracked Python files changed, 263 insertions and 289 deletions,
+all of it line breaks, indentation and trailing commas.
+
+**583 tests before, 583 after.** `ruff check` still passes, `ruff format
+--check .` now reports all 90 files clean, and `--help` still works.
+
+#### How "no hunk changes a value" was checked
+
+Not by reading 552 lines of diff and hoping. Every tracked file was parsed with
+`ast.parse` and dumped with `ast.dump(..., include_attributes=False)` before and
+after, then compared. That drops line and column numbers but keeps every
+literal, name and ordering, so an identical dump is proof no string, number or
+order moved — and it sees through implicit string concatenation, which the
+formatter joins in `eval.py` and `config_loader.py` without changing the
+concatenated value.
+
+85 of 86 files came back byte-identical. One did not.
+
+#### The one real value change, and the decision
+
+`tests/test_source_health.py:47` is a docstring whose first character is a
+quote:
+
+```diff
+-    """"More than 50%" is the threshold, so the boundary case stays quiet."""
++    """ "More than 50%" is the threshold, so the boundary case stays quiet."""
+```
+
+Ruff inserts a space so the opening does not read as a four-quote sequence.
+This is deliberate formatter behaviour, but it genuinely changes the string:
+the value gains a leading space.
+
+Put to the owner rather than committed silently, per the package's own rule.
+**Decision: accept the space.** It is a test function's docstring and nothing
+reads it. The three module docstrings that *are* read, passed as
+`description=__doc__` by the two `scripts/` front doors and three
+`job_scraper/tools/` ones, are unchanged.
+
+Rejected: `# fmt: skip` on that line, which was verified to work and would have
+preserved the value exactly, but puts a hand-written code change inside a commit
+whose whole value is being mechanical.
+
+**Worth knowing for the next formatter-adjacent package:** `ruff format` is not
+purely whitespace. Docstrings are the exception — it also strips trailing
+whitespace inside them and normalises their indentation. If a future package
+ever asserts on a docstring, this is where it will bite.
+
+#### Blast radius
+
+- `tests/fixtures/` holds 39 HTML, 2 CSV and 2 JSON files and **no Python at
+  all**, so the formatter cannot reach it. Confirmed by `find`, not assumed.
+- `docs/` **is** in scope, which was a surprise and is worth writing down. Since
+  ruff 0.16, `ruff format` also formats fenced ` ```python ` blocks inside
+  Markdown. Four tracked Markdown files are scanned — `CLAUDE.md`, `README.md`,
+  `docs/REFACTOR-PLAN.md` and `job_scraper/config/profile.example.md` — and they
+  are the four that made ruff report 90 files against 86 tracked `.py`. All four
+  were already clean. The first draft of this very section then broke the gate by
+  fencing a diff as `python`; it is fenced as `diff` now. **A code block in this
+  plan is real input to the formatter.**
+- `ruff format .` was therefore left pointed at the repo root deliberately: the
+  Markdown is worth keeping formatted too, and there is nothing else outside the
+  Python source for it to find.
+- A live git worktree sits at `.claude/worktrees/priceless-carson-70dbe2`, on
+  branch `wp10-test-cache-isolation`, holding a second copy of all 85 source
+  files. Ruff skips it from the repo root — it is a separate VCS root — but
+  formats it happily when pointed at it directly (34 files). Every `.py` under
+  `.claude/` was checksummed before and after and is unchanged. **Do not run
+  `ruff format .claude/...`, and prefer the named source directories if this
+  ever needs repeating.**
+- The plan said 36 files; it was 37 under ruff 0.16.4. The count is a moving
+  target across ruff versions, which is the argument for the `--check` gate.
+
+#### The gate
+
+`ruff format --check .` added to the Definition of done in `CLAUDE.md`, beside
+`ruff check .`.
+
+Not added to `.github/workflows/ci.yml`, whose `Lint` step still runs only
+`ruff check .` — the package asked for the CLAUDE.md line specifically. That
+file is the checklist a session reads; CI is what actually enforces. Adding
+`ruff format --check .` to the `Lint` step is a one-line follow-up and is the
+thing that would stop this drifting for real.
 
 ---
 

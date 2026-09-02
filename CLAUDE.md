@@ -98,6 +98,7 @@ These exist because the codebase has drifted in specific ways. Respect them.
 
 - [ ] `pytest` passes.
 - [ ] `ruff check .` passes (once WP2 has added it).
+- [ ] `ruff format --check .` passes (WP12 ran the formatter; keep it clean).
 - [ ] `python -m job_scraper.run --help` still works.
 - [ ] `docs/REFACTOR-PLAN.md` updated: package marked done, decisions recorded.
 - [ ] Changes committed on the package branch, not pushed.
