@@ -60,7 +60,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 | CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
-| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and is proposed for the excluded-sources record; zero-row health check added; 598 tests pass | `cu2-dead-sources` |
+| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and is proposed for the excluded-sources record; zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 598 tests pass | `cu2-dead-sources` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5627,15 +5627,20 @@ Deliberate choices:
   different things about it. Pinned by
   `test_shrinking_and_empty_are_reported_separately`.
 
-### Noted, not fixed (scope)
+### Follow-up: `test_fixture_still_parses` fails instead of skipping
 
-`tests/test_capture_fixtures.py:310` (`test_fixture_still_parses`) still calls
-`pytest.skip` for a missing fixture. CU1 converted the three sites in
-`test_extractors_golden.py` to `pytest.fail` and recorded that the other
-fixture-skip sites were left alone as out of scope. This is the one of those
-that matters most — it is the "every fixture parses to more than zero jobs"
-assertion the audit's §5 calls out by name — so deleting a fixture still
-quietly removes its coverage there.
+Raised at the end of this session as noted-not-fixed, then done on the owner's
+say-so. `tests/test_capture_fixtures.py`'s `test_fixture_still_parses` was the
+last fixture-skip site that mattered — it is the "every fixture parses to more
+than zero jobs" assertion the audit's §5 calls out by name, and while it
+skipped, deleting a fixture quietly removed its coverage instead of breaking
+the build. Now `pytest.fail`, matching what CU1 did to the three sites in
+`test_extractors_golden.py`.
+
+Changes no test outcome today: every fixture in `FIXTURE_CASES` is present, and
+598 tests still pass. The remaining skip sites (`test_niras_extractor.py`,
+`test_store_roundtrip.py`, `test_pagination.py`) are untouched and still out of
+scope.
 
 ---
 
