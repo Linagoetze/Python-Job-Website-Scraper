@@ -2,7 +2,9 @@
 
 Uses the internal career site REST API (POST, JSON body) at
 /services/recruiting/v1/jobs. No authentication required.
-Paginates until all jobs are fetched. Location filtering is
+Paginates until all jobs are fetched; `totalJobs` says how many there are, so
+an empty page before that count is reached is a failure rather than the end of
+the board (see `pagination.py`). Location filtering is
 left to the pipeline's rules (fetching all jobs avoids
 discrepancies with the website's location filter).
 """
@@ -12,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from job_scraper.extractors import pagination
 from job_scraper.http import post_json
 
 _API_URL = "https://jobs.tetrapak.com/services/recruiting/v1/jobs"
@@ -39,8 +42,16 @@ def extract(
             {"q": "", "locale": "en_GB", "location": "Sweden", "pageNum": page},
         )
 
+        total = data.get("totalJobs", 0)
         results = data.get("jobSearchResult", [])
         if not results:
+            if page * _ACTUAL_PAGE_SIZE < total:
+                pagination.short_walk(
+                    source_name,
+                    _API_URL,
+                    collected=len(out),
+                    promised=f"the API reports {total} job(s) for this search",
+                )
             break
 
         for item in results:
@@ -75,7 +86,6 @@ def extract(
                 }
             )
 
-        total = data.get("totalJobs", 0)
         if (page + 1) * _ACTUAL_PAGE_SIZE >= total:
             break
         page += 1

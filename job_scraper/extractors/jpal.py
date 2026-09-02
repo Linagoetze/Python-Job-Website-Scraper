@@ -6,8 +6,11 @@ HTML structure per listing (Drupal 10, server-rendered, paginated via ?page=N):
         <div class="job-teaser-country">Country</div>
     </div>
 
-Pagination uses zero-indexed ?page=N query parameter. The last page is
-determined from the highest page number found in pagination links.
+Pagination uses a zero-indexed ?page=N query parameter, and the pager on each
+page lists every page that exists. That pager is the walk's authority: it says
+how many pages there are, so a page inside that range which yields no postings
+is a failure, not the end. See `pagination.py` for why that distinction is the
+whole point of this module's loop.
 """
 
 from __future__ import annotations
@@ -19,7 +22,12 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
+from job_scraper.extractors import pagination
+
 BASE_URL = "https://www.povertyactionlab.org"
+# A sanity bound on the pager, not an expected length: about forty postings at
+# nine to a page is five pages, so anything near this is a malformed pager.
+_PAGE_LIMIT = 50
 
 
 def _parse_jobs(soup: BeautifulSoup, listing_url: str, source_name: str) -> list[dict[str, Any]]:
@@ -55,7 +63,12 @@ def _parse_jobs(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
 
 
 def _last_page(soup: BeautifulSoup) -> int:
-    """Return the highest page index found in pagination links (0-indexed)."""
+    """Return the highest page index found in pagination links (0-indexed).
+
+    Zero means "this page shows no pager", which a genuine single-page listing
+    and a page that failed to render both do. The caller keeps them apart by
+    only ever asking this of a page that yielded postings.
+    """
     max_page = 0
     for a in soup.select("a[href]"):
         href = a.get("href", "")
@@ -74,17 +87,39 @@ def extract(
     base = listing_url.rstrip("/").split("?")[0]
 
     page = 0
+    last = 0
     while True:
         url = base if page == 0 else f"{base}?page={page}"
         html = fetch_text(url)
         soup = BeautifulSoup(html, "lxml")
 
         jobs = _parse_jobs(soup, listing_url, source_name)
+        if not jobs and page > 0:
+            # An earlier page's pager said this one exists and holds postings.
+            # Every page in range carries at least one — J-PAL's out-of-range
+            # response is the only empty one, and it lies past `last`.
+            pagination.short_walk(
+                source_name,
+                url,
+                collected=len(out),
+                promised=f"the pager runs to page {last}",
+            )
         out.extend(jobs)
 
-        last = _last_page(soup)
+        # Read the pager only from a page that parsed: a broken page shows no
+        # pager, and taking its answer is exactly how the walk used to end early.
+        # Never shrink the count either, so a page whose pager is truncated
+        # cannot cut a walk that an earlier page said was longer.
+        last = max(last, _last_page(soup))
         if page >= last:
             break
+        if page >= _PAGE_LIMIT:
+            # A pager pointing past this is not a listing, it is a bug or a
+            # trap; either way, stop fetching and say so rather than hammer on.
+            raise pagination.ShortWalkError(
+                f"{source_name}: pager claims page {last}, past the {_PAGE_LIMIT}-page "
+                f"limit; stopped after {len(out)} posting(s) rather than keep fetching"
+            )
         page += 1
 
     return out

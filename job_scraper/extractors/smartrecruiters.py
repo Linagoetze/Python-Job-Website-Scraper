@@ -8,7 +8,9 @@ SmartRecruiters slugs are case-sensitive and not always predictable from the
 hosted career-site URL.
 
 Pagination: the API returns a JSON envelope with `totalFound` and `content`.
-Loop using offset until all postings are fetched.
+Loop using offset until all postings are fetched. `totalFound` is authoritative,
+so an empty `content` before it is reached is a failure rather than the end of
+the board; see `pagination.py`.
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from typing import Any
+
+from job_scraper.extractors import pagination
 
 _API_BASE = "https://api.smartrecruiters.com/v1/companies/{slug}/postings"
 _PAGE_SIZE = 100
@@ -36,8 +40,16 @@ def extract(
         api_url = f"{base}?limit={_PAGE_SIZE}&offset={offset}"
         data = json.loads(fetch_text(api_url))
 
+        total = data.get("totalFound", 0)
         content = data.get("content", [])
         if not content:
+            if offset < total:
+                pagination.short_walk(
+                    source_name,
+                    api_url,
+                    collected=len(out),
+                    promised=f"the API reports {total} posting(s)",
+                )
             break
 
         for posting in content:
@@ -81,7 +93,6 @@ def extract(
                 }
             )
 
-        total = data.get("totalFound", 0)
         offset += _PAGE_SIZE
         if offset >= total:
             break
