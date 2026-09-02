@@ -189,8 +189,17 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         lines.append(
             f"!  Empty sources: {n} source{'' if n == 1 else 's'} returned zero rows this run"
         )
+        # What happened to the stored jobs depends on the flag, so the line
+        # says which. Under --allow-empty-delist an empty source's unreviewed
+        # jobs *are* delisted, and a block that still read "nothing delisted"
+        # would be reassuring the reader about the one run where it is untrue.
+        fate = (
+            "its stored jobs were delisted (--allow-empty-delist)"
+            if summary.allow_empty_delist
+            else "nothing delisted"
+        )
         for name in summary.empty_sources:
-            lines.append(f"!  {name}: 0 rows — nothing delisted; check its extractor")
+            lines.append(f"!  {name}: 0 rows — {fate}; check its extractor")
     if summary.dry_run:
         lines.append(_RULE)
         lines.extend(

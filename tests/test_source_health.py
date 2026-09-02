@@ -266,3 +266,44 @@ def test_shrinking_and_empty_are_reported_separately() -> None:
     )
     assert "acme: 0 rows this run, was 40 (-100%)" in text
     assert "acme: 0 rows — nothing delisted" in text
+
+
+def test_the_empty_line_says_nothing_was_delisted_by_default() -> None:
+    text = format_summary(_summary(empty_sources=("lifesum",)))
+    assert "lifesum: 0 rows — nothing delisted; check its extractor" in text
+
+
+def test_the_empty_line_admits_the_delisting_under_allow_empty_delist() -> None:
+    """The one run where "nothing delisted" would be a lie.
+
+    `--allow-empty-delist` means "this source genuinely emptied", and
+    `note_misses_and_delist` then delists its unreviewed jobs immediately,
+    bypassing the miss threshold. A block that still reported nothing had
+    happened would be reassuring the reader about the only run where the
+    reassurance is untrue.
+    """
+    text = format_summary(_summary(empty_sources=("lifesum",), allow_empty_delist=True))
+    assert "lifesum: 0 rows — its stored jobs were delisted (--allow-empty-delist)" in text
+    assert "nothing delisted" not in text
+
+
+def test_the_flag_alone_adds_no_block() -> None:
+    """No empty source, nothing to say — the flag is not news on its own."""
+    assert "!" not in format_summary(_summary(allow_empty_delist=True))
+
+
+def test_the_run_reports_the_flag_it_was_given(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    jobs: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        pipeline_mod, "get_extractor", lambda name: lambda url, fetch_fn: list(jobs)
+    )
+    summary = run_pipeline(
+        sources_path=env / "sources.yaml",
+        rules_path=env / "rules.json",
+        out_db_path=env / "jobs.sqlite3",
+        cache_path=env / "http_cache.sqlite3",
+        check_robots=False,
+        allow_empty_delist=True,
+    )
+    assert summary.empty_sources == (_SOURCE,)
+    assert summary.allow_empty_delist is True

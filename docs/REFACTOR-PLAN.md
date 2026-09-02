@@ -60,7 +60,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | done — 37 files reformatted, AST-identical bar one docstring space; `ruff format --check` added to the Definition of done; 583 tests pass, the same 583 | `wp12-ruff-format` |
 | CU1 | Final cleanup, session 1 of `docs/AUDIT.md` §7B/§7C/§7D | 0.5 hr | Sonnet 5 | none | done — `retrofilter` fixed, golden tests fail instead of skip on a missing fixture, `.gitignore`/dead-code/comment/orphan-file tidying; 584 tests pass | `cu1-tidy` |
-| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 598 tests pass; **incident: a private file was staged into the public repo, caught before any push, see the result section** | `cu2-dead-sources` |
+| CU2 | Final cleanup, session 2 of `docs/AUDIT.md` §7A | 2 hr | Opus 5 | `think` | done — all three dead sources captured and diagnosed; `gfi_europe` fixed (3 postings) and pinned, `lifesum` is genuinely empty and its reader is correct, `probably_good` is unfixable within this design and its extractor is deleted (owner removed the source); zero-row health check added; `test_fixture_still_parses` now fails rather than skips on a missing fixture; 602 tests pass; **incident: a private file was staged into the public repo, caught before any push, see the result section** | `cu2-dead-sources` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
 a week is six or seven weeks. Nothing breaks if you stop after any package.
@@ -5636,6 +5636,32 @@ Deliberate choices:
   rows and now has 0 both collapsed and is empty, and the two lines say
   different things about it. Pinned by
   `test_shrinking_and_empty_are_reported_separately`.
+
+### Review follow-up (2026-09-02)
+
+A review pass raised three points. Two were real and are fixed; the third is
+recorded because the reasoning matters more than the change would have.
+
+- **The block's line was wrong under one flag.** It printed "0 rows — nothing
+  delisted" unconditionally, but `--allow-empty-delist` means "this source
+  genuinely emptied" and `note_misses_and_delist` then delists its unreviewed
+  jobs immediately, bypassing the miss threshold. So the one run where the
+  reassurance mattered was the one run it was false. `RunSummary` now carries
+  `allow_empty_delist` and the line names the fate it actually applied. Pinned
+  by `test_the_empty_line_admits_the_delisting_under_allow_empty_delist`.
+- **The README documented the health block but not this one.** Both appear in
+  the same place and are easily confused, so the new paragraph leads with the
+  distinction — health warnings ask "did this shrink?", which a
+  never-working source cannot answer — and states what is and is not delisted.
+- **`gfi_europe` could go quiet again** if the site moved to `www.gfieurope.org`
+  or added paging links under `/careers/`: the host comparison is exact, and a
+  `?page=2` link would parse as a posting. **Deliberately not pre-empted.**
+  Neither is true of the page today, so a guard would be pinned to no fixture
+  and tested against nothing — speculative matching is how the original
+  `startswith` test came to look reasonable. The real answer is the second half
+  of this package: whichever way it broke, the zero-row check would name it on
+  the next run instead of after nineteen. Widening the host match is a
+  five-minute change if the site ever moves, and the failing golden will say so.
 
 ### The incident: a private file was staged into the public repo (2026-09-02)
 

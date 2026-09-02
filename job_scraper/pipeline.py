@@ -126,6 +126,11 @@ class RunSummary:
     # (docs/AUDIT.md §7A). Sources whose extractor *raised* are absent — that
     # already fails loudly and separately, and naming it twice is noise.
     empty_sources: tuple[str, ...] = ()
+    # Whether this run was given --allow-empty-delist. Only meaningful
+    # alongside `empty_sources`, and only there to keep the summary honest:
+    # under that flag an empty source's stored jobs *are* delisted, so the
+    # block must not claim nothing happened to them.
+    allow_empty_delist: bool = False
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -741,5 +746,6 @@ def _run_pipeline(
         exclusions_logged=exclusions_logged,
         health_warnings=health_warnings,
         empty_sources=empty_sources,
+        allow_empty_delist=allow_empty_delist,
         dry_run=dry_run,
     )
