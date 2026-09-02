@@ -57,7 +57,7 @@ the accretion. It is ordered so that each package is safe to stop after.
 | 8b | README reconciliation + renumbering sweep | 2 hr | Sonnet 5 | none | done — README rebuilt against the current CLI, 54 comments renumbered; **incident: the live store was modified by mistake, see the result section** | `wp8b-readme` |
 | 9 | Playwright reuse and HTTP caching | 3 hr | Fable 5 | `think hard` | done — full run 365s → 295s (browser reuse) → 132s (warm cache); 15 browser launches → 4; funnel unchanged; 443 tests pass | `wp9-fetch-performance` |
 | 10 | Politeness and observability | 1.5 hr | Sonnet 5 | `think` | done — per-host cap 2 with a 1s spacing, robots.txt honoured per host, contact details moved to `rules.json`, source-health warnings, `--dry-run`, argparse front doors on both tools; 514 tests pass. Contact details filled in by the owner and verified, 2026-08-31 | `wp10-politeness` |
-| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); 552 tests pass | `wp11-pagination` |
+| 11 | J-PAL pagination, and silent short walks | 1.5 hr | Sonnet 5 | `think` | done — all six paginated walks guarded (every one of them publishes a total or a pager); `jpal` re-captured as its whole five-page walk (9 → 37 rows, confirmed live in run 18); Tetra Pak moved off the endpoint its robots.txt disallows; 583 tests pass | `wp11-pagination` |
 | 12 | Run the formatter | 0.5 hr | Sonnet 5 | none | not started | `wp12-ruff-format` |
 
 Total roughly 30 hours. One package per week is about three months. Two evenings
@@ -5155,10 +5155,77 @@ are a deliberate exemption or dropping the source.
   the SuccessFactors boards (201 pages). Their guards rest on unit tests and on
   the totals pinned against captured markup.
 
-**Numbers.** 554 tests pass (518 before), suite ~12 s. `ruff check .` passes.
+**Numbers.** 583 tests pass (518 before), suite ~13 s. `ruff check .` passes.
 `python -m job_scraper.run --help` unchanged. The filter ladder, the run summary
 and `tests/test_run_summary.py` were not touched. Nothing new fetches for
 itself: `pagination.py` does no I/O and the politeness guard test still passes.
+
+### Second review pass (2026-09-02)
+
+Another session read the branch and found three real defects, all in code this
+package added. All three are the same shape as the bug the package exists to
+fix — a walk that stops without saying so — which is worth noting: the guards
+were easier to get subtly wrong than the thing they guard.
+
+**1. UNOPS's total-reader crashed on ordinary page wording, and could switch
+itself off.** The pattern was "a number, then the word results", which is not
+specific enough for a page of prose. "Search results" matched with no number in
+it and `int("")` raised. Worse and quieter: "10 results per page" would have
+been read as a total of 10, which any walk beats, so the guard would have been
+off while still appearing to work. Now two patterns, both requiring a digit: the
+running text is read only in the "of N results" form the summary uses, and an
+aria-label only when the whole label is the count.
+
+**2. J-PAL lost a page that rendered an empty listing mid-walk — but the obvious
+fix was wrong, and the live check caught it.** The reported hole is real: the
+new code caught the jobs view being *absent* and let its "no results" state
+pass on any page, carrying on to the next and losing that page's postings
+quietly. The obvious fix — raise on any empty page inside the pager's range —
+was written, and failed against the live site within the minute: J-PAL returned
+`ShortWalkError` on `?page=4` for a board that was perfectly healthy.
+
+What that turned up is worth recording, because it would have failed runs. The
+board went from 37 postings to 36 during the day, and **J-PAL's pages are
+edge-cached separately**, so page 0 was still a copy claiming five pages while
+page 3's pager — fetched seconds later — said four. Following page 0's pager
+walks one page past the end, where the site correctly answers "Your search
+returned no results". An over-claiming pager is normal, not a fault.
+
+So the discriminator is not the pager the walk started with; it is the pager on
+*the empty page itself*. If that page lists itself, it is a page of the listing
+gone missing and the source fails. If its own pager says the listing ended
+earlier, the walk is simply one page past the end and stops. Both directions of
+cache skew are covered: an under-claiming pager still cannot shorten a walk,
+because the page count never shrinks. Verified live afterwards: 36 postings, no
+error.
+
+**3. Impactpool could still hit its 200-page cap and return quietly.** Every
+other exit from that loop was guarded and this one was not, while J-PAL's
+equivalent cap did raise — the two now behave the same.
+
+**And a fair hit on the fixtures.** Five golden tests had been switched from the
+whole extractor to its parsing half, justified by "the walk is too long to
+store". True for DSV (201 pages) and Impactpool (~100); copy-pasted onto ISS (4
+pages), Novo Nordisk (4) and Coloplast (14), where it plainly was not. Two
+things changed:
+
+- `novo_nordisk` is captured as its whole four-page walk and runs the real
+  extractor again. The honest argument for the other three was never page count
+  — it is that the SuccessFactors walk is *one shared module*, so capturing five
+  instances' walks tests the same loop five times. One does it end to end; the
+  others pin the four skins' parsing, which is what actually differs. That is
+  what their comments now say.
+- **UNOPS is captured at last**, as its whole thirteen-page walk. It had no
+  fixture at all, which is precisely how defect 1 survived: the one source with
+  a hand-rolled total-reader was the one whose reader had never met real markup.
+  The captured walk parses 74 postings and reconciles against its own stated 74.
+
+Fixture directory 3.5 MB → 5.0 MB. `novo_nordisk`, `unops` and `jpal` all need
+`--pages all` when recaptured; the golden comments say so.
+
+Also fixed: the summary table said 552 tests where the result section said 554
+(neither is current — see Numbers), and `capture_one` shadowed its own `source`
+parameter with a URL.
 
 **Left for later.** `ruff format` has never been run on this repo, so 36 files
 disagree with it and the ones this package touched could not be formatted
