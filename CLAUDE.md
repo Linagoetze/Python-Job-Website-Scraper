@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 Persistent instructions for Claude Code working in this repository.
-Read this file and `docs/REFACTOR-PLAN.md` at the start of every session.
+Read this file, `docs/REFACTOR-PLAN.md` and `docs/SOURCES-PLAN.md` at the start
+of every session.
 
 ## What this project is
 
@@ -69,9 +70,20 @@ These exist because the codebase has drifted in specific ways. Respect them.
 - **Tests before refactors.** If a package changes behaviour in a module with no
   test coverage, write the characterisation test first.
 - **Ask before adding dependencies.** State what you want and why, and wait.
-- **Never touch** `.venv/`, `.git.backup/`, `data/*.csv`, `data/*.xlsx`,
-  `data/curated/`, or the gitignored `sources.yaml` / `rules.json`. These hold
-  real personal data and local state.
+- **Never touch** `.venv/`, `.git.backup/`, `data/*.csv`, `data/*.xlsx`, or the
+  gitignored `sources.yaml` / `rules.json`. These hold real personal data and
+  local state.
+- **`data/curated/` is written only through `job_scraper/tools/sources.py`.**
+  Never hand-edit a file there, never rewrite one wholesale, and never open one
+  in a spreadsheet application. The tool appends one record at a time, writes
+  via a temp file and `os.replace()`, and leaves a timestamped backup beside the
+  file. Every other operation on that directory — deleting, reordering, editing
+  an existing entry, changing a schema — belongs to the owner and must be asked
+  for first. This is narrower than it looks: the two files this project has lost
+  were both lost by a person with the file open, so an append-only writer with a
+  backup is the safer path rather than the looser one. **Until SP1 of
+  `docs/SOURCES-PLAN.md` lands, that tool does not exist, so no session writes
+  to `data/curated/` at all.**
 - **Never invent test fixtures from live sites** by scraping during a session.
   Use the saved fixtures in `tests/fixtures/`.
 
