@@ -1,0 +1,5 @@
+organisation;url;reason
+Northwind Health;https://job-boards.greenhouse.io/northwind;Requires a login before any posting is visible
+Contoso Rail;https://careers.contoso-rail.example;Persistent 403, even at one request a minute
+Fabrikam Nutrition;https://apply.workable.com/fabrikam/;"No job content in the DOM; rendered from a private API"
+Tailspin Aid;http://www.tailspin.example/vacancies;Anti-fingerprinting: headless Chromium is served an empty list

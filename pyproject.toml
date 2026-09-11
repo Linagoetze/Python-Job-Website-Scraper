@@ -22,8 +22,8 @@ line-length = 100
 # the refactor plan's business, not the linter's.
 select = ["E", "F", "W", "I", "UP", "B"]
 
-# No per-file-ignores. The only rule that needs suppressing is E402, in the two
+# No per-file-ignores. The only rule that needs suppressing is E402, in the
 # modules that amend sys.path before importing the project (scripts/ is outside
-# the package), and both carry an inline `# noqa: E402` at the import itself —
+# the package), and each carries an inline `# noqa: E402` at the import itself —
 # which says why at the place it applies, and stops applying the moment the
 # import moves.
