@@ -468,3 +468,52 @@ session — see `CLAUDE.md`.
 
   Retiring any of these is a decision for the owner, not a maintenance finding.
   The audit reached the same conclusion independently (§7E) and left them.
+
+- **Two sources are the same source when they are the same *board*, not the
+  same host** (SP1). Half the supported ATS platforms are multi-tenant:
+  `sources.yaml` today has six employers on `job-boards.greenhouse.io`, three
+  on `jobs.ashbyhq.com` and two on `apply.workable.com`. A host match would
+  report a brand-new Greenhouse employer as already present — and, in SP3 and
+  SP7, as already tombstoned, which is the expensive direction to be wrong in.
+  `urlutil.board_identity` is the normalised host (lowercased, `www.` and
+  scheme removed via `normalize_http_url`) plus, on a known shared host, the
+  first path segment that is not a locale. Single-tenant hosts are their own
+  identity, so `careers.oatly.com/en-GB/jobs` and `careers.oatly.com/jobs/123`
+  match. **Workday is treated as shared** even though each tenant has its own
+  subdomain: a tenant can host another brand's board (`sources.yaml` reaches
+  Busuu through Chegg's), so the path segment stays part of the identity. That
+  errs towards "a different board", which is the safe error here. Adding a
+  platform that puts every customer on one hostname means adding its host to
+  `_SHARED_BOARD_HOSTS`; platforms that give each employer a subdomain
+  (Teamtailor, Breezy, Personio, Recruitee) need no entry.
+
+- **`data/curated/` is a git repository of its own** (owner's decision,
+  2026-09-11, SP0 option 2; wired into the writer by SP1). `git init` inside
+  that directory gives the curated files a real undo, and the outer repository
+  cannot see it because `data/curated/*` is ignored deny-by-default — nothing
+  there can reach the public remote. `tools/sources.py` commits each write to
+  it automatically, staging **only** the YAML file it wrote, never the `.bak`
+  copies. The commit is best-effort and reported: the file is already written
+  by the time git runs, so a git failure warns rather than raises. Two things
+  this does *not* replace: the timestamped `.bak` (it also covers an
+  uncommitted hand-edit sitting in the working tree), and the mirror outside
+  the working tree (`git clone --mirror data/curated ~/Documents/job_scraper_curated.git`),
+  which is the only copy that survives the directory being deleted — plain
+  `git clean -xfd` refuses to delete a directory holding a `.git`, but `-xff`
+  overrides that.
+
+- **A migration writes null, never a guess** (SP1). The old
+  `excluded_sources.csv` had no `excluded_on` and the old
+  `candidate_sources.xlsx` had no `last_checked`, `category`, `ats` or
+  `source_of_record`. `scripts/migrate_curated_to_yaml.py` leaves every one of
+  them null rather than stamping the migration date. `last_checked` exists
+  precisely so nobody re-checks a source blind; a date invented during a
+  migration says "checked" about work nobody did. The old `notes` column maps
+  to `blocker` because it is the nearest field — in the owner's file it is
+  empty in all twenty rows, so nothing was coerced in practice.
+
+- **`sources check` exits 1 when it finds nothing** (SP1), the way `grep`
+  does, so `sources check <url> || echo new` works in a shell. The refusals
+  are exit 1 too, but they print to stderr and change no file, so a caller
+  that cares can tell them apart by stream.
+

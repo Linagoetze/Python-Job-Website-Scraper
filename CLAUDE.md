@@ -34,8 +34,10 @@ job_scraper/
   experience_filter.py Layer 3 (title) and Layer 5 (detail page)
   urlutil.py          URL normalisation and dedupe keys
   blocklist.py        Permanently rejected postings
+  curated.py          The two curated source lists (tombstone, candidates)
   extractors/         One module per ATS or site, registry.py maps names
   storage/            SQLite store (db.py, internal) and xlsx store (presentation)
+  tools/              Maintenance commands, incl. sources.py (the curated lists)
 ```
 
 Data flow: `sources.yaml` -> extractor -> `JobRecord` dicts -> filter layers ->
@@ -104,9 +106,11 @@ These exist because the codebase has drifted in specific ways. Respect them.
   an existing entry, changing a schema — belongs to the owner and must be asked
   for first. This is narrower than it looks: the two files this project has lost
   were both lost by a person with the file open, so an append-only writer with a
-  backup is the safer path rather than the looser one. **Until SP1 of
-  `docs/SOURCES-PLAN.md` lands, that tool does not exist, so no session writes
-  to `data/curated/` at all.**
+  backup is the safer path rather than the looser one. The tool exists as of
+  SP1 (`python -m job_scraper.tools.sources`); it also commits each write to
+  the private git repository inside `data/curated/`, if the owner has created
+  one. **`scripts/migrate_curated_to_yaml.py` is the owner's to run, not a
+  session's** — it is the one thing that writes two whole files at once.
 - **Never invent test fixtures from live sites** by scraping during a session.
   Use the saved fixtures in `tests/fixtures/`.
 
