@@ -87,7 +87,7 @@ the ordering below.
 | SP | Title | Time | Model | Effort cue | Status | Branch |
 |----|-------|------|-------|-----------|--------|--------|
 | 0 | Back up `data/curated/` before anything writes to it | 0.5 hr | — (owner) | none | not started | — |
-| 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | not started | `sp0b-split-plan` |
+| 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | not started | `sp1-curated-yaml` |
 | 2 | Recover `skipped_sources` from the transcript archive | 2 hr | Opus 5 | `think` | not started | `sp2-recover-skipped` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
@@ -291,6 +291,54 @@ each against the code rather than trusting this list:
 
 Branch sp0b-split-plan. Commit, do not push. Update this plan file.
 ```
+
+### Result — done 2026-09-11, branch `sp0b-split-plan`
+
+- **`docs/DECISIONS.md` created**, holding the refactor plan's decisions log
+  (its former lines 118-573) verbatim. Every in-line citation of a package
+  (`WP8g`, `CU3`, ...) is now a markdown link into `docs/REFACTOR-PLAN.md`'s
+  matching section, computed against GitHub's own heading-slug algorithm and
+  checked for collisions — no citation was left as inert text.
+- **`docs/REFACTOR-PLAN.md` retitled as an archive** in its opening lines
+  (consult on demand, grep rather than read) and its decisions-log section
+  replaced with a one-paragraph pointer to `docs/DECISIONS.md`, leaving the
+  per-package prompts and results untouched below it.
+- **The standing POLICY moved, not copied.** "Keeping the public repo clean"
+  and "Place names in this file and in the tests" stay physically in
+  `docs/REFACTOR-PLAN.md` (they are the reasoning an archive holds), and
+  `CLAUDE.md`'s Working rules gained a compressed rule for each with a link
+  back to the full section. The place-names compression was checked against
+  the instruction not to overstate it: it names `docs/REFACTOR-PLAN.md` and
+  the tests specifically, and calls out that `docs/SOURCES-PLAN.md` made the
+  opposite call for itself (company names stay out of that file).
+- **"Future work" shrunk to a pointer** at SP4, SP5 and SP6, heading text kept
+  unchanged so the two `#future-work` links in `README.md` keep resolving
+  without themselves needing a fix. The one piece of its reasoning not already
+  duplicated in this file — that the reader count, not the source count, is
+  the honest measure of fixture coverage — was moved into SP4 above rather
+  than deleted.
+- **CLAUDE.md's opening instruction, architecture block and Definition of
+  done updated**, each verified against the code rather than trusted from the
+  prompt: `storage/csv_store.py` is gone (deleted in WP5, confirmed by
+  `ls job_scraper/storage/`), the "Redesign, do not patch" list dropped to the
+  two areas that still exist, the data-flow line now says SQLite store with
+  the xlsx as its export, and the `ruff check` parenthetical was removed (CI
+  has run it since WP2, 2026-08-07, confirmed against `.github/workflows/ci.yml`).
+  `git clean -xfd` added to the never-run list.
+- **`README.md`'s "How this is built and maintained" table now lists all
+  five documents**, the `REFACTOR-PLAN.md` row rewritten as the archive it is,
+  the paragraph beneath it split between "reasoning" (`docs/DECISIONS.md`) and
+  "full incident narrative" (`docs/REFACTOR-PLAN.md`), and the Layout table's
+  `docs/` row updated to match. The "thirteen of the twenty-six extractors are
+  uncovered" paragraph now points at SP4/SP6 of this file instead of the old
+  Future work anchor — that number itself is untouched here, since moving it
+  is SP4's and SP6's job, not this one's.
+- **Grepped the whole repository** for `REFACTOR-PLAN.md` references
+  (`scripts/capture_fixtures.py`, `scripts/refresh_label_locations.py`,
+  `job_scraper/filtering.py`, `tests/test_extractors_golden.py`): all of them
+  cite package sections that are still physically in `docs/REFACTOR-PLAN.md`
+  unchanged, so none needed a fix.
+- Code, config and tests: none touched, as scoped.
 
 ### Your to-dos
 
@@ -541,6 +589,16 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
 `breezy`, `lever`, `personio`, `smartrecruiters`, `workable`. These five come
 first because a bug in a generic reader is inherited by every employer added on
 that platform afterwards — which is precisely what SP5 is about to do.
+
+**Count by reader, not by source, and expect the gap to look smaller than it
+is.** Moved here from the refactor plan's old Future work section (SP0b,
+2026-09-11): 22 of 49 sources have a saved page today, which reads as
+reasonable coverage, but the reader count is the honest one — thirteen readers
+have no saved page at all, so no golden test and no parse check exists for the
+code that actually does the parsing, and a bug in one is inherited by every
+source that shares it. That is also why these five come before SP6's other
+eight: a shared reader multiplies its bugs across employers, and a single-use
+one does not.
 
 **Expect bugs, and budget for fixing rather than for capturing.** WP8g captured
 four SuccessFactors sources and three of the four were broken. CU2 captured
@@ -825,6 +883,14 @@ Record any decision a future session would otherwise re-derive. Seeded with
   under SP0.
 - **Backups go outside the working tree.** A copy inside `data/` shares the fate
   of the thing it is backing up.
+- **The refactor's decisions log lives at `docs/DECISIONS.md`, not in
+  `docs/REFACTOR-PLAN.md` (SP0b, 2026-09-11).** `docs/REFACTOR-PLAN.md` is now
+  an archive, consulted on demand rather than read every session; its
+  decisions log — the ~800 lines a session actually needs — moved out
+  verbatim, with every in-line package citation rewritten as a link back into
+  the archive. This file's own decisions log, above, stays exactly where it
+  is: it is already the size a session needs, and splitting it further would
+  just be more files to open.
 
 ## Publishing this file
 
