@@ -24,8 +24,10 @@ job_scraper/config/rules.json
 # that has to be extended every time an application writes a sidecar is a rule
 # that will be wrong again.
 data/curated/*
-!data/curated/*.example.csv
-!data/curated/*.example.xlsx
+!data/curated/*.example.*
+# The timestamped backups the sources tool leaves beside a curated file (SP1)
+# hold the same private data as the file they copy, whatever it is named.
+data/curated/*.bak
 
 # Pre-publish backup of the original repo history (local only).
 .git.backup/

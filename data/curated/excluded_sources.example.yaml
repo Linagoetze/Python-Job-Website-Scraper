@@ -1,0 +1,22 @@
+# Example tombstone. Copy this to excluded_sources.yaml, or let the migration
+# script write the real one from excluded_sources.csv:
+#
+#   python scripts/migrate_curated_to_yaml.py --dry-run
+#
+# Then stop opening it by hand:
+#
+#   python -m job_scraper.tools.sources exclude "Northwind Health" \
+#       https://job-boards.greenhouse.io/northwind "requires a login"
+#
+# Sources ruled out permanently. `reason` is what stops the same career page
+# being investigated twice; `excluded_on` is null for rows migrated from the
+# old CSV, which never recorded one.
+excluded:
+  - organisation: Northwind Health
+    url: https://job-boards.greenhouse.io/northwind
+    reason: Requires a login before any posting is visible
+    excluded_on: '2026-05-11'
+  - organisation: Contoso Rail
+    url: https://careers.contoso-rail.example
+    reason: Persistent 403, even at one request a minute
+    excluded_on:
