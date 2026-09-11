@@ -1,8 +1,9 @@
 # CLAUDE.md
 
 Persistent instructions for Claude Code working in this repository.
-Read this file, `docs/REFACTOR-PLAN.md` and `docs/SOURCES-PLAN.md` at the start
-of every session.
+Read this file, `docs/DECISIONS.md` and `docs/SOURCES-PLAN.md` at the start of
+every session. `docs/REFACTOR-PLAN.md` is an archive of the finished refactor —
+consult it on demand (grep for a package name), not at session start.
 
 ## What this project is
 
@@ -34,21 +35,22 @@ job_scraper/
   urlutil.py          URL normalisation and dedupe keys
   blocklist.py        Permanently rejected postings
   extractors/         One module per ATS or site, registry.py maps names
-  storage/            CSV store (internal) and xlsx store (presentation)
+  storage/            SQLite store (db.py, internal) and xlsx store (presentation)
 ```
 
 Data flow: `sources.yaml` -> extractor -> `JobRecord` dicts -> filter layers ->
-store -> `data/jobs.xlsx`.
+SQLite store -> `data/jobs.xlsx` (an export of the store, not the store itself).
 
 ## Design principles
 
 These exist because the codebase has drifted in specific ways. Respect them.
 
-- **Redesign, do not patch.** This project grew one session at a time, and three
-  areas show it: `storage/csv_store.py`, the filter ladder in `pipeline.py`, and
-  `config/title_exclude_keywords.csv`. When asked to change any of these, read
-  the whole module and consider whether the structure still fits before adding
-  to it.
+- **Redesign, do not patch.** This project grew one session at a time, and two
+  areas show it: the filter ladder in `pipeline.py`, and
+  `config/title_exclude_keywords.csv`. When asked to change either of these,
+  read the whole module and consider whether the structure still fits before
+  adding to it. (A third area, `storage/csv_store.py`, was one of these until
+  it was deleted outright rather than patched — see `docs/DECISIONS.md`.)
 - **No new filter layers without asking.** There are already five. Adding a
   sixth regex pass is almost always the wrong answer. Say so and propose an
   alternative.
@@ -73,6 +75,27 @@ These exist because the codebase has drifted in specific ways. Respect them.
 - **Never touch** `.venv/`, `.git.backup/`, `data/*.csv`, `data/*.xlsx`, or the
   gitignored `sources.yaml` / `rules.json`. These hold real personal data and
   local state.
+- **Never run `git clean -xfd`.** Everything irreplaceable in this repository —
+  the store, `data/curated/`, the HTTP cache — is gitignored by design, and
+  `-x` targets exactly that: a dry run on 2026-09-10 confirmed it would remove
+  all of it with no git history behind any of it. `git clean` without `-x` is
+  fine.
+- **Keep the public repo clean.** Every private file needs a tracked `.example`
+  twin; the real one is gitignored. Ignore rules for a directory of private
+  files must deny by default (`*` plus explicit `!*.example.*`) rather than
+  enumerate files one at a time — a per-file list has already let a sidecar
+  slip through twice. Stage named paths; `git add -A` is the wrong instinct
+  here. Full reasoning: [docs/REFACTOR-PLAN.md#keeping-the-public-repo-clean](docs/REFACTOR-PLAN.md#keeping-the-public-repo-clean).
+- **Real place names in `docs/REFACTOR-PLAN.md` and in the tests are fine.**
+  This is a considered decision, not an oversight: the employers followed are
+  already public via the extractor registry, and the test suite is built from
+  real cities. Do not launder them out on your own initiative, and do not
+  assume the same latitude extends to `docs/SOURCES-PLAN.md` — that file
+  deliberately keeps candidate and excluded company names out of itself; see
+  its own "Publishing this file" section. What stays private everywhere:
+  `sources.yaml`, `rules.json`, the store, the labelled set, the blocklist, and
+  the contact details. Full reasoning:
+  [docs/REFACTOR-PLAN.md#place-names-in-this-file-and-in-the-tests](docs/REFACTOR-PLAN.md#place-names-in-this-file-and-in-the-tests).
 - **`data/curated/` is written only through `job_scraper/tools/sources.py`.**
   Never hand-edit a file there, never rewrite one wholesale, and never open one
   in a spreadsheet application. The tool appends one record at a time, writes
@@ -109,8 +132,13 @@ These exist because the codebase has drifted in specific ways. Respect them.
 ## Definition of done for any package
 
 - [ ] `pytest` passes.
-- [ ] `ruff check .` passes (once WP2 has added it).
-- [ ] `ruff format --check .` passes (WP12 ran the formatter; keep it clean).
+- [ ] `ruff check .` passes.
+- [ ] `ruff format --check .` passes.
 - [ ] `python -m job_scraper.run --help` still works.
-- [ ] `docs/REFACTOR-PLAN.md` updated: package marked done, decisions recorded.
+- [ ] The plan file the package belongs to (`docs/SOURCES-PLAN.md` for an SP
+      package) updated: package marked done, with a result. New decisions
+      recorded in `docs/DECISIONS.md`, not in a plan file.
+- [ ] README and the run summary reflect any user-visible change; anything a
+      later session would otherwise re-derive is in `docs/DECISIONS.md`. Seven
+      prompts can forget; a checklist item does not.
 - [ ] Changes committed on the package branch, not pushed.

@@ -41,7 +41,7 @@ hand-labelled set so a rule change can be *measured* rather than argued about
 ([Would loosening that rule help?](#would-loosening-that-rule-help)).
 
 How the project got here, and why each of those decisions was made, is in
-[docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md) — see
+[docs/DECISIONS.md](docs/DECISIONS.md) — see
 [How this is built and maintained](#how-this-is-built-and-maintained) at the
 bottom.
 
@@ -714,8 +714,9 @@ python scripts/capture_fixtures.py --pages all <source_name>
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit. Not every
 source has one yet — thirteen of the twenty-six extractors are uncovered, and
-closing that gap is the first item under Future work in the
-[refactor plan](docs/REFACTOR-PLAN.md#future-work).
+closing that gap is planned as SP4 and SP6 of
+[docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
+plan's old Future work section.
 
 ## Scraping responsibly
 
@@ -760,26 +761,29 @@ site:
 | `data/curated/` | hand-maintained, not regenerable and all gitignored: the `labels.csv` gold set the eval harness reads, and the legacy `blocklist.csv` (`blocklist.example.csv` is the tracked template) |
 | `scripts/` | the deprecated scrape-and-blocklist wrapper, and the fixture-capture helper the tests are built from |
 | `tests/` | pytest suite, plus `tests/fixtures/` — saved copies of the real career pages each extractor is tested against |
-| `docs/` | `REFACTOR-PLAN.md` (the plan, the decisions log and what is left to do) and `AUDIT.md` (an independent read of the finished code) |
+| `docs/` | `DECISIONS.md` (the living decisions log), `SOURCES-PLAN.md` (the plan for the current source-list work), `REFACTOR-PLAN.md` (the archive of the finished refactor) and `AUDIT.md` (an independent read of the finished code) |
 
 ## How this is built and maintained
 
 The interesting part of this repository is not the scraper — it is the paper
-trail beside it. Three documents, all public:
+trail beside it. Five documents, all public:
 
 | File | What it is |
 | --- | --- |
 | [CLAUDE.md](CLAUDE.md) | The standing instructions any Claude Code session reads before touching this repo: the four priorities above, the design principles the code has drifted against before, what must never be touched, and the definition of done. |
-| [docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md) | The plan for the twenty-six-package refactor that produced the current code, one session per package, written before the work and updated after it — including its **decisions log**, which records what was tried and rejected, with the measurement attached. |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | The living decisions log every session reads at the start: what was tried and rejected, with the measurement attached. Every package that lands a decision appends to it — it is the part of this paper trail that never closes. |
+| [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md) | The plan for the source-list work that follows the refactor, shaped the same way: one package per session, a prompt written before the work, a result written after it. |
+| [docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md) | The archive of the finished twenty-six-package refactor: every package's prompt and result, kept for the full incident narratives behind a decision. No longer read at session start — its decisions log now lives in `docs/DECISIONS.md`. |
 | [docs/AUDIT.md](docs/AUDIT.md) | An independent read of the finished code, checking every claim the plan makes against what is actually there rather than trusting the plan's own status table. Left exactly as written, including the findings that were later fixed. |
 
-The plan file is the one to read if you want the reasoning rather than the
-result. It records the mistakes in full — a live store modified by accident, a
-private file staged into a public repo, a golden test that passed on 9 of 37
-postings — because a fix without the reasoning behind it gets undone by the next
-person who finds it odd. It ends with a
-[Future work](docs/REFACTOR-PLAN.md#future-work) section; the refactor itself is
-closed.
+Read `docs/DECISIONS.md` for the reasoning behind a specific rule — it is
+distilled to what a later session would otherwise have to re-derive. Read
+`docs/REFACTOR-PLAN.md` for the full story behind one: it records the mistakes
+in full — a live store modified by accident, a private file staged into a
+public repo, a golden test that passed on 9 of 37 postings — because a fix
+without the reasoning behind it gets undone by the next person who finds it
+odd. Its own Future work section is superseded by `docs/SOURCES-PLAN.md`; the
+refactor itself is closed.
 
 ## License
 
