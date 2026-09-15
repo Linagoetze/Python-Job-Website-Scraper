@@ -1,10 +1,11 @@
 # Sources plan
 
-**In progress: SP0b, SP1 and SP2 are done** (as of 2026-09-15); the Status
-table below is the live record, so check it rather than this sentence. This
-file plans the next body of work after the refactor: getting the source list — the employers this scraper watches, the ones
-it has ruled out, and the ones still to check — onto a footing where adding a
-company is a routine rather than a research project.
+**In progress: SP0, SP0b, SP1 and SP2 are done** (as of 2026-09-15); the
+Status table below is the live record, so check it rather than this sentence.
+This file plans the next body of work after the refactor: getting the source
+list — the employers this scraper watches, the ones it has ruled out, and the
+ones still to check — onto a footing where adding a company is a routine rather
+than a research project.
 
 It is deliberately shaped like `docs/REFACTOR-PLAN.md`, because that shape
 worked: one package per session, never two; a prompt written before the work; a
@@ -87,7 +88,7 @@ the ordering below.
 
 | SP | Title | Time | Model | Effort cue | Status | Branch |
 |----|-------|------|-------|-----------|--------|--------|
-| 0 | Back up `data/curated/` before anything writes to it | 0.5 hr | — (owner) | none | not started | — |
+| 0 | Back up `data/curated/` before anything writes to it | 0.5 hr | — (owner) | none | done | — |
 | 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
 | 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
@@ -202,7 +203,7 @@ saves you.
 
 ### Your to-dos
 
-- [ ] Run the option-1 copy now, before any package starts.
+- [x] Run the option-1 copy now, before any package starts.
 - [x] **Decided 2026-09-11: option 2, a private git repository inside
       `data/curated/`.** SP1 wired the commit into the writer — every write
       stages just the YAML file it wrote and commits it, and says so. Still
@@ -750,7 +751,7 @@ about your own history that no file records:
 - [x] For each candidate the archive does not cover, dictate the blocker if you
       remember it, with a date if you know one, or say "leave it". A blank
       blocker is honest; a guessed one misleads every later audit.
-- [ ] Tell the session about any organisation you remember that the archive did
+- [x] Tell the session about any organisation you remember that the archive did
       not turn up. Dictate it in chat; do not open a file.
 
 **What the session does for you:** it sweeps the archive, matches every row
