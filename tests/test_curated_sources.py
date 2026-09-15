@@ -72,6 +72,7 @@ class TestFrontDoor:
             ["candidate", "--help"],
             ["candidate", "add", "--help"],
             ["candidate", "promote", "--help"],
+            ["candidate", "record-check", "--help"],
         ],
         ids=lambda a: " ".join(a),
     )
@@ -556,6 +557,204 @@ class TestTheCuratedRepository:
         assert ".bak" not in tracked.stdout
 
 
+class TestUndatedCandidate:
+    """SP2: a recovered finding has no known check date, and today is not one."""
+
+    def test_undated_writes_a_null_date(self, tmp_path: Path) -> None:
+        assert (
+            cli(
+                tmp_path, "candidate", "add", "Contoso", GREENHOUSE, "--blocker", "403", "--undated"
+            )
+            == 0
+        )
+        entry = read_yaml(curated.candidates_path(tmp_path))["candidates"][0]
+        assert entry["last_checked"] is None
+
+    def test_without_it_the_date_still_defaults_to_today(self, tmp_path: Path) -> None:
+        assert add_candidate(tmp_path) == 0
+        entry = read_yaml(curated.candidates_path(tmp_path))["candidates"][0]
+        assert entry["last_checked"] == curated.date.today().isoformat()
+
+    def test_undated_and_a_date_together_are_refused_before_anything_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        argv = ["candidate", "add", "Contoso", GREENHOUSE, "--blocker", "403"]
+        with pytest.raises(SystemExit) as exit_info:
+            cli(tmp_path, *argv, "--undated", "--last-checked", "2026-07-30")
+        assert exit_info.value.code != 0
+        assert list(tmp_path.iterdir()) == []
+
+    def test_an_undated_candidate_can_have_its_date_filled_later(self, tmp_path: Path) -> None:
+        cli(tmp_path, "candidate", "add", "Contoso", GREENHOUSE, "--blocker", "403", "--undated")
+        assert (
+            cli(tmp_path, "candidate", "record-check", "Contoso", "--last-checked", "2026-09-20")
+            == 0
+        )
+        entry = read_yaml(curated.candidates_path(tmp_path))["candidates"][0]
+        assert entry["last_checked"] == "2026-09-20"
+
+
+MIGRATED = "migrated from candidate_sources.xlsx"
+
+
+class TestRecordCheck:
+    """SP2's fill-only exception to "never edit an existing entry".
+
+    The candidates here look the way SP1's migration left the real ones: every
+    field but the organisation and URL null, and `source_of_record` naming the
+    migration.
+    """
+
+    @pytest.fixture
+    def migrated(self, tmp_path: Path) -> Path:
+        blank = {"category": None, "blocker": None, "last_checked": None, "ats": None}
+        curated.save_list(
+            curated.candidates_path(tmp_path),
+            [
+                {
+                    "organisation": "Contoso",
+                    "url": GREENHOUSE,
+                    **blank,
+                    "source_of_record": MIGRATED,
+                },
+                {
+                    "organisation": "Fabrikam",
+                    "url": "https://careers.fabrikam.example/jobs",
+                    **blank,
+                    "blocker": "persistent 403",
+                    "source_of_record": MIGRATED,
+                },
+            ],
+            curated.CANDIDATES_KEY,
+            curated.CANDIDATE_FIELDS,
+        )
+        return tmp_path
+
+    def entry(self, curated_dir: Path, org: str) -> dict[str, Any]:
+        found = curated.find_organisation(curated.load_candidates(curated_dir), org)
+        assert found is not None
+        return found
+
+    def test_null_fields_are_filled(self, migrated: Path) -> None:
+        argv = ["candidate", "record-check", "Contoso", "--blocker", "no job content in the DOM"]
+        argv += ["--category", "For-profit", "--last-checked", "2026-07-30", "--ats", "hibob"]
+        assert cli(migrated, *argv) == 0
+        entry = self.entry(migrated, "Contoso")
+        assert entry["blocker"] == "no job content in the DOM"
+        assert entry["category"] == "For-profit"
+        assert entry["last_checked"] == "2026-07-30"
+        assert entry["ats"] == "hibob"
+
+    def test_fields_not_passed_stay_null_and_no_date_is_invented(self, migrated: Path) -> None:
+        assert cli(migrated, "candidate", "record-check", "Contoso", "--blocker", "403") == 0
+        entry = self.entry(migrated, "Contoso")
+        assert entry["last_checked"] is None, "a dictated blocker is not a check done today"
+        assert entry["category"] is None and entry["ats"] is None
+
+    def test_other_entries_are_untouched(self, migrated: Path) -> None:
+        before = self.entry(migrated, "Fabrikam")
+        assert cli(migrated, "candidate", "record-check", "Contoso", "--blocker", "403") == 0
+        assert self.entry(migrated, "Fabrikam") == before
+
+    def test_a_field_with_a_value_is_refused_and_the_file_is_byte_identical(
+        self, migrated: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = curated.candidates_path(migrated)
+        before = path.read_bytes()
+        assert cli(migrated, "candidate", "record-check", "Fabrikam", "--blocker", "login") == 1
+        assert path.read_bytes() == before
+        assert list(migrated.glob("*.bak")) == [], "a refusal takes no backup either"
+        assert "persistent 403" in capsys.readouterr().err
+
+    def test_one_filled_field_among_the_arguments_refuses_the_whole_command(
+        self, migrated: Path
+    ) -> None:
+        path = curated.candidates_path(migrated)
+        before = path.read_bytes()
+        argv = ["candidate", "record-check", "Fabrikam", "--category", "For-profit"]
+        argv += ["--last-checked", "2026-07-30", "--blocker", "login", "--source-of-record", "x"]
+        assert cli(migrated, *argv) == 1
+        assert path.read_bytes() == before
+        assert self.entry(migrated, "Fabrikam")["category"] is None
+
+    def test_source_of_record_is_extended_not_replaced(self, migrated: Path) -> None:
+        argv = ["candidate", "record-check", "Contoso", "--blocker", "403"]
+        argv += ["--source-of-record", "recovered from session abc"]
+        assert cli(migrated, *argv) == 0
+        assert (
+            self.entry(migrated, "Contoso")["source_of_record"]
+            == f"{MIGRATED}; recovered from session abc"
+        )
+
+    def test_source_of_record_alone_may_be_extended_on_a_filled_entry(self, migrated: Path) -> None:
+        argv = ["candidate", "record-check", "Fabrikam", "--source-of-record", "confirmed"]
+        assert cli(migrated, *argv) == 0
+        entry = self.entry(migrated, "Fabrikam")
+        assert entry["source_of_record"] == f"{MIGRATED}; confirmed"
+        assert entry["blocker"] == "persistent 403"
+
+    def test_an_unknown_organisation_changes_nothing(self, migrated: Path) -> None:
+        before = sorted((p.name, p.read_bytes()) for p in migrated.iterdir())
+        assert cli(migrated, "candidate", "record-check", "Northwind", "--blocker", "403") == 1
+        assert sorted((p.name, p.read_bytes()) for p in migrated.iterdir()) == before
+
+    def test_the_organisation_is_matched_case_insensitively_or_by_board(
+        self, migrated: Path
+    ) -> None:
+        assert cli(migrated, "candidate", "record-check", "contoso", "--ats", "greenhouse") == 0
+        board = "http://www.job-boards.greenhouse.io/northwind/"
+        assert cli(migrated, "candidate", "record-check", board, "--blocker", "403") == 0
+        entry = self.entry(migrated, "Contoso")
+        assert (entry["ats"], entry["blocker"]) == ("greenhouse", "403")
+
+    @pytest.mark.parametrize(
+        "extra",
+        [[], ["--blocker", "  "], ["--last-checked", "30/07/2026"]],
+        ids=["nothing-to-record", "blank-value", "bad-date"],
+    )
+    def test_an_unusable_fill_changes_nothing(self, migrated: Path, extra: list[str]) -> None:
+        path = curated.candidates_path(migrated)
+        before = path.read_bytes()
+        assert cli(migrated, "candidate", "record-check", "Contoso", *extra) == 1
+        assert path.read_bytes() == before
+        assert list(migrated.glob("*.bak")) == []
+
+    def test_help_writes_nothing(self, migrated: Path) -> None:
+        before = sorted((p.name, p.read_bytes()) for p in migrated.iterdir())
+        with pytest.raises(SystemExit) as exit_info:
+            cli(migrated, "candidate", "record-check", "Contoso", "--blocker", "403", "--help")
+        assert exit_info.value.code == 0
+        assert sorted((p.name, p.read_bytes()) for p in migrated.iterdir()) == before
+
+    def test_the_backup_is_the_file_as_it_was(self, migrated: Path) -> None:
+        before = curated.candidates_path(migrated).read_bytes()
+        assert cli(migrated, "candidate", "record-check", "Contoso", "--blocker", "403") == 0
+        backups = list(migrated.glob("candidate_sources.yaml.*.bak"))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == before
+
+    def test_an_interrupted_write_leaves_the_original_intact(
+        self, migrated: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = curated.candidates_path(migrated)
+        before = path.read_bytes()
+
+        def boom(src: object, dst: object, **kwargs: object) -> None:
+            raise OSError("interrupted")
+
+        monkeypatch.setattr(os, "replace", boom)
+        with pytest.raises(OSError, match="interrupted"):
+            cli(migrated, "candidate", "record-check", "Contoso", "--blocker", "403")
+        assert path.read_bytes() == before
+        assert list(migrated.glob(".candidate_sources-*")) == []
+
+    def test_the_library_refuses_a_field_it_may_not_fill(self, migrated: Path) -> None:
+        with pytest.raises(curated.CuratedError, match="cannot write"):
+            curated.record_check(
+                curated.candidates_path(migrated), "Contoso", {"url": "https://x.example"}
+            )
+
+
 class TestAnInterruptedPromote:
     """`promote` writes two files. A crash between them must not strand the board."""
 
@@ -794,6 +993,7 @@ class TestBeforeTheMigration:
             ["list", "candidates"],
             ["exclude", "Someone", "https://someone.example", "r"],
             ["candidate", "promote", "Adventure Works"],
+            ["candidate", "record-check", "Adventure Works", "--blocker", "b"],
         ],
         ids=lambda a: " ".join(a[:2]),
     )

@@ -560,3 +560,40 @@ session — see `CLAUDE.md`.
   `promote` rule above. "Refuse to overwrite" is only safe when checked for all
   targets up front and when an identical target counts as finished.
 
+- **A gitignored file deleted after a session read it is often recoverable
+  from the transcript archive** (SP2, 2026-09-15). `skipped_sources.csv` was
+  untracked, deleted in error in [CU1](REFACTOR-PLAN.md#cu1--final-cleanup-session-1-of-3), and recorded as permanently lost. It was
+  not: `~/.claude/projects/` keeps every tool result verbatim, and
+  `scripts/recover_skipped_sources.py` rebuilt thirteen rows. Their block is
+  byte-for-byte the size an archived `ls` reported for the file, so they are
+  the whole file as it stood from 2026-05-27 until its deletion — not proof
+  that nothing was removed before then, when the archive barely begins. Check the archive before writing anything off.
+  Three things the sweep has to get right, each of which a first attempt
+  would miss: every project directory, because worktree sessions are archived
+  apart from the main one; subagent transcripts one level down; and **tool
+  results only**, because plans and prompts quote the header without holding
+  a single row.
+- **A transcript's date is when a row was read, not when the site was checked**
+  (SP2). The prompt said to date recovered candidates by their session. The
+  archive showed that session only read and pruned the file; its rows were
+  last written on or before the file's modification time, two months
+  earlier, and the dates of individual checks were never recorded. So the
+  recovered candidates carry `last_checked: null` and the bound in
+  `source_of_record`, via a new `candidate add --undated` — the default of
+  today would have claimed a check nobody did, which is the "a migration
+  writes null, never a guess" entry above applied to a recovery. Before
+  dating anything from an archive, look at what the session actually did to
+  the file.
+- **`candidate record-check` is the one command that edits an existing entry,
+  and it may only fill** (SP2, owner-approved exception). SP1's migration
+  could carry no blocker, date, category or ATS for the candidates it moved,
+  and `candidate add` refuses a listed candidate, so without it a migrated row
+  could never say why it is not a source — the "checked blind" state the
+  schema exists to prevent. The exception is kept as narrow as that need:
+  a field is written only while empty, one already-set field refuses the whole
+  command with the file unchanged, and `source_of_record` is appended to with
+  `; `, never replaced, so the migration's provenance survives. There is still
+  no general edit, delete or overwrite. The consequence to keep in mind:
+  **a value written by `record-check` cannot be corrected by it**, which is
+  why a half-remembered blocker should be left empty rather than recorded —
+  empty can still be filled after a real check, and a wrong value cannot.

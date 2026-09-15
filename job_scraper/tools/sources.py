@@ -5,6 +5,7 @@
     python -m job_scraper.tools.sources exclude <org> <url> <reason>
     python -m job_scraper.tools.sources candidate add <org> <url> --blocker ...
     python -m job_scraper.tools.sources candidate promote <org>
+    python -m job_scraper.tools.sources candidate record-check <org> --blocker ...
 
 `check` searches both curated lists *and* `sources.yaml`, and exits 1 when it
 finds nothing, so `sources check <url> || echo new` works.
@@ -14,6 +15,9 @@ list rather than modifying the entry, backs the file up with a timestamped
 `.bak` beside it, and replaces it through a temp file in the same directory.
 `promote` is the single exception — moving a candidate to the tombstone means
 removing it from the candidates file — and it backs up both files.
+`candidate record-check` is the other: it fills fields that are still empty on
+an existing candidate, refuses outright if any of them already holds a value,
+and appends to `source_of_record` rather than replacing it.
 
 Matching is by **board identity**, not by host: `job-boards.greenhouse.io`
 carries six different employers in `sources.yaml` today, and a host match would
@@ -83,13 +87,37 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     add.add_argument("--blocker", required=True, help="why it is not a source yet")
     add.add_argument("--ats", default=None)
     add.add_argument("--category", default=None)
-    add.add_argument("--last-checked", dest="last_checked", default=None, help="default: today")
+    when = add.add_mutually_exclusive_group()
+    when.add_argument("--last-checked", dest="last_checked", default=None, help="default: today")
+    when.add_argument(
+        "--undated",
+        action="store_true",
+        help="leave last_checked empty: for a finding recovered from a record rather than "
+        "checked today, whose real date is unknown",
+    )
     add.add_argument("--source-of-record", dest="source_of_record", default=None)
 
     promote = candidate_sub.add_parser("promote", help="move a candidate to the tombstone")
     promote.add_argument("organisation")
     promote.add_argument("--reason", default=None, help="default: the candidate's blocker")
     promote.add_argument("--on", dest="excluded_on", default=None, help="date (default: today)")
+
+    record = candidate_sub.add_parser(
+        "record-check",
+        help="fill EMPTY fields on an existing candidate; never replaces a value",
+        description=(
+            "Fill-only. Writes blocker, category, last_checked and ats only while they are "
+            "empty; if any field passed already has a value, nothing is changed. "
+            "--source-of-record is appended to what is there, never replaces it. "
+            "There is no default date: a check is dated only when a date is given."
+        ),
+    )
+    record.add_argument("organisation", help="the candidate's name, or its board URL")
+    record.add_argument("--blocker", default=None)
+    record.add_argument("--category", default=None)
+    record.add_argument("--last-checked", dest="last_checked", default=None, help="YYYY-MM-DD")
+    record.add_argument("--ats", default=None)
+    record.add_argument("--source-of-record", dest="source_of_record", default=None)
 
     return parser.parse_args(argv)
 
@@ -275,7 +303,8 @@ def _cmd_candidate_add(args: argparse.Namespace, curated_dir: Path) -> int:
         "url": args.url,
         "category": args.category,
         "blocker": args.blocker,
-        "last_checked": args.last_checked or _today(),
+        # --undated writes null: today would claim a check nobody did today.
+        "last_checked": None if args.undated else (args.last_checked or _today()),
         "ats": args.ats,
         "source_of_record": args.source_of_record,
     }
@@ -343,6 +372,22 @@ def _cmd_candidate_promote(args: argparse.Namespace, curated_dir: Path) -> int:
     return 0
 
 
+def _cmd_candidate_record_check(args: argparse.Namespace, curated_dir: Path) -> int:
+    path = curated.candidates_path(curated_dir)
+    fills = {name: getattr(args, name) for name in curated.FILLABLE_CANDIDATE_FIELDS}
+    entry, backup = curated.record_check(
+        path, args.organisation, fills, source_of_record=args.source_of_record
+    )
+    _report_write(
+        curated_dir,
+        [path],
+        [b for b in [backup] if b],
+        f"recorded the check on {entry['organisation']}.",
+    )
+    _commit(curated_dir, [path], f"record check for {entry['organisation']}", skip=args.no_commit)
+    return 0
+
+
 def _finish_interrupted_promote(
     args: argparse.Namespace,
     curated_dir: Path,
@@ -404,6 +449,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_exclude(args, curated_dir)
         if args.candidate_command == "add":
             return _cmd_candidate_add(args, curated_dir)
+        if args.candidate_command == "record-check":
+            return _cmd_candidate_record_check(args, curated_dir)
         return _cmd_candidate_promote(args, curated_dir)
     except (curated.CuratedError, ValueError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
