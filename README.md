@@ -657,6 +657,7 @@ python -m job_scraper.tools.sources check <url-or-name>
 python -m job_scraper.tools.sources exclude <org> <url> <reason>
 python -m job_scraper.tools.sources candidate add <org> <url> --blocker "..."
 python -m job_scraper.tools.sources candidate promote <org>
+python -m job_scraper.tools.sources candidate record-check <org> --blocker "..."
 ```
 
 The two hand-maintained lists in `data/curated/` — `excluded_sources.yaml`,
@@ -684,6 +685,16 @@ candidate to the tombstone means — and it backs up both files first. It writes
 the tombstone before it removes the candidate, so if it is interrupted in
 between, run the same `promote` again: it sees the board already tombstoned
 under that name and finishes the move.
+
+**`candidate record-check` only fills empty fields.** It is the one way to
+record a blocker, category, `last_checked` date or ATS on a candidate that is
+already listed — the migrated candidates arrived with all of them empty. If
+any field you pass already holds a value it refuses the whole command and
+changes nothing; it never replaces a value. `--source-of-record` is appended to
+what is there with `; `, never substituted. It has no default date: give
+`--last-checked` only when you know when the check happened. For the same
+reason `candidate add --undated` records a candidate with no date, for a
+finding recovered from a record rather than checked today.
 
 If `data/curated/` is a git repository of its own (`git init` there; the outer
 repository cannot see it, because everything under `data/curated/` is ignored
@@ -757,7 +768,7 @@ registry line.
 python -m pytest -q
 ```
 
-725 tests, about fourteen seconds, no network access required. Extractors are
+756 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
@@ -824,7 +835,7 @@ site:
 | `job_scraper/tools/` | maintenance commands |
 | `data/` | generated output: `jobs.sqlite3` (the store), `jobs.xlsx`, `jobs_sources.csv`. All regenerable from a scrape except the store's own review history |
 | `data/curated/` | hand-maintained, not regenerable and all gitignored: `excluded_sources.yaml` (boards ruled out for good) and `candidate_sources.yaml` (boards still to check), both written by `tools/sources.py` rather than by hand; the `labels.csv` gold set the eval harness reads; and the legacy `blocklist.csv`. Every one has a tracked `.example` twin |
-| `scripts/` | the deprecated scrape-and-blocklist wrapper, the fixture-capture helper the tests are built from, and `migrate_curated_to_yaml.py` (a one-off) |
+| `scripts/` | the deprecated scrape-and-blocklist wrapper, the fixture-capture helper the tests are built from, and two one-offs: `migrate_curated_to_yaml.py` and `recover_skipped_sources.py` |
 | `tests/` | pytest suite, plus `tests/fixtures/` — saved copies of the real career pages each extractor is tested against |
 | `docs/` | `DECISIONS.md` (the living decisions log), `SOURCES-PLAN.md` (the plan for the current source-list work), `REFACTOR-PLAN.md` (the archive of the finished refactor) and `AUDIT.md` (an independent read of the finished code) |
 

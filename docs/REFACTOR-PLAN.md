@@ -5139,6 +5139,8 @@ Branch `cu1-tidy`, not pushed.
     files backwards and asked for the opposite. `skipped_sources.csv` was
     already gone by then — it was untracked and gitignored, so there was
     nothing to restore it from, and its content is now permanently lost.
+    *(Corrected 2026-09-15: not lost — recovered from the session transcript
+    archive in [SP2 of `docs/SOURCES-PLAN.md`](SOURCES-PLAN.md#sp2--recover-skipped_sources-from-the-transcript-archive).)*
     `jobs.csv` was deleted only after asking the owner to confirm explicitly,
     given it contradicted both CLAUDE.md's "never touch `data/*.csv`" rule
     and the stated reason for keeping it in the first place; the owner

@@ -89,7 +89,7 @@ the ordering below.
 | 0 | Back up `data/curated/` before anything writes to it | 0.5 hr | — (owner) | none | not started | — |
 | 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
-| 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | not started | `sp2-recover-skipped` |
+| 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
@@ -543,15 +543,15 @@ exactly that kind of annotation from the transcript archive.
 
 ### Your to-dos
 
-- [ ] After the branch is reviewed, run
+- [x] After the branch is reviewed, run
       `python scripts/migrate_curated_to_yaml.py --dry-run`, read it, then run
       it without the flag. This is the one step a session must not do for you.
-- [ ] Confirm both YAML files look right, then delete the old `.csv` / `.xlsx`
+- [x] Confirm both YAML files look right, then delete the old `.csv` / `.xlsx`
       **yourself** — or keep them; they are ignored either way.
 - [x] The SP0 option-2 question is answered: yes, and the writer commits to it.
       The `git init` in `data/curated/` and the off-tree mirror are still
       yours — see SP0.
-- [ ] Sanity-check one refusal by hand after the migration, e.g.
+- [x] Sanity-check one refusal by hand after the migration, e.g.
       `python -m job_scraper.tools.sources check <a URL already in the list>`.
       It should print `EXCLUDED` and exit 0.
 
@@ -686,13 +686,54 @@ are still empty, as counts only, no names. Correct the "permanently lost" claim 
 docs/REFACTOR-PLAN.md with a one-line pointer to this package.
 ```
 
+### Result — done 2026-09-15, branch `sp2-recover-skipped`
+
+- **13 organisations recovered, and the recovery is complete.**
+  `scripts/recover_skipped_sources.py` swept 84 transcript files across both
+  project directories, subagent transcripts included, and found rows in three
+  sessions. The full 13-row block is exactly 2,600 bytes, the size an archived
+  `ls` gave for the file, and the 7-row version left after the 2026-07-30
+  edits is exactly the 1,390 bytes listed afterwards.
+- **One claim in this file was wrong: the 2026-06-12 session holds no rows.**
+  It only lists the file. The rows are in the 2026-07-30 and 2026-08-02
+  sessions.
+- **Cross-check, by board identity and by name, with no row matching one way
+  but not the other:** 6 already tombstoned (the six rows removed from the
+  file on 2026-07-30, so the history is consistent), 0 already active
+  sources, 1 already a candidate, 6 new. One organisation appeared with two
+  URLs for the same board; the later one, a deliberate correction made in
+  that session, was used.
+- **The 6 new rows were added as candidates**, not exclusions, one command
+  and one curated commit each. All six carry the recovered blocker and
+  category, four carry the ATS their blocker names, and `last_checked` is
+  **null**. The archive showed that neither session checked any site — they
+  read and pruned the file, whose rows were last written on or before
+  2026-05-27 — so dating them by session would have claimed a check that did
+  not happen. The bound is recorded in `source_of_record` instead, and
+  `candidate add` gained `--undated` to write it (owner's decision).
+- **Migrated candidates: 1 of 20 now has a blocker, 19 are still empty.** The
+  one was covered by a recovered row. For the other nineteen the owner chose
+  to leave the blocker empty rather than record anything from memory, because
+  empty can still be filled after a real check and a wrong value cannot.
+- **`candidate record-check`** is the owner-approved fill-only exception: it
+  writes blocker, category, `last_checked` and ats only while empty, refuses
+  the whole command if any passed field holds a value, and appends to
+  `source_of_record`. Reasoning in `docs/DECISIONS.md`.
+- **31 new tests** (725 to 756): record-check's fill, refusal with the file
+  byte-identical, all-or-nothing refusal, provenance kept, unknown
+  organisation, `--help`, backup and interrupted write; `--undated`; and the
+  recovery script against synthetic transcripts only.
+- **Docs:** README's curated-lists section and test count, `docs/DECISIONS.md`
+  (the recovery lesson, dating from an archive, the fill-only exception), and
+  a one-line correction in `docs/REFACTOR-PLAN.md`'s CU1 result.
+
 ### Your to-dos
 
 **Before the session starts:**
 
-- [ ] Run the SP1 migration (SP1's to-dos). The tool refuses to work until
+- [x] Run the SP1 migration (SP1's to-dos). The tool refuses to work until
       you do, and the session is told to stop rather than run it for you.
-- [ ] **Approve the fill-only exception**, or strike it from the prompt.
+- [x] **Approve the fill-only exception**, or strike it from the prompt.
       `CLAUDE.md` reserves "editing an existing entry" for you. This is a
       narrow form of it: an empty blocker, category, date or ATS gets filled,
       `source_of_record` gets text appended, and nothing is ever replaced. If
@@ -702,10 +743,10 @@ docs/REFACTOR-PLAN.md with a one-line pointer to this package.
 **During the session.** Only you can do these, because they are judgements
 about your own history that no file records:
 
-- [ ] Review the table the session shows before anything is written. It is the
+- [x] Review the table the session shows before anything is written. It is the
       one chance to catch a row that should be a tombstone rather than a
       candidate, or an old blocker that is no longer true.
-- [ ] For each candidate the archive does not cover, dictate the blocker if you
+- [x] For each candidate the archive does not cover, dictate the blocker if you
       remember it, with a date if you know one, or say "leave it". A blank
       blocker is honest; a guessed one misleads every later audit.
 - [ ] Tell the session about any organisation you remember that the archive did
@@ -1027,9 +1068,9 @@ Three open questions, all of which need you rather than a session:
 1. **Do the new companies run on the five uncovered ATS platforms?** Decides
    whether SP4 blocks SP5. SP3's probe answers it definitively; your recollection
    answers it sooner.
-2. **How complete is the transcript recovery?** SP2 finds out. The archive
-   covers 2026-05-26 onwards, one session in May and none in April, so anything
-   decided before late May is not in it.
+2. **How complete is the transcript recovery?** Answered by SP2: complete.
+   The recovered rows match the file's archived size byte for byte. What the
+   archive cannot give is when each site was checked, so those dates stay null.
 3. **Nested git repository in `data/curated/`, yes or no?** SP0. It changes what
    SP1 builds.
 
@@ -1052,7 +1093,8 @@ Record any decision a future session would otherwise re-derive. Seeded with
   says it is, at the CU1 result section. Verified false on 2026-09-10: the rows
   survive in the local transcript archive under the header
   `organisation,url,category,reason`, in sessions of 2026-06-12, 2026-07-30 and
-  2026-08-02. **The general lesson is worth more than the file: a gitignored
+  2026-08-02. *(SP2 correction: the 2026-06-12 session only lists the file;
+  the rows are in the other two.)* **The general lesson is worth more than the file: a gitignored
   file deleted after a session that read it is often recoverable from
   `~/.claude/projects/`.** Check there before writing anything off.
 - **`CLAUDE.md`'s blanket ban on `data/curated/` was re-scoped, not lifted**
