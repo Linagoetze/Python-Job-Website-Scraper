@@ -335,6 +335,83 @@ def append_entry(
     return save_list(path, [*entries, {f: entry.get(f) for f in fields}], key, fields)
 
 
+# The fields `record_check` may fill. `organisation` and `url` identify the
+# entry and are never written; `source_of_record` is extended, not filled.
+FILLABLE_CANDIDATE_FIELDS: tuple[str, ...] = ("category", "blocker", "last_checked", "ats")
+
+
+class FieldAlreadySetError(CuratedError):
+    """A fill-only write met a field that already holds a value."""
+
+
+class UnknownEntryError(CuratedError):
+    """No entry on the list matches the organisation or board asked for."""
+
+
+def _is_empty(value: Any) -> bool:
+    return value is None or not str(value).strip()
+
+
+def record_check(
+    path: Path,
+    organisation: str,
+    fills: dict[str, str | None],
+    *,
+    source_of_record: str | None = None,
+) -> tuple[dict[str, Any], Path | None]:
+    """Fill empty fields on one existing candidate. Returns the entry and the backup.
+
+    The one sanctioned exception to "never edit an existing entry" (owner's
+    approval, SP2). SP1's migration could carry no blocker or date for the
+    candidates it moved, and `candidate add` refuses a candidate already listed,
+    so without this a migrated row could never record why it is not a source.
+
+    It is **fill-only**, and all-or-nothing: if any field in *fills* already has
+    a value, the whole call is refused and the file is not touched — a recorded
+    blocker is a decision someone made, and a later check that disagrees with it
+    is a conversation for the owner, not an overwrite. `source_of_record` is
+    extended with `"; "`, never replaced, so the migration's own provenance
+    survives. *organisation* is matched by name, or by board when it is a URL.
+    Fields passed as None are simply not given.
+    """
+    given = {name: value for name, value in fills.items() if value is not None}
+    unknown = sorted(set(given) - set(FILLABLE_CANDIDATE_FIELDS))
+    if unknown:
+        raise CuratedError(f"record-check cannot write field(s): {', '.join(unknown)}")
+    blank = sorted(name for name, value in given.items() if not value.strip())
+    if blank or (source_of_record is not None and not source_of_record.strip()):
+        raise CuratedError(
+            f"an empty value records nothing: {', '.join(blank) or 'source_of_record'}"
+        )
+    if not given and source_of_record is None:
+        raise CuratedError("nothing to record: pass at least one field")
+
+    entries = load_list(path, CANDIDATES_KEY, CANDIDATE_FIELDS)
+    entry = find_organisation(entries, organisation) or find_board(entries, organisation)
+    if entry is None:
+        raise UnknownEntryError(f"{path.name} has no candidate matching {organisation!r}")
+
+    already = {name: entry[name] for name in given if not _is_empty(entry.get(name))}
+    if already:
+        held = ", ".join(f"{name}={value!r}" for name, value in sorted(already.items()))
+        raise FieldAlreadySetError(
+            f"{entry['organisation']} already has {held} — record-check only fills empty "
+            "fields, so nothing was changed"
+        )
+
+    updated = dict(entry)
+    updated.update({name: value.strip() for name, value in given.items()})
+    if source_of_record is not None:
+        existing = entry.get("source_of_record")
+        new = source_of_record.strip()
+        updated["source_of_record"] = new if _is_empty(existing) else f"{existing}; {new}"
+    _validate(updated, CANDIDATE_FIELDS, _REQUIRED_CANDIDATE)
+
+    rewritten = [updated if e is entry else e for e in entries]
+    backup = save_list(path, rewritten, CANDIDATES_KEY, CANDIDATE_FIELDS)
+    return updated, backup
+
+
 # --- the private repository inside data/curated/ ---------------------------
 
 
