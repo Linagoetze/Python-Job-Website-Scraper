@@ -73,6 +73,8 @@ class TestFrontDoor:
             ["candidate", "add", "--help"],
             ["candidate", "promote", "--help"],
             ["candidate", "record-check", "--help"],
+            ["candidate", "recheck", "--help"],
+            ["candidate", "activate", "--help"],
         ],
         ids=lambda a: " ".join(a),
     )

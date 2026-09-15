@@ -24,12 +24,14 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from job_scraper.config_loader import load_sources
 from job_scraper.urlutil import board_identity
 
 log = logging.getLogger(__name__)
@@ -410,6 +412,151 @@ def record_check(
     rewritten = [updated if e is entry else e for e in entries]
     backup = save_list(path, rewritten, CANDIDATES_KEY, CANDIDATE_FIELDS)
     return updated, backup
+
+
+class BoardConflictError(CuratedError):
+    """The board is somewhere that makes this command the wrong one for it."""
+
+
+def _find_candidate(entries: list[dict[str, Any]], path: Path, organisation: str) -> dict[str, Any]:
+    entry = find_organisation(entries, organisation) or find_board(entries, organisation)
+    if entry is None:
+        raise UnknownEntryError(f"{path.name} has no candidate matching {organisation!r}")
+    return entry
+
+
+def _history_value(value: Any) -> str:
+    return "null" if _is_empty(value) else str(value)
+
+
+def recheck(
+    path: Path,
+    organisation: str,
+    *,
+    blocker: str,
+    last_checked: str,
+    source_of_record: str,
+    ats: str | None = None,
+    excluded: list[dict[str, Any]],
+    active: list[dict[str, Any]],
+) -> tuple[dict[str, Any], Path | None]:
+    """Replace a candidate's finding after a later check. Returns the entry and the backup.
+
+    The second owner-approved exception to "never edit an existing entry"
+    (SP2b). `record_check` only fills, so once a candidate carries a blocker a
+    re-check had nowhere to go and the stale finding stood. This replaces
+    blocker and last_checked (and ats, when given), but only after writing the
+    old values into `source_of_record`, so a finding that changes is never
+    simply lost: the file carries its own history, as do the `.bak` and the
+    curated commit. organisation, url and category are never written.
+
+    Refused with the file untouched when the date moves backwards, when
+    nothing would change, and when the board is tombstoned (a conflict for the
+    owner) or in *active*, the parsed `sources.yaml` (that is `activate`).
+    """
+    given = {"blocker": blocker, "last_checked": last_checked, "source_of_record": source_of_record}
+    if ats is not None:
+        given["ats"] = ats
+    blank = sorted(name for name, value in given.items() if not value.strip())
+    if blank:
+        raise CuratedError(f"an empty value records nothing: {', '.join(blank)}")
+    try:
+        new_date = date.fromisoformat(last_checked.strip())
+    except ValueError as exc:
+        raise CuratedError(f"last_checked must be a YYYY-MM-DD date, got {last_checked!r}") from exc
+
+    entries = load_list(path, CANDIDATES_KEY, CANDIDATE_FIELDS)
+    entry = _find_candidate(entries, path, organisation)
+    url = str(entry["url"])
+
+    tombstoned = find_board(excluded, url)
+    if tombstoned is not None:
+        raise BoardConflictError(
+            f"{entry['organisation']}'s board is tombstoned as {tombstoned['organisation']!r}. "
+            "A board on both lists is a conflict for the owner to resolve, not a re-check — "
+            "nothing was changed"
+        )
+    source = find_board(active, url)
+    if source is not None:
+        raise BoardConflictError(
+            f"{entry['organisation']}'s board is an active source in sources.yaml "
+            f"({source.get('name')}). A scraped board is not re-checked; use "
+            f"`candidate activate` — nothing was changed"
+        )
+
+    recorded = entry.get("last_checked")
+    if not _is_empty(recorded) and new_date < date.fromisoformat(str(recorded)):
+        raise CuratedError(
+            f"{entry['organisation']} was last checked on {recorded}, and a check does not move "
+            f"backwards to {new_date.isoformat()} — nothing was changed"
+        )
+
+    new = {"blocker": blocker.strip(), "last_checked": new_date.isoformat()}
+    ats_changes = ats is not None and ats.strip() != str(entry.get("ats") or "").strip()
+    if ats_changes:
+        new["ats"] = str(ats).strip()
+    if all(str(entry.get(name) or "").strip() == value for name, value in new.items()):
+        raise CuratedError(
+            f"{entry['organisation']} already records this finding "
+            f"(blocker={entry.get('blocker')!r}, last_checked={recorded}) — nothing to change"
+        )
+
+    was = [
+        f"blocker={_history_value(entry.get('blocker'))}",
+        f"last_checked={_history_value(recorded)}",
+    ]
+    if ats_changes:
+        was.append(f"ats={_history_value(entry.get('ats'))}")
+    history = f"rechecked {new['last_checked']}: was {', '.join(was)}; {source_of_record.strip()}"
+    existing = entry.get("source_of_record")
+
+    updated = dict(entry)
+    updated.update(new)
+    updated["source_of_record"] = history if _is_empty(existing) else f"{existing}; {history}"
+    _validate(updated, CANDIDATE_FIELDS, _REQUIRED_CANDIDATE)
+
+    rewritten = [updated if e is entry else e for e in entries]
+    backup = save_list(path, rewritten, CANDIDATES_KEY, CANDIDATE_FIELDS)
+    return updated, backup
+
+
+def activate(
+    path: Path,
+    organisation: str,
+    sources_path: Path,
+    *,
+    before_write: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
+) -> tuple[dict[str, Any], Path | None]:
+    """Remove a candidate whose board is now scraped. Returns the removed entry and the backup.
+
+    Part of SP2b's exception. Removal needs proof, not a name: the candidate's
+    board identity must match an entry in *sources_path*. A missing
+    `sources.yaml` proves nothing either way, so it is a refusal rather than
+    "not active" — the one place in this module where a missing file is not
+    read as empty. *before_write* is called with the entry and the matching
+    source once every check has passed and before the file is touched, so the
+    caller can put the whole entry on the terminal first.
+    """
+    if not sources_path.is_file():
+        raise CuratedError(
+            f"{sources_path} does not exist, so there is no proof that any board is scraped — "
+            "refusing to remove a candidate"
+        )
+    active = load_sources(sources_path)
+
+    entries = load_list(path, CANDIDATES_KEY, CANDIDATE_FIELDS)
+    entry = _find_candidate(entries, path, organisation)
+    source = find_board(active, str(entry["url"]))
+    if source is None:
+        raise BoardConflictError(
+            f"{entry['organisation']}'s board {board_identity(str(entry['url']))!r} is not in "
+            f"{sources_path.name}, so it is not active — nothing was removed"
+        )
+    if before_write is not None:
+        before_write(entry, source)
+    remaining = [e for e in entries if e is not entry]
+    backup = save_list(path, remaining, CANDIDATES_KEY, CANDIDATE_FIELDS)
+    return entry, backup
 
 
 # --- the private repository inside data/curated/ ---------------------------
