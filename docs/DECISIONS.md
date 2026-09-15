@@ -597,3 +597,15 @@ session — see `CLAUDE.md`.
   **a value written by `record-check` cannot be corrected by it**, which is
   why a half-remembered blocker should be left empty rather than recorded —
   empty can still be filled after a real check, and a wrong value cannot.
+- **Candidates get a lifecycle, not a general edit** (owner's decision,
+  2026-09-15; planned as SP2b in `docs/SOURCES-PLAN.md`, not yet built). SP2
+  left two dead ends: `record-check` cannot record a re-check once a finding
+  exists, and nothing removes a candidate that has become a source except
+  `promote`, which tombstones it. Rejected alternatives: leaving SP5 to report
+  these in chat (the blockers go stale, which is the "checked blind" problem
+  again), and loosening `record-check` to replace dates (fixes half of one gap
+  and blurs the one command that is guaranteed never to replace a value).
+  Chosen: two more commands, each as narrow as its case — `recheck` replaces a
+  finding but writes the old one into `source_of_record` first, and
+  `activate` removes a candidate only when its board is in `sources.yaml`.
+  Whichever command is used, a finding that changes is never simply lost.
