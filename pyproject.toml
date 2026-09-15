@@ -22,8 +22,12 @@ line-length = 100
 # the refactor plan's business, not the linter's.
 select = ["E", "F", "W", "I", "UP", "B"]
 
-# No per-file-ignores. The only rule that needs suppressing is E402, in the two
-# modules that amend sys.path before importing the project (scripts/ is outside
-# the package), and both carry an inline `# noqa: E402` at the import itself —
-# which says why at the place it applies, and stops applying the moment the
-# import moves.
+# No per-file-ignores. The only E402 suppression is inline, in
+# tests/fixture_cases.py — and only there, though three modules amend sys.path
+# to import from outside the package. Ruff exempts an import that follows a
+# `sys.path` call directly, so scripts/capture_fixtures.py and
+# scripts/migrate_curated_to_yaml.py need nothing. fixture_cases.py assigns
+# `_PROJECT_ROOT` before its `sys.path.insert`, and an ordinary statement ends
+# the exemption. Checked with `ruff check --extend-select RUF100 .` (SP1): an
+# E402 `noqa` that suppresses nothing is reported, so add one only where ruff
+# asks for it.

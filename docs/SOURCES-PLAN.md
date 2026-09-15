@@ -88,7 +88,7 @@ the ordering below.
 |----|-------|------|-------|-----------|--------|--------|
 | 0 | Back up `data/curated/` before anything writes to it | 0.5 hr | — (owner) | none | not started | — |
 | 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
-| 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | not started | `sp1-curated-yaml` |
+| 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
 | 2 | Recover `skipped_sources` from the transcript archive | 2 hr | Opus 5 | `think` | not started | `sp2-recover-skipped` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
@@ -202,9 +202,14 @@ saves you.
 ### Your to-dos
 
 - [ ] Run the option-1 copy now, before any package starts.
-- [ ] Decide on option 2. If yes, say so and SP1 will wire the commit into the
-      writer; if no, say so and SP1 will keep the timestamped-backup-file
-      behaviour only.
+- [x] **Decided 2026-09-11: option 2, a private git repository inside
+      `data/curated/`.** SP1 wired the commit into the writer — every write
+      stages just the YAML file it wrote and commits it, and says so. Still
+      yours to do: `git init` in `data/curated/`, an initial commit, and the
+      mirror outside the working tree
+      (`git clone --mirror data/curated ~/Documents/job_scraper_curated.git`).
+      Until that `git init` happens the tool prints that there is no undo
+      beyond the `.bak`, and carries on.
 - [ ] Decide separately whether you want Time Machine for the machine. Unrelated
       to this plan.
 
@@ -426,13 +431,129 @@ files, and update the test count in README.md's Tests section.
 Branch sp1-curated-yaml. Commit, do not push. Update this plan file.
 ```
 
+
+### Result — done 2026-09-11, branch `sp1-curated-yaml`
+
+- **`job_scraper/tools/sources.py`** is the CLI: `list`, `check`, `exclude`,
+  `candidate add`, `candidate promote`. **`job_scraper/curated.py`** is the
+  data layer under it (load, validate, append, atomic write, backup, the
+  commit into the curated repository), so SP2, SP3 and SP7 can read and write
+  the lists without going through argv.
+- **Matching is by board identity**, as specified: `urlutil.board_identity`
+  is the normalised host plus, on a known multi-tenant host, the path segment
+  naming the board. The shared-host cases are written into
+  `tests/test_board_identity.py` explicitly — two Greenhouse boards do not
+  match, the same board does across `http`/`https`, a trailing slash, `www.`,
+  case, whitespace and a deep link into a posting. Workday is treated as
+  multi-tenant too, because a Workday tenant can host another brand's board
+  (`sources.yaml` reaches Busuu through Chegg's). Reasoning in
+  `docs/DECISIONS.md`.
+- **Every writing command is append-only**, refuses a duplicate board *or* a
+  duplicate organisation, refuses to edit an existing entry, takes a
+  timestamped `.bak` first, and writes through a temp file in the same
+  directory with `os.replace()` — the shape lifted from
+  `storage/xlsx_store.py`, not a second one. `promote` is the single command
+  that removes anything, and it backs up both files and writes the tombstone
+  before removing the candidate, so an interruption leaves the board on both
+  lists rather than on neither.
+- **Three refusals that were not in the prompt but fall out of having both
+  lists in one place**: a tombstoned board cannot be re-added as a candidate,
+  a candidate cannot be excluded behind its own back (`promote` is the route),
+  and a board already in `sources.yaml` is neither. Each prints what to do
+  instead and changes no file.
+- **The curated repository is wired in** per the owner's SP0 option-2
+  decision: each write is committed to `data/curated/.git` if that repository
+  exists, staging only the YAML file and never the `.bak` copies. It is
+  best-effort — the file is already written when git runs, so a failure warns
+  rather than raises — and when there is no repository the tool says so and
+  names `git init` as the fix. `--no-commit` skips it.
+- **`scripts/migrate_curated_to_yaml.py`** reads the semicolon-delimited CSV
+  (quoted fields and all — one real reason contains a semicolon) and the
+  workbook, and writes the two YAML files. **It has not been run against the
+  real files**, as instructed; it is proved against
+  `tests/fixtures/curated/`, whose organisations are invented because the
+  rejected list is the one thing this plan decided stays unpublished. It
+  leaves the old files untouched, refuses to overwrite an existing YAML file,
+  refuses two rows that are the same board, and has a `--dry-run` that prints
+  the YAML it would write.
+- **Fields the old formats never held are null, not guessed** — `excluded_on`
+  for all seven tombstone rows, and everything but organisation and URL for
+  the twenty candidates. The old `notes` column maps to `blocker`; it is empty
+  in all twenty rows, so nothing was actually coerced.
+- **123 new tests** (602 to 725), all against `tmp_path`. An autouse fixture
+  makes the real `data/curated/` unreachable from the suite rather than
+  trusting each test to pass `--curated-dir`: a test suite that writes to the
+  file it is protecting is the same mistake it is testing for. The interrupted
+  write is covered twice — failing at `os.replace` and failing while writing
+  the temp file — and both assert the previous list is byte-identical
+  afterwards with no temp file left behind.
+- **`--help` exits without acting** on every subcommand, including the bare
+  command and the `candidate` group, and is tested for each. An unusable
+  command line writes nothing at all: the tests assert the directory is still
+  empty afterwards.
+- **`.gitignore`**: the `data/curated/` negation was a per-extension list
+  (`*.example.csv`, `*.example.xlsx`) — the enumeration `CLAUDE.md` warns
+  about, and it would not have covered a `.yaml` example. It is now
+  `!data/curated/*.example.*` with an explicit re-deny of `data/curated/*.bak`,
+  so the backups stay private whatever they are named. Both new files have a
+  tracked `.example` twin.
+- **README**: the new CLI and the migration script are in "Maintenance
+  commands" (including that `--help` exits without acting, and that matching
+  is by board rather than host), the `data/curated/` and `scripts/` rows of
+  the Layout table are updated, and the test count moved 602 → 725.
+
+- **Follow-up in the same package, three gaps closed** after the result above
+  was first written. (1) A crash between `promote`'s two writes was a trap:
+  the retry refused because the board was tombstoned, `exclude` refused
+  because it was still a candidate and pointed back at `promote`, and the only
+  way out was hand-editing a curated file. Writing the test exposed it. A
+  retried `promote` now finishes the move when the tombstone holds that board
+  under the same organisation, and refuses with "conflict" under a different
+  one. (2) A failed commit to the curated repository is now tested with a
+  real git that has no identity, and with git missing from `PATH`: the file
+  is written and the failure is reported. (3) The CLI and the migration
+  script are run as real processes, because the migration script's import
+  failure earlier in this package was invisible to every in-process test.
+  Also in the follow-up, approved by the owner as slightly out of scope: the
+  four `# noqa: E402` comments this package added suppressed nothing and were
+  removed, and the `pyproject.toml` comment now says which module does need
+  one (`tests/fixture_cases.py`) and why.
+
+- **Two bugs found by a reviewer session before push, both fixed.**
+  (1) *Before migration, the tool read the tombstone as empty.* It reads only
+  the YAML files, and the real tombstone was still the CSV, so `check` said
+  "no match" for a banned employer and `candidate add` accepted one. Now every
+  command except `--help` refuses while an old-format list exists without its
+  YAML replacement, and so do `curated.load_excluded` and `load_candidates`,
+  so SP3 and SP7 get the refusal too. (2) *The migration could stop halfway
+  and then refuse to finish.* It wrote the tombstone, refused the candidates
+  because that YAML already existed, then on the retry refused the tombstone.
+  It now checks both targets before writing either. A target identical to
+  what it would write counts as done, so a re-run, including one after a
+  crash between the two writes, completes the migration. A target with any
+  other content stops the run with nothing written. Both bugs were reproduced
+  on fixture copies first, and the new tests fail against the previous code.
+
+**One thing to know before running the migration:** `candidate_sources.xlsx`
+holds twenty rows and its `notes` column is empty in every one of them, so the
+migrated candidates carry no blocker at all. That is honest but not useful —
+`candidate promote` will ask for a `--reason` for each of them until a blocker
+is recorded. SP2 is the natural place to fill them in, since it is recovering
+exactly that kind of annotation from the transcript archive.
+
 ### Your to-dos
 
-- [ ] After the branch is reviewed, run `python scripts/migrate_curated_to_yaml.py`
-      yourself. This is the one step a session must not do for you.
+- [ ] After the branch is reviewed, run
+      `python scripts/migrate_curated_to_yaml.py --dry-run`, read it, then run
+      it without the flag. This is the one step a session must not do for you.
 - [ ] Confirm both YAML files look right, then delete the old `.csv` / `.xlsx`
       **yourself** — or keep them; they are ignored either way.
-- [ ] Answer the SP0 option-2 question before this package starts.
+- [x] The SP0 option-2 question is answered: yes, and the writer commits to it.
+      The `git init` in `data/curated/` and the off-tree mirror are still
+      yours — see SP0.
+- [ ] Sanity-check one refusal by hand after the migration, e.g.
+      `python -m job_scraper.tools.sources check <a URL already in the list>`.
+      It should print `EXCLUDED` and exit 0.
 
 ---
 

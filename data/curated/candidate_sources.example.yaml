@@ -1,0 +1,30 @@
+# Example candidate list. Copy this to candidate_sources.yaml, or let the
+# migration script write the real one from candidate_sources.xlsx:
+#
+#   python scripts/migrate_curated_to_yaml.py --dry-run
+#
+# Then stop opening it by hand:
+#
+#   python -m job_scraper.tools.sources candidate add "Adventure Works" \
+#       https://job-boards.greenhouse.io/adventureworks \
+#       --blocker "not checked yet" --ats greenhouse
+#
+# Sources still to check. Not "rejected" — "not done yet". `blocker` and
+# `last_checked` are the point of the file: a candidate that was looked at and
+# set aside must carry why and when, or the next audit repeats the work blind.
+# `source_of_record` is free text: where the finding came from.
+candidates:
+  - organisation: Adventure Works
+    url: https://job-boards.greenhouse.io/adventureworks
+    category: logistics
+    blocker: not checked yet
+    last_checked:
+    ats: greenhouse
+    source_of_record: migrated from candidate_sources.xlsx
+  - organisation: Wide World Importers
+    url: https://jobs.ashbyhq.com/wideworld
+    category: education
+    blocker: No job content in the DOM; rendered from a private API
+    last_checked: '2026-07-30'
+    ats: ashby
+    source_of_record: recovered from the 2026-07-30 session transcript

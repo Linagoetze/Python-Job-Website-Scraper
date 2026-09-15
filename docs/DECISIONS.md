@@ -468,3 +468,95 @@ session — see `CLAUDE.md`.
 
   Retiring any of these is a decision for the owner, not a maintenance finding.
   The audit reached the same conclusion independently (§7E) and left them.
+
+- **Two sources are the same source when they are the same *board*, not the
+  same host** (SP1). Half the supported ATS platforms are multi-tenant:
+  `sources.yaml` today has six employers on `job-boards.greenhouse.io`, three
+  on `jobs.ashbyhq.com` and two on `apply.workable.com`. A host match would
+  report a brand-new Greenhouse employer as already present — and, in SP3 and
+  SP7, as already tombstoned, which is the expensive direction to be wrong in.
+  `urlutil.board_identity` is the normalised host (lowercased, `www.` and
+  scheme removed via `normalize_http_url`) plus, on a known shared host, the
+  first path segment that is not a locale. Single-tenant hosts are their own
+  identity, so `careers.oatly.com/en-GB/jobs` and `careers.oatly.com/jobs/123`
+  match. **Workday is treated as shared** even though each tenant has its own
+  subdomain: a tenant can host another brand's board (`sources.yaml` reaches
+  Busuu through Chegg's), so the path segment stays part of the identity. That
+  errs towards "a different board", which is the safe error here. Adding a
+  platform that puts every customer on one hostname means adding its host to
+  `_SHARED_BOARD_HOSTS`; platforms that give each employer a subdomain
+  (Teamtailor, Breezy, Personio, Recruitee) need no entry.
+
+- **`data/curated/` is a git repository of its own** (owner's decision,
+  2026-09-11, SP0 option 2; wired into the writer by SP1). `git init` inside
+  that directory gives the curated files a real undo, and the outer repository
+  cannot see it because `data/curated/*` is ignored deny-by-default — nothing
+  there can reach the public remote. `tools/sources.py` commits each write to
+  it automatically, staging **only** the YAML file it wrote, never the `.bak`
+  copies. The commit is best-effort and reported: the file is already written
+  by the time git runs, so a git failure warns rather than raises. Two things
+  this does *not* replace: the timestamped `.bak` (it also covers an
+  uncommitted hand-edit sitting in the working tree), and the mirror outside
+  the working tree (`git clone --mirror data/curated ~/Documents/job_scraper_curated.git`),
+  which is the only copy that survives the directory being deleted — plain
+  `git clean -xfd` refuses to delete a directory holding a `.git`, but `-xff`
+  overrides that.
+
+- **A migration writes null, never a guess** (SP1). The old
+  `excluded_sources.csv` had no `excluded_on` and the old
+  `candidate_sources.xlsx` had no `last_checked`, `category`, `ats` or
+  `source_of_record`. `scripts/migrate_curated_to_yaml.py` leaves every one of
+  them null rather than stamping the migration date. `last_checked` exists
+  precisely so nobody re-checks a source blind; a date invented during a
+  migration says "checked" about work nobody did. The old `notes` column maps
+  to `blocker` because it is the nearest field — in the owner's file it is
+  empty in all twenty rows, so nothing was coerced in practice.
+
+- **`sources check` exits 1 when it finds nothing** (SP1), the way `grep`
+  does, so `sources check <url> || echo new` works in a shell. The refusals
+  are exit 1 too, but they print to stderr and change no file, so a caller
+  that cares can tell them apart by stream.
+
+- **An E402 `noqa` goes only where ruff asks for one** (SP1, owner-approved
+  scope extension). [WP2](REFACTOR-PLAN.md#wp2--test-net-and-tooling)'s record says every
+  `sys.path`-amending import carries `# noqa: E402`. It no longer matches the
+  tree, and it was never needed everywhere: ruff exempts an import that
+  follows a `sys.path` call directly. `scripts/capture_fixtures.py` never had
+  one, SP1's migration script and its test had four that suppressed nothing
+  (removed), and `tests/fixture_cases.py` genuinely needs its three, because
+  the `_PROJECT_ROOT` assignment before its `sys.path.insert` ends the
+  exemption. Verify with `ruff check --extend-select RUF100 .` rather than by
+  reading the code — that is how this was settled, after a first attempt
+  removed the needed three on the strength of an argument.
+
+- **A two-file write must be finishable by re-running it** (SP1). `promote`
+  writes the tombstone first and removes the candidate second, so a crash in
+  between leaves the board on both lists rather than on neither. That order
+  was right but was not enough: the retry refused (already tombstoned),
+  `exclude` refused (still a candidate) and pointed back at `promote`, and the
+  only way out was a hand-edit of a curated file. A retried `promote` now
+  completes the move when the tombstone holds that board under the *same*
+  organisation, and refuses as a conflict under a different one. The general
+  rule for any later command that touches more than one curated file: after a
+  crash at any point, running the same command again must succeed or say
+  exactly what conflicts. Choosing the safest write order is not enough.
+
+- **A list in its old format is a refusal, not an empty list** (SP1, found in
+  review). "Missing file reads as empty" is right for a fresh clone and wrong
+  the moment the data exists in another shape: before migration, the real
+  tombstone was a CSV the tool never looked at, so `check` cleared a banned
+  employer and `candidate add` re-proposed it. `curated.require_migrated`
+  refuses while `excluded_sources.csv` or `candidate_sources.xlsx` exists
+  without its YAML file. Every CLI command runs it, and so do the two
+  `load_*` functions any later package reads through. The same shape applies
+  to any future format change: while the old file exists and the new one does
+  not, refuse and name the migration.
+
+- **A migration decides about every target before writing any, and re-running
+  it must finish it** (SP1, found in review). Refusing file two after writing
+  file one stranded a run whose retry then refused file one. Targets identical
+  to what the migration would write count as done; any other existing content
+  stops the run with nothing written. This is the migration-script case of the
+  `promote` rule above. "Refuse to overwrite" is only safe when checked for all
+  targets up front and when an identical target counts as finished.
+

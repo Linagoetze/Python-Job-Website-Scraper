@@ -611,13 +611,13 @@ every posting on the Jobs sheet.
 
 ## Maintenance commands
 
-**These two take no flags, but they do read their arguments.** `--help` prints
+**All of these read their arguments before they do anything.** `--help` prints
 what the command does and exits; anything else it does not recognise exits
 non-zero having changed nothing. That matters more than it sounds: a command
 with no argument parser runs immediately, whatever you typed after it, and
 `blocklist_all --help` once did exactly that and cost a record of which
-postings were unreviewed. Neither command ever deletes a row, but both change
-review state, so read before running.
+postings were unreviewed. None of them ever deletes a row, but the first two
+change review state, so read before running.
 
 ```bash
 python -m job_scraper.tools.retrofilter
@@ -648,6 +648,71 @@ seen — before you have looked at it, so a run you never opened is
 indistinguishable from one you reviewed. Use `python -m job_scraper.run`
 followed by `python -m job_scraper.review --seen-all` once you have actually
 read the sheet.
+
+### The curated source lists
+
+```bash
+python -m job_scraper.tools.sources list
+python -m job_scraper.tools.sources check <url-or-name>
+python -m job_scraper.tools.sources exclude <org> <url> <reason>
+python -m job_scraper.tools.sources candidate add <org> <url> --blocker "..."
+python -m job_scraper.tools.sources candidate promote <org>
+```
+
+The two hand-maintained lists in `data/curated/` — `excluded_sources.yaml`,
+the boards ruled out permanently, and `candidate_sources.yaml`, the ones still
+to check — without opening either file. That is the point of the command: both
+files were spreadsheet-shaped until SP1, and a spreadsheet application has
+already eaten one of them.
+
+`check` searches both lists **and** `sources.yaml`, and exits 1 when it finds
+nothing, so `sources check <url> || echo "new"` works. Ask it before proposing
+any source.
+
+**Matching is by board, not by host.** `job-boards.greenhouse.io` carries six
+different employers in `sources.yaml` today, `jobs.ashbyhq.com` three and
+`apply.workable.com` two, so a host match would call a seventh Greenhouse
+employer already tombstoned. The identity is the normalised host plus the path
+segment that names the board; on a single-tenant host it is the host alone.
+
+Every writing command is append-only. It refuses a board that is already on a
+list rather than editing the entry, leaves a timestamped `.bak` beside the file
+before touching it, and replaces the file through a temp file in the same
+directory, so an interrupted write leaves the previous list readable.
+`promote` is the one command that removes anything — that is what moving a
+candidate to the tombstone means — and it backs up both files first. It writes
+the tombstone before it removes the candidate, so if it is interrupted in
+between, run the same `promote` again: it sees the board already tombstoned
+under that name and finishes the move.
+
+If `data/curated/` is a git repository of its own (`git init` there; the outer
+repository cannot see it, because everything under `data/curated/` is ignored
+deny-by-default), each write is also committed to it, which is the only real
+undo these files have. Only the YAML file is ever staged, never the `.bak`
+copies. `--no-commit` skips it.
+
+To convert the old CSV and XLSX lists once:
+
+```bash
+python scripts/migrate_curated_to_yaml.py --dry-run
+```
+
+Drop `--dry-run` to write. It leaves the old files exactly where they are and
+never overwrites a YAML file: it checks both targets before writing either, and
+if one already exists with different content it stops having written nothing.
+Running it again after it has succeeded, or after it was interrupted halfway,
+is safe: a YAML file already identical to what it would write is left alone.
+
+**Until you migrate, the sources command refuses to run.** While
+`excluded_sources.csv` or `candidate_sources.xlsx` exists without its YAML
+replacement, every command except `--help` exits 1 and names the migration.
+Otherwise it would read the tombstone as empty: `check` would call a
+permanently excluded employer unknown, and `candidate add` would record it as a
+new lead. Once the YAML files exist you may keep the old files or delete them;
+either way the command works. Fields the old formats
+never held — `excluded_on`, and every candidate field but the organisation and
+the URL — are written as null rather than guessed: an invented `last_checked`
+would defeat the point of recording one.
 
 ## Adding a source
 
@@ -692,7 +757,7 @@ registry line.
 python -m pytest -q
 ```
 
-602 tests, about fourteen seconds, no network access required. Extractors are
+725 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
@@ -758,8 +823,8 @@ site:
 | `job_scraper/storage/` | the SQLite job store (`db.py`) and the xlsx writer |
 | `job_scraper/tools/` | maintenance commands |
 | `data/` | generated output: `jobs.sqlite3` (the store), `jobs.xlsx`, `jobs_sources.csv`. All regenerable from a scrape except the store's own review history |
-| `data/curated/` | hand-maintained, not regenerable and all gitignored: the `labels.csv` gold set the eval harness reads, and the legacy `blocklist.csv` (`blocklist.example.csv` is the tracked template) |
-| `scripts/` | the deprecated scrape-and-blocklist wrapper, and the fixture-capture helper the tests are built from |
+| `data/curated/` | hand-maintained, not regenerable and all gitignored: `excluded_sources.yaml` (boards ruled out for good) and `candidate_sources.yaml` (boards still to check), both written by `tools/sources.py` rather than by hand; the `labels.csv` gold set the eval harness reads; and the legacy `blocklist.csv`. Every one has a tracked `.example` twin |
+| `scripts/` | the deprecated scrape-and-blocklist wrapper, the fixture-capture helper the tests are built from, and `migrate_curated_to_yaml.py` (a one-off) |
 | `tests/` | pytest suite, plus `tests/fixtures/` — saved copies of the real career pages each extractor is tested against |
 | `docs/` | `DECISIONS.md` (the living decisions log), `SOURCES-PLAN.md` (the plan for the current source-list work), `REFACTOR-PLAN.md` (the archive of the finished refactor) and `AUDIT.md` (an independent read of the finished code) |
 
