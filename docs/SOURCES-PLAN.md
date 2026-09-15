@@ -1,7 +1,8 @@
 # Sources plan
 
-**Nothing here is started.** This file plans the next body of work after the
-refactor: getting the source list — the employers this scraper watches, the ones
+**In progress: SP0b, SP1 and SP2 are done** (as of 2026-09-15); the Status
+table below is the live record, so check it rather than this sentence. This
+file plans the next body of work after the refactor: getting the source list — the employers this scraper watches, the ones
 it has ruled out, and the ones still to check — onto a footing where adding a
 company is a routine rather than a research project.
 
