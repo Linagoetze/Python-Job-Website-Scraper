@@ -393,6 +393,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     curated_dir = args.curated_dir or default_curated_dir()
     try:
+        # Every command, reads included: a `check` that cannot see the old
+        # tombstone answers "no match", which is worse than no answer.
+        curated.require_migrated(curated_dir)
         if args.command == "list":
             return _cmd_list(args, curated_dir)
         if args.command == "check":

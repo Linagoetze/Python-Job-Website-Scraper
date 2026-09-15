@@ -84,6 +84,10 @@ class DuplicateBoardError(CuratedError):
     """The board is already on a list. Nothing is ever silently overwritten."""
 
 
+class NotMigratedError(CuratedError):
+    """A list still exists only in its pre-YAML format. Refuse, never read it as empty."""
+
+
 # --- reading ---------------------------------------------------------------
 
 
@@ -134,11 +138,57 @@ def load_list(path: Path, key: str, fields: tuple[str, ...]) -> list[dict[str, A
     return out
 
 
+# The formats the two lists had before SP1. Only their presence matters here;
+# reading them is the migration script's job.
+LEGACY_FILES: dict[str, str] = {
+    EXCLUDED_KEY: "excluded_sources.csv",
+    CANDIDATES_KEY: "candidate_sources.xlsx",
+}
+
+MIGRATION_COMMAND = "python scripts/migrate_curated_to_yaml.py --dry-run"
+
+
+def unmigrated_legacy_files(curated_dir: Path) -> list[Path]:
+    """Old-format lists whose YAML replacement does not exist yet."""
+    targets = {
+        EXCLUDED_KEY: excluded_path(curated_dir),
+        CANDIDATES_KEY: candidates_path(curated_dir),
+    }
+    return [
+        curated_dir / name
+        for key, name in LEGACY_FILES.items()
+        if (curated_dir / name).is_file() and not targets[key].exists()
+    ]
+
+
+def require_migrated(curated_dir: Path, *, key: str | None = None) -> None:
+    """Refuse while a list exists only in its old format.
+
+    A missing YAML file otherwise reads as an empty list — and an empty
+    tombstone is the one failure this file exists to prevent: `check` reports
+    a permanently excluded employer as unknown, and `candidate add` records it
+    as a fresh lead. Before SP1 the real tombstone was a CSV, so that is not
+    hypothetical; a reviewer reproduced both. Pass *key* to check one list.
+    """
+    legacy = unmigrated_legacy_files(curated_dir)
+    if key is not None:
+        legacy = [p for p in legacy if p.name == LEGACY_FILES[key]]
+    if legacy:
+        names = ", ".join(p.name for p in legacy)
+        raise NotMigratedError(
+            f"{names} in {curated_dir} has not been migrated to YAML, so this tool cannot see "
+            f"what it holds and will not pretend the list is empty. The owner migrates it: "
+            f"`{MIGRATION_COMMAND}`, then again without --dry-run."
+        )
+
+
 def load_excluded(curated_dir: Path) -> list[dict[str, Any]]:
+    require_migrated(curated_dir, key=EXCLUDED_KEY)
     return load_list(excluded_path(curated_dir), EXCLUDED_KEY, EXCLUDED_FIELDS)
 
 
 def load_candidates(curated_dir: Path) -> list[dict[str, Any]]:
+    require_migrated(curated_dir, key=CANDIDATES_KEY)
     return load_list(candidates_path(curated_dir), CANDIDATES_KEY, CANDIDATE_FIELDS)
 
 

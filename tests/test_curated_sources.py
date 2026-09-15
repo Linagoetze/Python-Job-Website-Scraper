@@ -743,3 +743,99 @@ class TestAsARealProcess:
         assert written.returncode == 0, written.stderr
         found = self.sources(tmp_path, "--curated-dir", str(tmp_path), "check", url + "/")
         assert found.returncode == 0 and "EXCLUDED" in found.stdout
+
+
+LEGACY_FIXTURES = Path(__file__).parent / "fixtures" / "curated"
+
+
+class TestBeforeTheMigration:
+    """An unmigrated tombstone must refuse, not read as empty.
+
+    Found in review: with the real tombstone still a CSV, `check` answered
+    "no match" for a permanently excluded employer and `candidate add` recorded
+    it as a new lead. Both reproduced here first, against the fixture copies.
+    """
+
+    @pytest.fixture
+    def unmigrated(self, tmp_path: Path) -> Path:
+        for name in ("excluded_sources.csv", "candidate_sources.xlsx"):
+            (tmp_path / name).write_bytes((LEGACY_FIXTURES / name).read_bytes())
+        return tmp_path
+
+    def test_check_refuses_rather_than_reporting_no_match(
+        self, unmigrated: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert cli(unmigrated, "check", "https://job-boards.greenhouse.io/northwind") == 1
+        captured = capsys.readouterr()
+        assert "no match" not in captured.out
+        assert "has not been migrated" in captured.err
+        assert "migrate_curated_to_yaml.py" in captured.err
+
+    def test_a_banned_board_cannot_be_added_as_a_candidate(self, unmigrated: Path) -> None:
+        before = sorted(p.name for p in unmigrated.iterdir())
+        assert (
+            cli(
+                unmigrated,
+                "candidate",
+                "add",
+                "Northwind Health",
+                "https://job-boards.greenhouse.io/northwind",
+                "--blocker",
+                "worth another look",
+            )
+            == 1
+        )
+        assert sorted(p.name for p in unmigrated.iterdir()) == before
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["list"],
+            ["list", "candidates"],
+            ["exclude", "Someone", "https://someone.example", "r"],
+            ["candidate", "promote", "Adventure Works"],
+        ],
+        ids=lambda a: " ".join(a[:2]),
+    )
+    def test_every_command_refuses_and_writes_nothing(
+        self, unmigrated: Path, argv: list[str]
+    ) -> None:
+        before = sorted(p.name for p in unmigrated.iterdir())
+        assert cli(unmigrated, *argv) == 1
+        assert sorted(p.name for p in unmigrated.iterdir()) == before
+
+    def test_help_still_works(self, unmigrated: Path) -> None:
+        with pytest.raises(SystemExit) as exit_info:
+            run("--curated-dir", str(unmigrated), "check", "--help")
+        assert exit_info.value.code == 0
+
+    def test_one_unmigrated_list_is_enough_to_refuse(self, tmp_path: Path) -> None:
+        (tmp_path / "excluded_sources.csv").write_bytes(
+            (LEGACY_FIXTURES / "excluded_sources.csv").read_bytes()
+        )
+        assert cli(tmp_path, "list", "candidates") == 1
+
+    def test_the_library_refuses_too(self, unmigrated: Path) -> None:
+        """SP3 and SP7 will read the tombstone without going through argv."""
+        with pytest.raises(curated.NotMigratedError):
+            curated.load_excluded(unmigrated)
+        with pytest.raises(curated.NotMigratedError):
+            curated.load_candidates(unmigrated)
+
+    def test_after_the_migration_the_old_files_may_stay(
+        self, unmigrated: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Keeping the CSV and XLSX is the owner's choice and must not block the tool."""
+        import importlib.util
+
+        script = PROJECT_ROOT / "scripts" / "migrate_curated_to_yaml.py"
+        spec = importlib.util.spec_from_file_location("_migrate_for_test", script)
+        assert spec is not None and spec.loader is not None
+        migrate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migrate)
+        assert migrate.main(["--curated-dir", str(unmigrated)]) == 0
+        capsys.readouterr()
+
+        assert cli(unmigrated, "check", "https://job-boards.greenhouse.io/northwind/") == 0
+        assert "EXCLUDED" in capsys.readouterr().out
+        assert (unmigrated / "excluded_sources.csv").is_file()
