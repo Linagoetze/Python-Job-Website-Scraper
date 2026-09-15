@@ -89,14 +89,14 @@ the ordering below.
 | 0 | Back up `data/curated/` before anything writes to it | 0.5 hr | — (owner) | none | not started | — |
 | 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
-| 2 | Recover `skipped_sources` from the transcript archive | 2 hr | Opus 5 | `think` | not started | `sp2-recover-skipped` |
+| 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | not started | `sp2-recover-skipped` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Tombstone guard at startup (optional) | 1 hr | Sonnet 5 | none | not started | `sp7-tombstone-guard` |
 
-**Roughly 14.5 hours** for SP0–SP4 and SP7, plus SP5 and SP6 as recurring
+**Roughly 15.5 hours** for SP0–SP4 and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here.
@@ -133,9 +133,9 @@ The surfaces, and what invalidates each:
 | Surface | Invalidated by | Notes |
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
-| `README.md` — "Maintenance commands" | SP1 | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
+| `README.md` — "Maintenance commands" | SP1, SP2 | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7 | A startup warning is user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP3, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
+| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP3, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — Layout table | SP1 | The `data/curated/` row lists what lives there. |
@@ -569,11 +569,29 @@ were sighted directly during that check; the archive holds more.
 Recovery beats recollection, so this package goes to the archive first and to
 your memory only for whatever the archive does not have.
 
+**It also fills in the blockers the migration could not carry.** SP1's
+migration turned `candidate_sources.xlsx` into YAML, but that spreadsheet's
+`notes` column was empty in all twenty rows, so every migrated candidate has
+`blocker: null` and `last_checked: null`. A candidate with no blocker cannot be
+promoted without a hand-typed `--reason`, and it gives the next audit nothing
+to go on, which is the "checked blind" problem the schema exists to prevent.
+The transcript archive this package sweeps is also the likeliest place those
+blockers were ever written down, so both jobs go in one package.
+
+This needs one exception to SP1's rules, and it is yours to grant. SP1's tool
+never changes an existing entry, and `candidate add` refuses a candidate that is
+already listed, so no command can currently record a blocker on a migrated
+row. The prompt below adds exactly one narrow command for that. It is
+**fill-only**: it writes a field only while that field is empty, and it never
+replaces a value.
+
 ```
 think
 
 Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP2 only. SP1 must be
-merged first — this package writes through its CLI.
+merged first — this package writes through its CLI. The owner must also have run
+scripts/migrate_curated_to_yaml.py: until then the sources tool refuses every
+command, by design. If it refuses, stop and say so; do not run the migration.
 
 Recover the content of the deleted data/skipped_sources.csv from the local
 session transcript archive and load it into the candidates list.
@@ -593,10 +611,17 @@ Output a YAML file to the SCRATCHPAD, not to data/curated/, and print a summary:
 how many distinct organisations, which sessions each came from, and any row that
 appears with conflicting content across sessions.
 
-THEN. Cross-check the recovered set against data/curated/excluded_sources.yaml
-and against sources.yaml, both by normalised host. Report three groups:
-already tombstoned (drop), already an active source (drop, and say so — it means
-the blocker was solved), and genuinely new (keep).
+THEN. Cross-check the recovered set against data/curated/excluded_sources.yaml,
+data/curated/candidate_sources.yaml and sources.yaml, by BOARD IDENTITY
+(job_scraper.urlutil.board_identity, via curated.find_board), NEVER by host —
+see docs/DECISIONS.md: a host match calls every Greenhouse employer the same
+one. Match organisation names too, case-insensitively, and report a row that
+matches by name but not by board, or the reverse, as a question for the owner
+rather than guessing. Report four groups:
+  1. already tombstoned — drop.
+  2. already an active source — drop, and say so: the blocker was solved.
+  3. already a candidate — do not add; these feed BLOCKERS below.
+  4. genuinely new — add, as below.
 
 Then add the genuinely-new ones as CANDIDATES — not exclusions — via
 `sources candidate add`, with last_checked set to the date of the transcript the
@@ -604,26 +629,93 @@ row came from, not today's date, and source_of_record naming the session id.
 The owner's decision of 2026-09-10: these were "not feasible at the time" with a
 note that they might become feasible, so they belong in candidates.
 
+BLOCKERS FOR THE MIGRATED CANDIDATES. List every entry in
+candidate_sources.yaml whose blocker is null, and split it in two:
+  a. covered by a recovered row (group 3 above): propose blocker = that row's
+     reason, category = its category, and last_checked = the date of the
+     session it came from.
+  b. not covered by the archive: list the organisation names IN CHAT ONLY.
+     The owner dictates a blocker for each one they remember, or says to leave
+     it empty. For a dictated blocker, set last_checked only if the owner gives
+     a date. Otherwise leave it null and record "dictated by the owner on
+     <today>" in source_of_record. A null date is honest; today's date would
+     claim a check that did not happen today (docs/DECISIONS.md, "a migration
+     writes null, never a guess").
+
+To write them, add ONE command to job_scraper/tools/sources.py:
+  sources candidate record-check <org> [--blocker ...] [--category ...]
+      [--last-checked YYYY-MM-DD] [--ats ...] [--source-of-record ...]
+It is FILL-ONLY. blocker, category, last_checked and ats are written only while
+null. If any field passed already has a value, refuse the whole command and
+change nothing. source_of_record is EXTENDED, never replaced: append
+"; <new text>" to whatever is there, because the migration already set it to
+"migrated from candidate_sources.xlsx" and that provenance must survive.
+Everything else follows SP1's writer: argparse front door and --help exits
+without acting, board and organisation lookup through curated.py, timestamped
+.bak, temp file plus os.replace(), commit to the curated repository, and the
+unmigrated-list refusal. Put the logic in curated.py beside append_entry, not
+in the CLI. This is the owner-approved exception to "never edit an existing
+entry" — see "Your to-dos". Build nothing broader: no general edit, no
+delete, no overwrite.
+Tests, in tmp_path as in SP1: a null field is filled; a non-null field is
+refused with the file byte-identical afterwards; one filled field among the
+arguments refuses the whole command; source_of_record keeps its old text; an
+unknown organisation changes nothing; --help writes nothing; the backup
+exists; an interrupted write leaves the original intact.
+
+SHOW BEFORE WRITING. Before any write, print one table in chat: group 4 rows to
+be added, and the blockers from a. and b. to be recorded, each with the exact
+values and, for a., the session it came from.
+Wait for the owner's yes. Then write one command per row, so every row gets
+its own backup and its own commit in the curated repository.
+
 The transcripts contain other personal data — blocklist rows, real job titles,
 absolute paths. Read only what this task needs, extract only the
 skipped_sources blocks, and do not quote anything else into the plan file, the
 commit message or the summary.
 
-No user-visible behaviour changes here, so README needs nothing — but the
-recovery lesson belongs in docs/DECISIONS.md: a gitignored file deleted after a
-session that read it is often recoverable from the transcript archive.
+README.md: add `candidate record-check` to the curated-lists part of
+"Maintenance commands", saying plainly that it only fills empty fields, and
+update the test count. docs/DECISIONS.md: the recovery lesson (a gitignored
+file deleted after a session that read it is often recoverable from the
+transcript archive), and the fill-only exception with its reason.
 
 Branch sp2-recover-skipped. Commit, do not push. Update this plan file with the
-count recovered, and correct the "permanently lost" claim in
+count recovered, how many migrated candidates now have a blocker, and how many
+are still empty, as counts only, no names. Correct the "permanently lost" claim in
 docs/REFACTOR-PLAN.md with a one-line pointer to this package.
 ```
 
 ### Your to-dos
 
-- [ ] Review the recovered list before it is written — it is the one chance to
-      catch a row that should be a tombstone rather than a candidate.
+**Before the session starts:**
+
+- [ ] Run the SP1 migration (SP1's to-dos). The tool refuses to work until
+      you do, and the session is told to stop rather than run it for you.
+- [ ] **Approve the fill-only exception**, or strike it from the prompt.
+      `CLAUDE.md` reserves "editing an existing entry" for you. This is a
+      narrow form of it: an empty blocker, category, date or ATS gets filled,
+      `source_of_record` gets text appended, and nothing is ever replaced. If
+      you would rather not have it, delete the "BLOCKERS" part of the prompt;
+      the migrated candidates then stay blank until you decide otherwise.
+
+**During the session.** Only you can do these, because they are judgements
+about your own history that no file records:
+
+- [ ] Review the table the session shows before anything is written. It is the
+      one chance to catch a row that should be a tombstone rather than a
+      candidate, or an old blocker that is no longer true.
+- [ ] For each candidate the archive does not cover, dictate the blocker if you
+      remember it, with a date if you know one, or say "leave it". A blank
+      blocker is honest; a guessed one misleads every later audit.
 - [ ] Tell the session about any organisation you remember that the archive did
       not turn up. Dictate it in chat; do not open a file.
+
+**What the session does for you:** it sweeps the archive, matches every row
+against the three lists by board, proposes each blocker with its evidence,
+builds and tests the fill-only command, writes only the rows you approve
+(one command each, with a backup and a commit), and reports counts in this
+file.
 
 ---
 
