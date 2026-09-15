@@ -87,7 +87,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     add.add_argument("--blocker", required=True, help="why it is not a source yet")
     add.add_argument("--ats", default=None)
     add.add_argument("--category", default=None)
-    add.add_argument("--last-checked", dest="last_checked", default=None, help="default: today")
+    when = add.add_mutually_exclusive_group()
+    when.add_argument("--last-checked", dest="last_checked", default=None, help="default: today")
+    when.add_argument(
+        "--undated",
+        action="store_true",
+        help="leave last_checked empty: for a finding recovered from a record rather than "
+        "checked today, whose real date is unknown",
+    )
     add.add_argument("--source-of-record", dest="source_of_record", default=None)
 
     promote = candidate_sub.add_parser("promote", help="move a candidate to the tombstone")
@@ -296,7 +303,8 @@ def _cmd_candidate_add(args: argparse.Namespace, curated_dir: Path) -> int:
         "url": args.url,
         "category": args.category,
         "blocker": args.blocker,
-        "last_checked": args.last_checked or _today(),
+        # --undated writes null: today would claim a check nobody did today.
+        "last_checked": None if args.undated else (args.last_checked or _today()),
         "ats": args.ats,
         "source_of_record": args.source_of_record,
     }

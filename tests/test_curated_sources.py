@@ -557,6 +557,43 @@ class TestTheCuratedRepository:
         assert ".bak" not in tracked.stdout
 
 
+class TestUndatedCandidate:
+    """SP2: a recovered finding has no known check date, and today is not one."""
+
+    def test_undated_writes_a_null_date(self, tmp_path: Path) -> None:
+        assert (
+            cli(
+                tmp_path, "candidate", "add", "Contoso", GREENHOUSE, "--blocker", "403", "--undated"
+            )
+            == 0
+        )
+        entry = read_yaml(curated.candidates_path(tmp_path))["candidates"][0]
+        assert entry["last_checked"] is None
+
+    def test_without_it_the_date_still_defaults_to_today(self, tmp_path: Path) -> None:
+        assert add_candidate(tmp_path) == 0
+        entry = read_yaml(curated.candidates_path(tmp_path))["candidates"][0]
+        assert entry["last_checked"] == curated.date.today().isoformat()
+
+    def test_undated_and_a_date_together_are_refused_before_anything_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        argv = ["candidate", "add", "Contoso", GREENHOUSE, "--blocker", "403"]
+        with pytest.raises(SystemExit) as exit_info:
+            cli(tmp_path, *argv, "--undated", "--last-checked", "2026-07-30")
+        assert exit_info.value.code != 0
+        assert list(tmp_path.iterdir()) == []
+
+    def test_an_undated_candidate_can_have_its_date_filled_later(self, tmp_path: Path) -> None:
+        cli(tmp_path, "candidate", "add", "Contoso", GREENHOUSE, "--blocker", "403", "--undated")
+        assert (
+            cli(tmp_path, "candidate", "record-check", "Contoso", "--last-checked", "2026-09-20")
+            == 0
+        )
+        entry = read_yaml(curated.candidates_path(tmp_path))["candidates"][0]
+        assert entry["last_checked"] == "2026-09-20"
+
+
 MIGRATED = "migrated from candidate_sources.xlsx"
 
 
