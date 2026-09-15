@@ -1,6 +1,7 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1 and SP2 are done** (as of 2026-09-15); the
+**In progress: SP0, SP0b, SP1 and SP2 are done** (as of 2026-09-15; SP2b was
+added that day); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -92,13 +93,14 @@ the ordering below.
 | 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
 | 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
+| 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | not started | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Tombstone guard at startup (optional) | 1 hr | Sonnet 5 | none | not started | `sp7-tombstone-guard` |
 
-**Roughly 15.5 hours** for SP0–SP4 and SP7, plus SP5 and SP6 as recurring
+**Roughly 17 hours** for SP0–SP4 (SP2b included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here.
@@ -107,14 +109,16 @@ revealed a bug. SP4 is that package here.
 directory. SP0b next, because it makes every session after it cheaper, this
 plan's own seven included. Then SP1, which unblocks everything that stores an
 answer. SP2 is
-cheap and independent after SP1. SP3 before SP5. **SP4 before SP5** if any new
+cheap and independent after SP1. **SP2b before SP5**: SP5 re-checks candidates
+and turns some of them into sources, and until SP2b lands neither answer can be
+recorded. SP3 before SP5. **SP4 before SP5** if any new
 company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
 do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline and
 SP7 is optional throughout.
 
 ### Model recommendations
 
-`Opus 5` for SP1, SP2 and SP3: each is a design decision with a data-loss edge
+`Opus 5` for SP1, SP2, SP2b and SP3: each is a design decision with a data-loss edge
 (a schema people will live with, a one-shot recovery from an archive, a
 judgement ladder that has to know when to stop). `Sonnet 5` for SP0b, SP4, SP5, SP6
 and SP7: capture, diagnose, fix, pin — mechanical work with a strong test net
@@ -135,14 +139,14 @@ The surfaces, and what invalidates each:
 | Surface | Invalidated by | Notes |
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
-| `README.md` — "Maintenance commands" | SP1, SP2 | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
+| `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7 | A startup warning is user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP3, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
+| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — Layout table | SP1 | The `data/curated/` row lists what lives there. |
 | `job_scraper/config/sources.example.yaml` | SP3 | Its header explains how to add a source. That advice becomes "run `probe` first". |
-| `CLAUDE.md` | SP0b | Startup reads, the stale architecture block, the Definition of done. |
+| `CLAUDE.md` | SP0b, SP2b | Startup reads, the stale architecture block, the Definition of done. |
 | `docs/DECISIONS.md` | all | Once SP0b creates it, every package appends anything a later session would otherwise re-derive. |
 | This file | all | Status table and result section. |
 
@@ -765,6 +769,105 @@ file.
 
 ---
 
+## SP2b — Candidate re-checks and activation
+
+Added 2026-09-15, after SP2, on the owner's decision. SP2 left the candidates
+list with two gaps that SP5 will hit in its first batch:
+
+1. **A re-check has nowhere to go.** `candidate record-check` fills empty
+   fields only, by design. Once a candidate carries a blocker, a later check
+   that finds a different reason — or the same reason on a later date — cannot
+   be recorded, and the stale blocker is the "checked blind" problem again.
+2. **A candidate that becomes a source cannot leave the list.** `promote` is
+   the only command that removes a candidate, and it moves it to the tombstone.
+   A board SP5 adds to `sources.yaml` would stay a candidate indefinitely,
+   and `check` would report it as both.
+
+Both need a second exception to "never edit an existing entry", and it is
+yours to grant (see "Your to-dos"). It is kept as narrow as the two cases: a
+re-check replaces a finding but writes the old one into the entry first, and
+activation removes an entry only when the board is provably in `sources.yaml`.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP2b
+only. SP2 must be merged first.
+
+Add two commands to job_scraper/tools/sources.py, with the logic in curated.py
+beside record_check, not in the CLI.
+
+1. sources candidate recheck <org> --blocker ... --last-checked YYYY-MM-DD
+       --source-of-record ... [--ats ...]
+   For a candidate that was checked again and is still not a source.
+   - --blocker, --last-checked and --source-of-record are REQUIRED. There is
+     no default date: a re-check is dated by whoever did it, and today is only
+     right when it is typed.
+   - Replaces blocker and last_checked, and ats when it is passed. Never
+     touches organisation, url or category.
+   - BEFORE replacing anything, extend source_of_record — never replace it —
+     with "; rechecked <new date>: was blocker=<old>, last_checked=<old>" (and
+     ats=<old> when ats changes), writing null for an empty old value, then
+     "; <the new --source-of-record text>". The file carries its own history;
+     the .bak and the curated commit carry it too.
+   - Refuses, changing nothing, when: the organisation is unknown; the new
+     date is earlier than the recorded one (a check does not move backwards);
+     nothing would change; the board is tombstoned (that is a conflict for the
+     owner, not a re-check); or the board is an active source in sources.yaml
+     (that is `activate`).
+
+2. sources candidate activate <org>
+   For a candidate that is now scraped.
+   - Removes the entry ONLY when its board identity matches an entry in
+     sources.yaml. Otherwise refuse, naming the board it looked for. A missing
+     sources.yaml is a refusal, never "not active".
+   - Before writing, print the whole entry being removed, so the terminal
+     holds it as well as the .bak and the curated commit.
+   - No --force, and no removal by name alone.
+
+Match organisations and boards through curated.find_organisation and
+curated.find_board — board identity, never host. Everything else follows
+SP1's writer: argparse front door and --help exits without acting,
+timestamped .bak, temp file plus os.replace(), commit to the curated
+repository, and the unmigrated-list refusal.
+
+Build nothing broader: no general edit, no delete by name, no overwrite
+without history. record-check stays fill-only and is not changed.
+
+Tests, in tmp_path as in SP1 and SP2. recheck: the finding is replaced and
+the old values appear in source_of_record, with null for empty ones;
+source_of_record keeps all of its earlier text; a missing required argument
+writes nothing; an earlier date, an identical finding, an unknown organisation,
+a tombstoned board and an active board are each refused with the file
+byte-identical. activate: a candidate whose board is in sources.yaml is
+removed and no other entry changes; a board NOT in sources.yaml, a missing
+sources.yaml, and the same host with a different board slug (two Greenhouse
+employers) are each refused with the file byte-identical. Both: --help writes
+nothing, the backup is the file as it was, and an interrupted write leaves the
+original intact. Run one of each as a real process.
+
+DOCS. README.md "Maintenance commands": both commands, saying plainly that
+recheck keeps the old finding in source_of_record and that activate refuses
+unless the board is in sources.yaml; update the test count. CLAUDE.md: the
+data/curated/ rule says the tool "appends one record at a time", which has not
+been the whole truth since SP1's promote — name the exceptions (promote,
+record-check, recheck, activate) in one sentence, with a pointer to
+docs/DECISIONS.md. docs/DECISIONS.md: the second exception and its reason.
+
+Branch sp2b-candidate-lifecycle. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] **Approve the second exception**, or strike this package. `recheck`
+      replaces a recorded finding (keeping the old one in the entry) and
+      `activate` removes a candidate. If you strike it, SP5 falls back to
+      reporting these cases in chat and writing nothing.
+- [ ] Nothing during the session: it writes no curated file, only tests in
+      `tmp_path`.
+
+---
+
 ## SP3 — `sources probe` — the feasibility ladder as a command
 
 CU2's investigation of `probably_good` is the model: four rungs, worked in
@@ -792,6 +895,9 @@ The report, in this order:
    would refuse to probe every future Greenhouse employer. If the board is
    already tombstoned, say so and STOP — do not fetch. Re-investigating a
    permanent exclusion is the exact failure the tombstone exists to prevent.
+   If it is a candidate, print its blocker, last_checked and source_of_record
+   before fetching, and say explicitly when last_checked is null: that means
+   the date is unknown, not that it was never checked (see SP2's result).
 2. robots.txt for the host, via the existing policy in http.py, quoting the rule
    and the User-Agent it was evaluated against.
 3. Static fetch: does the HTML contain job data, or is it a client-rendered
@@ -827,8 +933,12 @@ fetcher. No test may touch the network.
 
 DOCS. README.md's "Adding a source" section is three steps that omit both the
 tombstone check and the fixture capture, so REWRITE it as the routine actually
-is — check, probe, reuse or exclude, capture — rather than appending the
-command to the end of what is there. Update the header comment in
+is — check, probe, then reuse (and capture), exclude, or record the finding on
+the candidates list — rather than appending the command to the end of what is
+there. Recording covers all three candidate commands: `candidate add` for a new
+board, `candidate record-check` to fill empty fields, and `candidate recheck`
+(SP2b) to replace a finding while keeping the old one. Name `recheck` only if
+SP2b has merged; a README must not describe a command that does not exist. Update the header comment in
 job_scraper/config/sources.example.yaml the same way: its advice on how to add
 a source now starts with `probe`. Update the test count in README.md.
 
@@ -932,8 +1042,8 @@ package instead.
 ```
 think
 
-Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP5 only. SP1 and SP3 must
-be merged; SP4 too if any of these companies runs on Breezy, Lever, Personio,
+Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP5 only. SP1, SP2b and
+SP3 must be merged; SP4 too if any of these companies runs on Breezy, Lever, Personio,
 SmartRecruiters or Workable.
 
 Add the following companies to the scraper: <OWNER FILLS IN NAMES AND URLS>
@@ -942,20 +1052,32 @@ For each, in order, and stop at the first rung that fails:
 1. `sources check <url>` — if it is tombstoned, stop and report. If it is an
    existing candidate, note the recorded blocker and last_checked date before
    doing anything else: it may have been checked recently and the answer may not
-   have changed.
+   have changed. `check` does not print empty fields, so no date line means
+   last_checked is null — unknown, not "never checked". Read source_of_record:
+   the candidates recovered in SP2 carry their date bound there.
 2. `sources probe <url>`.
 3. If the verdict is `reuse <extractor>`: add the sources.yaml entry and the
    registry line the probe printed. Then capture the fixture IN THIS SESSION
    (scripts/capture_fixtures.py) and pin the golden. A new source with no saved
-   page joins the uncovered population and undoes SP4's work.
+   page joins the uncovered population and undoes SP4's work. If the company
+   was a candidate, propose `sources candidate activate <org>` once the source
+   and its fixture are committed, and ask the owner before running it.
 4. If the verdict is `needs a new extractor`: do NOT write one here. Report what
    the probe found, and propose it as its own package. CLAUDE.md's "config over
    code" means a bespoke module has to earn itself.
-5. If the verdict is `not feasible`: propose the exact `sources exclude` or
-   `sources candidate add` command, with the reason and the date, and ask the
-   owner before running it. Not feasible *for now* is a candidate with a
-   blocker; not feasible *by design* is a tombstone. Say which you think it is
-   and why.
+5. If the verdict is `not feasible`: propose the exact command, with the reason
+   and the date, and ask the owner before running it. Not feasible *for now* is
+   a candidate with a blocker; not feasible *by design* is a tombstone. Say
+   which you think it is and why. The command depends on where the board is:
+   - Not on either list: `sources candidate add` (for now) or `sources exclude`
+     (by design).
+   - Already a candidate, blocker and date empty: `sources candidate
+     record-check` (for now) or `sources candidate promote` (by design).
+   - Already a candidate with a recorded finding: `sources candidate recheck`
+     (for now) or `sources candidate promote` (by design). Never try
+     `candidate add` or `exclude` on an existing candidate: both refuse, and
+     neither refusal is a reason to edit the file by hand.
+   A re-check is dated with the day the probe actually ran.
 
 Then run the pipeline against the new sources only and confirm the postings that
 come back look like real postings, not like a plausible-looking parse of the
@@ -975,7 +1097,11 @@ per company: verdict, extractor reused, rows captured.
 - [ ] Answer the open question in "What is still unknown": do any of them run on
       the five uncovered ATS platforms? If you do not know, that is fine — SP3's
       probe will tell you, and the answer decides whether SP4 has to come first.
-- [ ] Approve or reject each proposed `exclude` / `candidate add` in chat.
+- [ ] Approve or reject each proposed `exclude`, `candidate add`, `record-check`,
+      `recheck`, `promote` or `activate` in chat.
+- [ ] After the session, refresh the mirror: SP5 writes to the curated lists
+      and nothing refreshes it automatically —
+      `git --git-dir="$HOME/Documents/job_scraper_curated.git" remote update --prune`.
 
 ---
 
