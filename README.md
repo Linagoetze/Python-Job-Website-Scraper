@@ -698,7 +698,18 @@ python scripts/migrate_curated_to_yaml.py --dry-run
 ```
 
 Drop `--dry-run` to write. It leaves the old files exactly where they are and
-refuses to overwrite a YAML file that already exists. Fields the old formats
+never overwrites a YAML file: it checks both targets before writing either, and
+if one already exists with different content it stops having written nothing.
+Running it again after it has succeeded, or after it was interrupted halfway,
+is safe: a YAML file already identical to what it would write is left alone.
+
+**Until you migrate, the sources command refuses to run.** While
+`excluded_sources.csv` or `candidate_sources.xlsx` exists without its YAML
+replacement, every command except `--help` exits 1 and names the migration.
+Otherwise it would read the tombstone as empty: `check` would call a
+permanently excluded employer unknown, and `candidate add` would record it as a
+new lead. Once the YAML files exist you may keep the old files or delete them;
+either way the command works. Fields the old formats
 never held — `excluded_on`, and every candidate field but the organisation and
 the URL — are written as null rather than guessed: an invented `last_checked`
 would defeat the point of recording one.
@@ -746,7 +757,7 @@ registry line.
 python -m pytest -q
 ```
 
-712 tests, about fourteen seconds, no network access required. Extractors are
+725 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the

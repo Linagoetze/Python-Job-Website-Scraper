@@ -541,3 +541,22 @@ session — see `CLAUDE.md`.
   crash at any point, running the same command again must succeed or say
   exactly what conflicts. Choosing the safest write order is not enough.
 
+- **A list in its old format is a refusal, not an empty list** (SP1, found in
+  review). "Missing file reads as empty" is right for a fresh clone and wrong
+  the moment the data exists in another shape: before migration, the real
+  tombstone was a CSV the tool never looked at, so `check` cleared a banned
+  employer and `candidate add` re-proposed it. `curated.require_migrated`
+  refuses while `excluded_sources.csv` or `candidate_sources.xlsx` exists
+  without its YAML file. Every CLI command runs it, and so do the two
+  `load_*` functions any later package reads through. The same shape applies
+  to any future format change: while the old file exists and the new one does
+  not, refuse and name the migration.
+
+- **A migration decides about every target before writing any, and re-running
+  it must finish it** (SP1, found in review). Refusing file two after writing
+  file one stranded a run whose retry then refused file one. Targets identical
+  to what the migration would write count as done; any other existing content
+  stops the run with nothing written. This is the migration-script case of the
+  `promote` rule above. "Refuse to overwrite" is only safe when checked for all
+  targets up front and when an identical target counts as finished.
+

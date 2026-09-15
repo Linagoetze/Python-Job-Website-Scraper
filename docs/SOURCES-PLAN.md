@@ -480,7 +480,7 @@ Branch sp1-curated-yaml. Commit, do not push. Update this plan file.
   for all seven tombstone rows, and everything but organisation and URL for
   the twenty candidates. The old `notes` column maps to `blocker`; it is empty
   in all twenty rows, so nothing was actually coerced.
-- **110 new tests** (602 to 712), all against `tmp_path`. An autouse fixture
+- **123 new tests** (602 to 725), all against `tmp_path`. An autouse fixture
   makes the real `data/curated/` unreachable from the suite rather than
   trusting each test to pass `--curated-dir`: a test suite that writes to the
   file it is protecting is the same mistake it is testing for. The interrupted
@@ -500,7 +500,7 @@ Branch sp1-curated-yaml. Commit, do not push. Update this plan file.
 - **README**: the new CLI and the migration script are in "Maintenance
   commands" (including that `--help` exits without acting, and that matching
   is by board rather than host), the `data/curated/` and `scripts/` rows of
-  the Layout table are updated, and the test count moved 602 → 712.
+  the Layout table are updated, and the test count moved 602 → 725.
 
 - **Follow-up in the same package, three gaps closed** after the result above
   was first written. (1) A crash between `promote`'s two writes was a trap:
@@ -518,6 +518,21 @@ Branch sp1-curated-yaml. Commit, do not push. Update this plan file.
   four `# noqa: E402` comments this package added suppressed nothing and were
   removed, and the `pyproject.toml` comment now says which module does need
   one (`tests/fixture_cases.py`) and why.
+
+- **Two bugs found by a reviewer session before push, both fixed.**
+  (1) *Before migration, the tool read the tombstone as empty.* It reads only
+  the YAML files, and the real tombstone was still the CSV, so `check` said
+  "no match" for a banned employer and `candidate add` accepted one. Now every
+  command except `--help` refuses while an old-format list exists without its
+  YAML replacement, and so do `curated.load_excluded` and `load_candidates`,
+  so SP3 and SP7 get the refusal too. (2) *The migration could stop halfway
+  and then refuse to finish.* It wrote the tombstone, refused the candidates
+  because that YAML already existed, then on the retry refused the tombstone.
+  It now checks both targets before writing either. A target identical to
+  what it would write counts as done, so a re-run, including one after a
+  crash between the two writes, completes the migration. A target with any
+  other content stops the run with nothing written. Both bugs were reproduced
+  on fixture copies first, and the new tests fail against the previous code.
 
 **One thing to know before running the migration:** `candidate_sources.xlsx`
 holds twenty rows and its `notes` column is empty in every one of them, so the
