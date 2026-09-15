@@ -137,16 +137,69 @@ class TestSafety:
         for name, content in before.items():
             assert (old_files / name).read_bytes() == content
 
-    def test_it_refuses_to_overwrite_a_yaml_file_that_already_exists(
+    def test_running_it_again_changes_nothing_and_succeeds(
         self, old_files: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         migrate.main(["--curated-dir", str(old_files)])
-        after = curated.excluded_path(old_files).read_bytes()
+        after = {p.name: p.read_bytes() for p in old_files.glob("*.yaml")}
         capsys.readouterr()
 
+        assert migrate.main(["--curated-dir", str(old_files)]) == 0
+        assert capsys.readouterr().out.count("already migrated") == 2
+        assert {p.name: p.read_bytes() for p in old_files.glob("*.yaml")} == after
+        assert list(old_files.glob("*.bak")) == []
+
+    def test_a_yaml_file_with_other_content_is_never_overwritten(
+        self, old_files: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        migrate.main(["--curated-dir", str(old_files)])
+        tombstone = curated.excluded_path(old_files)
+        tombstone.write_text(tombstone.read_text(encoding="utf-8") + "# edited\n", "utf-8")
+        edited = tombstone.read_bytes()
+
         assert migrate.main(["--curated-dir", str(old_files)]) == 1
-        assert "already exists" in capsys.readouterr().err
-        assert curated.excluded_path(old_files).read_bytes() == after
+        assert "nothing was written" in capsys.readouterr().err
+        assert tombstone.read_bytes() == edited
+
+    def test_a_conflict_on_the_second_file_stops_the_first_being_written(
+        self, old_files: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The reviewer's sequence. It used to convert the tombstone, refuse the
+        candidates, then refuse the tombstone on the retry: a run nobody could finish."""
+        early = "candidates:\n  - organisation: Early Bird\n    url: https://early.example\n"
+        curated.candidates_path(old_files).write_text(early, encoding="utf-8")
+
+        assert migrate.main(["--curated-dir", str(old_files)]) == 1
+
+        assert "nothing was written" in capsys.readouterr().err
+        assert not curated.excluded_path(old_files).exists()
+        assert curated.candidates_path(old_files).read_text(encoding="utf-8") == early
+
+        # Once the owner has moved the stray file aside, one run finishes the job.
+        curated.candidates_path(old_files).rename(old_files / "set-aside.yaml")
+        assert migrate.main(["--curated-dir", str(old_files)]) == 0
+        assert len(curated.load_excluded(old_files)) == 4
+        assert len(curated.load_candidates(old_files)) == 3
+
+    def test_a_crash_between_the_two_writes_is_finished_by_running_it_again(
+        self, old_files: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real = curated.save_list
+
+        def boom(path: Path, *args: object, **kwargs: object) -> None:
+            if path.name == "candidate_sources.yaml":
+                raise OSError("crashed between the two writes")
+            real(path, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(curated, "save_list", boom)
+        with pytest.raises(OSError):
+            migrate.main(["--curated-dir", str(old_files)])
+        assert curated.excluded_path(old_files).exists()
+        assert not curated.candidates_path(old_files).exists()
+
+        monkeypatch.setattr(curated, "save_list", real)
+        assert migrate.main(["--curated-dir", str(old_files)]) == 0
+        assert len(curated.load_candidates(old_files)) == 3
 
     def test_two_rows_for_one_board_are_refused(self, tmp_path: Path) -> None:
         """A duplicate the append-only CLI could never repair afterwards."""

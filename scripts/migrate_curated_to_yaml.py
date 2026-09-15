@@ -169,12 +169,31 @@ def migrate(
     else:
         print(f"skipped: {candidates_xlsx} does not exist")
 
+    # Decide about every target before writing any. Refusing the second file
+    # after writing the first stranded the run: the next attempt then refused
+    # the first. A target already holding exactly what this run would write is
+    # a finished half of an interrupted run, so re-running completes it.
+    pending: list[tuple[str, Path, list[dict[str, Any]], str, tuple[str, ...]]] = []
+    conflicts: list[Path] = []
     for name, target, entries, key, fields in plans:
-        if target.exists() and not dry_run:
-            raise MigrationError(
-                f"{target} already exists. This script never overwrites a curated file; "
-                "move it aside if you really mean to migrate again."
-            )
+        text = curated.render_list(entries, key, fields)
+        if target.exists():
+            if target.read_text(encoding="utf-8") == text:
+                print(f"already migrated: {target} matches {name}, left as it is")
+                continue
+            conflicts.append(target)
+            continue
+        pending.append((name, target, entries, key, fields))
+    if conflicts:
+        raise MigrationError(
+            "nothing was written: "
+            + ", ".join(str(p) for p in conflicts)
+            + " already exists with content this migration would not produce. This script "
+            "never overwrites a curated file. Compare it with the old file and move it aside "
+            "yourself before migrating."
+        )
+
+    for name, target, entries, key, fields in pending:
         if dry_run:
             print(f"--- {name} -> {target} ({len(entries)} entries) ---")
             print(curated.render_list(entries, key, fields), end="")
@@ -184,7 +203,7 @@ def migrate(
 
     if dry_run:
         print("dry run: nothing written")
-    elif plans:
+    elif pending:
         print("The old files were left where they are. Delete them yourself once you are happy.")
     return 0
 
