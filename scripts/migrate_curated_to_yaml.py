@@ -33,9 +33,9 @@ from typing import Any
 # reason, immediately before the imports it enables.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from job_scraper import curated  # noqa: E402
-from job_scraper.config_loader import default_curated_dir  # noqa: E402
-from job_scraper.urlutil import board_identity  # noqa: E402
+from job_scraper import curated
+from job_scraper.config_loader import default_curated_dir
+from job_scraper.urlutil import board_identity
 
 EXCLUDED_CSV_HEADER = ("organisation", "url", "reason")
 CANDIDATES_XLSX_HEADER = ("organisation", "url", "notes")

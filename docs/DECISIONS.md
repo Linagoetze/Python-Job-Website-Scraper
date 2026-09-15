@@ -517,3 +517,15 @@ session — see `CLAUDE.md`.
   are exit 1 too, but they print to stderr and change no file, so a caller
   that cares can tell them apart by stream.
 
+- **An E402 `noqa` goes only where ruff asks for one** (SP1, owner-approved
+  scope extension). [WP2](REFACTOR-PLAN.md#wp2--test-net-and-tooling)'s record says every
+  `sys.path`-amending import carries `# noqa: E402`. It no longer matches the
+  tree, and it was never needed everywhere: ruff exempts an import that
+  follows a `sys.path` call directly. `scripts/capture_fixtures.py` never had
+  one, SP1's migration script and its test had four that suppressed nothing
+  (removed), and `tests/fixture_cases.py` genuinely needs its three, because
+  the `_PROJECT_ROOT` assignment before its `sys.path.insert` ends the
+  exemption. Verify with `ruff check --extend-select RUF100 .` rather than by
+  reading the code — that is how this was settled, after a first attempt
+  removed the needed three on the strength of an argument.
+

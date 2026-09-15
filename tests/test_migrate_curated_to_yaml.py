@@ -25,7 +25,7 @@ from job_scraper import curated
 # the same shape `tests/fixture_cases.py` uses for `capture_fixtures`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import migrate_curated_to_yaml as migrate  # noqa: E402
+import migrate_curated_to_yaml as migrate
 
 FIXTURES = Path(__file__).parent / "fixtures" / "curated"
 
