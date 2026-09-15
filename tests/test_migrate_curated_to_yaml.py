@@ -207,3 +207,20 @@ class TestSafety:
         assert migrate.main(["--curated-dir", str(old_files), "--out-dir", str(out)]) == 0
         assert curated.excluded_path(out).is_file()
         assert not curated.excluded_path(old_files).exists()
+
+
+def test_the_script_runs_as_a_real_process_from_any_directory(tmp_path: Path) -> None:
+    """The failure this caught: run by path, scripts/ is on sys.path but the project is not."""
+    import subprocess
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "migrate_curated_to_yaml.py"
+    done = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert "usage:" in done.stdout
+    assert list(tmp_path.iterdir()) == []

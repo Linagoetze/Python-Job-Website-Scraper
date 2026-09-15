@@ -295,6 +295,10 @@ def _cmd_candidate_promote(args: argparse.Namespace, curated_dir: Path) -> int:
     if entry is None:
         print(f"no candidate named {args.organisation!r}", file=sys.stderr)
         return 1
+    already = curated.find_board(curated.load_excluded(curated_dir), str(entry["url"]))
+    if already is not None:
+        return _finish_interrupted_promote(args, curated_dir, candidates, entry, already)
+
     reason = args.reason or entry.get("blocker")
     if not str(reason or "").strip():
         print(
@@ -311,8 +315,8 @@ def _cmd_candidate_promote(args: argparse.Namespace, curated_dir: Path) -> int:
         "excluded_on": args.excluded_on or _today(),
     }
     # The tombstone is written first: a crash between the two writes leaves the
-    # board on both lists, which `check` reports plainly. The other order would
-    # lose it from both.
+    # board on both lists, and re-running this command finishes the move (see
+    # `_finish_interrupted_promote`). The other order would lose it from both.
     excluded_backup = curated.append_entry(
         excluded_file,
         tombstone,
@@ -334,6 +338,52 @@ def _cmd_candidate_promote(args: argparse.Namespace, curated_dir: Path) -> int:
         curated_dir,
         [excluded_file, candidates_file],
         f"promote {entry['organisation']} to the tombstone",
+        skip=args.no_commit,
+    )
+    return 0
+
+
+def _finish_interrupted_promote(
+    args: argparse.Namespace,
+    curated_dir: Path,
+    candidates: list[dict[str, Any]],
+    entry: dict[str, Any],
+    tombstoned: dict[str, Any],
+) -> int:
+    """Complete a promote that crashed after writing the tombstone.
+
+    Without this, that crash is a trap: `promote` refuses because the board is
+    already tombstoned, `exclude` refuses because it is still a candidate and
+    points back at `promote`, and the only way out is hand-editing a curated
+    file. Only the same organisation counts as the same promote — a different
+    name on that board is a genuine conflict for the owner, not a retry.
+    """
+    same_org = (
+        str(tombstoned.get("organisation") or "").strip().casefold()
+        == str(entry.get("organisation") or "").strip().casefold()
+    )
+    if not same_org:
+        print(
+            f"{entry['url']} is tombstoned as {tombstoned['organisation']!r} but a candidate "
+            f"as {entry['organisation']!r}. That is a conflict to resolve by hand, not a "
+            "retry — nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+    candidates_file = curated.candidates_path(curated_dir)
+    remaining = [e for e in candidates if e is not entry]
+    backup = curated.save_list(candidates_file, remaining, _CANDIDATES, curated.CANDIDATE_FIELDS)
+    _report_write(
+        curated_dir,
+        [candidates_file],
+        [b for b in [backup] if b],
+        f"{entry['organisation']} was already tombstoned (an earlier promote was interrupted); "
+        "removed it from the candidates to finish the move. The tombstone entry is unchanged.",
+    )
+    _commit(
+        curated_dir,
+        [candidates_file],
+        f"finish promoting {entry['organisation']} to the tombstone",
         skip=args.no_commit,
     )
     return 0

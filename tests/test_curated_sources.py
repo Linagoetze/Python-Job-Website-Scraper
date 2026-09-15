@@ -11,6 +11,8 @@ same mistake it is testing for.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -552,3 +554,192 @@ class TestTheCuratedRepository:
             ["git", "-C", str(tmp_path), "ls-files"], capture_output=True, text=True, check=True
         )
         assert ".bak" not in tracked.stdout
+
+
+class TestAnInterruptedPromote:
+    """`promote` writes two files. A crash between them must not strand the board."""
+
+    @staticmethod
+    def crash_on_the_candidates_write(monkeypatch: pytest.MonkeyPatch) -> Any:
+        """Returns the real writer, so a test can restore just this one patch."""
+        real = curated.save_list
+
+        def boom(path: Path, *args: Any, **kwargs: Any) -> Path | None:
+            if path.name == "candidate_sources.yaml":
+                raise OSError("crashed between the two writes")
+            return real(path, *args, **kwargs)
+
+        monkeypatch.setattr(curated, "save_list", boom)
+        return real
+
+    def test_the_crash_leaves_the_board_on_both_lists_not_on_neither(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        add_candidate(tmp_path, "Contoso Rail", "https://jobs.ashbyhq.com/contoso")
+        candidates_before = curated.candidates_path(tmp_path).read_bytes()
+        self.crash_on_the_candidates_write(monkeypatch)
+
+        with pytest.raises(OSError, match="between the two writes"):
+            cli(tmp_path, "candidate", "promote", "Contoso Rail")
+
+        assert [e["organisation"] for e in curated.load_excluded(tmp_path)] == ["Contoso Rail"]
+        assert curated.candidates_path(tmp_path).read_bytes() == candidates_before
+
+    def test_running_promote_again_finishes_the_move(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Before this, the retry refused and `exclude` pointed back at `promote`: a trap."""
+        add_candidate(tmp_path, "Contoso Rail", "https://jobs.ashbyhq.com/contoso")
+        real_save_list = self.crash_on_the_candidates_write(monkeypatch)
+        with pytest.raises(OSError):
+            cli(tmp_path, "candidate", "promote", "Contoso Rail")
+        tombstone_after_crash = curated.excluded_path(tmp_path).read_bytes()
+        monkeypatch.setattr(curated, "save_list", real_save_list)
+        capsys.readouterr()
+
+        assert cli(tmp_path, "candidate", "promote", "contoso rail") == 0
+
+        assert "earlier promote was interrupted" in capsys.readouterr().out
+        assert curated.load_candidates(tmp_path) == []
+        assert curated.excluded_path(tmp_path).read_bytes() == tombstone_after_crash, (
+            "the tombstone entry is left exactly as the first attempt wrote it"
+        )
+
+    def test_the_retry_needs_no_reason_even_without_a_blocker(self, tmp_path: Path) -> None:
+        """The tombstone already holds the reason; asking again would be noise."""
+        curated.save_list(
+            curated.candidates_path(tmp_path),
+            [{"organisation": "Litware", "url": "https://litware.example/careers"}],
+            curated.CANDIDATES_KEY,
+            curated.CANDIDATE_FIELDS,
+        )
+        curated.save_list(
+            curated.excluded_path(tmp_path),
+            [{"organisation": "Litware", "url": "https://litware.example/", "reason": "403"}],
+            curated.EXCLUDED_KEY,
+            curated.EXCLUDED_FIELDS,
+        )
+        assert cli(tmp_path, "candidate", "promote", "Litware") == 0
+        assert curated.load_candidates(tmp_path) == []
+
+    def test_a_different_organisation_on_that_board_is_a_conflict_not_a_retry(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        curated.save_list(
+            curated.candidates_path(tmp_path),
+            [{"organisation": "Contoso Rail", "url": "https://jobs.ashbyhq.com/contoso"}],
+            curated.CANDIDATES_KEY,
+            curated.CANDIDATE_FIELDS,
+        )
+        curated.save_list(
+            curated.excluded_path(tmp_path),
+            [{"organisation": "Contoso", "url": "https://jobs.ashbyhq.com/contoso", "reason": "x"}],
+            curated.EXCLUDED_KEY,
+            curated.EXCLUDED_FIELDS,
+        )
+        before = {p.name: p.read_bytes() for p in tmp_path.glob("*.yaml")}
+
+        assert cli(tmp_path, "candidate", "promote", "Contoso Rail") == 1
+
+        assert "conflict" in capsys.readouterr().err
+        assert {p.name: p.read_bytes() for p in tmp_path.glob("*.yaml")} == before
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+    )
+
+
+class TestWhenTheCommitFails:
+    """The YAML write has already happened; a git failure must say so, not undo it."""
+
+    @pytest.fixture
+    def repo_without_an_identity(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """No user.name anywhere git looks — the likeliest failure on a fresh machine.
+
+        The global and system config are shut out so the owner's own identity
+        cannot rescue the commit, and `useConfigOnly` stops git inventing one
+        from the hostname.
+        """
+        empty = tmp_path.parent / f"{tmp_path.name}-gitconfig"
+        empty.write_text("", encoding="utf-8")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        for name in (
+            "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL",
+            "GIT_COMMITTER_NAME",
+            "GIT_COMMITTER_EMAIL",
+            "EMAIL",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        _git(tmp_path, "init", "-q")
+        _git(tmp_path, "config", "user.useConfigOnly", "true")
+        return tmp_path
+
+    def test_the_file_is_written_and_the_failure_is_reported(
+        self, repo_without_an_identity: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        repo = repo_without_an_identity
+        assert run("--curated-dir", str(repo), "exclude", "Northwind", GREENHOUSE, "r") == 0
+
+        out = capsys.readouterr().out
+        assert "committing it failed" in out
+        assert [e["organisation"] for e in curated.load_excluded(repo)] == ["Northwind"]
+        log = subprocess.run(["git", "-C", str(repo), "log"], capture_output=True, text=True)
+        assert log.returncode != 0, "no commit was made"
+
+    def test_git_missing_from_path_is_reported_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _git(tmp_path, "init", "-q")
+        monkeypatch.setenv("PATH", str(tmp_path / "no-binaries-here"))
+
+        assert run("--curated-dir", str(tmp_path), "exclude", "Northwind", GREENHOUSE, "r") == 0
+
+        assert "git is not on PATH" in capsys.readouterr().out
+        assert curated.excluded_path(tmp_path).is_file()
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+class TestAsARealProcess:
+    """Calling `main()` proves the parser; only a real process proves the command runs.
+
+    `python scripts/migrate_curated_to_yaml.py` could not import the project
+    when first written, and every in-process test passed regardless.
+    """
+
+    @staticmethod
+    def sources(cwd: Path, *argv: str) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
+        return subprocess.run(
+            [sys.executable, "-m", "job_scraper.tools.sources", *argv],
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_help_exits_zero_having_written_nothing(self, tmp_path: Path) -> None:
+        done = self.sources(tmp_path, "--curated-dir", str(tmp_path), "candidate", "add", "--help")
+        assert done.returncode == 0, done.stderr
+        assert "usage:" in done.stdout
+        assert list(tmp_path.iterdir()) == []
+
+    def test_an_unknown_command_exits_non_zero_having_written_nothing(self, tmp_path: Path) -> None:
+        done = self.sources(tmp_path, "--curated-dir", str(tmp_path), "destroy")
+        assert done.returncode == 2
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_write_and_a_check_work_end_to_end(self, tmp_path: Path) -> None:
+        url = "https://job-boards.greenhouse.io/subprocess-test-board"
+        written = self.sources(
+            tmp_path, "--curated-dir", str(tmp_path), "--no-commit", "exclude", "Nobody", url, "r"
+        )
+        assert written.returncode == 0, written.stderr
+        found = self.sources(tmp_path, "--curated-dir", str(tmp_path), "check", url + "/")
+        assert found.returncode == 0 and "EXCLUDED" in found.stdout
