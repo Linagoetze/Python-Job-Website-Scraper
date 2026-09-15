@@ -564,9 +564,10 @@ session — see `CLAUDE.md`.
   from the transcript archive** (SP2, 2026-09-15). `skipped_sources.csv` was
   untracked, deleted in error in [CU1](REFACTOR-PLAN.md#cu1--final-cleanup-session-1-of-3), and recorded as permanently lost. It was
   not: `~/.claude/projects/` keeps every tool result verbatim, and
-  `scripts/recover_skipped_sources.py` rebuilt all thirteen rows, confirmed
-  complete because the recovered block is byte-for-byte the size an archived
-  `ls` reported for the file. Check the archive before writing anything off.
+  `scripts/recover_skipped_sources.py` rebuilt thirteen rows. Their block is
+  byte-for-byte the size an archived `ls` reported for the file, so they are
+  the whole file as it stood from 2026-05-27 until its deletion — not proof
+  that nothing was removed before then, when the archive barely begins. Check the archive before writing anything off.
   Three things the sweep has to get right, each of which a first attempt
   would miss: every project directory, because worktree sessions are archived
   apart from the main one; subagent transcripts one level down; and **tool

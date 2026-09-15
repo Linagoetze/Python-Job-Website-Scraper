@@ -160,3 +160,34 @@ def test_help_writes_nothing(tmp_path: Path) -> None:
         recover.main(["--help"])
     assert exit_info.value.code == 0
     assert list(tmp_path.iterdir()) == []
+
+
+def test_the_script_runs_as_a_real_process_from_any_directory(
+    archive: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """A full sweep, not just `--help`: SP1's migration script failed only when run by path.
+
+    Run from an unrelated directory, so nothing resolves through the working
+    directory by accident.
+    """
+    import subprocess
+
+    write_session(
+        archive / "-proj-job-scraper-project" / "s1.jsonl",
+        tool_result(f"{HEADER}\n{ROW_A}\n", "2026-07-30T08:00:00Z", "s1"),
+    )
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    out = tmp_path_factory.mktemp("out") / "recovered.yaml"
+    script = Path(__file__).resolve().parent.parent / "scripts" / "recover_skipped_sources.py"
+    done = subprocess.run(
+        [sys.executable, str(script), "--archive", str(archive), "--out", str(out)],
+        cwd=elsewhere,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert "1 distinct organisation(s)" in done.stdout
+    rows = yaml.safe_load(out.read_text(encoding="utf-8"))["recovered_skipped_sources"]
+    assert [r["organisation"] for r in rows] == ["Contoso"]
+    assert list(elsewhere.iterdir()) == [], "nothing written to the working directory"

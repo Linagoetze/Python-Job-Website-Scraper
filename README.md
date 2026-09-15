@@ -768,7 +768,7 @@ registry line.
 python -m pytest -q
 ```
 
-756 tests, about fourteen seconds, no network access required. Extractors are
+757 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the

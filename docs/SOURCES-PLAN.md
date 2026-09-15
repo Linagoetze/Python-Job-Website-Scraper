@@ -690,12 +690,14 @@ docs/REFACTOR-PLAN.md with a one-line pointer to this package.
 
 ### Result — done 2026-09-15, branch `sp2-recover-skipped`
 
-- **13 organisations recovered, and the recovery is complete.**
+- **13 organisations recovered: the whole file as it stood from 2026-05-27
+  until its deletion.**
   `scripts/recover_skipped_sources.py` swept 84 transcript files across both
   project directories, subagent transcripts included, and found rows in three
   sessions. The full 13-row block is exactly 2,600 bytes, the size an archived
   `ls` gave for the file, and the 7-row version left after the 2026-07-30
-  edits is exactly the 1,390 bytes listed afterwards.
+  edits is exactly the 1,390 bytes listed afterwards. The sizes cannot rule
+  out rows removed before 2026-05-27; the archive starts on 2026-05-26.
 - **One claim in this file was wrong: the 2026-06-12 session holds no rows.**
   It only lists the file. The rows are in the 2026-07-30 and 2026-08-02
   sessions.
@@ -721,10 +723,11 @@ docs/REFACTOR-PLAN.md with a one-line pointer to this package.
   writes blocker, category, `last_checked` and ats only while empty, refuses
   the whole command if any passed field holds a value, and appends to
   `source_of_record`. Reasoning in `docs/DECISIONS.md`.
-- **31 new tests** (725 to 756): record-check's fill, refusal with the file
+- **32 new tests** (725 to 757): record-check's fill, refusal with the file
   byte-identical, all-or-nothing refusal, provenance kept, unknown
   organisation, `--help`, backup and interrupted write; `--undated`; and the
-  recovery script against synthetic transcripts only.
+  recovery script against synthetic transcripts only, including one full
+  sweep run as a real process from an unrelated directory.
 - **Docs:** README's curated-lists section and test count, `docs/DECISIONS.md`
   (the recovery lesson, dating from an archive, the fill-only exception), and
   a one-line correction in `docs/REFACTOR-PLAN.md`'s CU1 result.
@@ -1070,8 +1073,10 @@ Three open questions, all of which need you rather than a session:
 1. **Do the new companies run on the five uncovered ATS platforms?** Decides
    whether SP4 blocks SP5. SP3's probe answers it definitively; your recollection
    answers it sooner.
-2. **How complete is the transcript recovery?** Answered by SP2: complete.
-   The recovered rows match the file's archived size byte for byte. What the
+2. **How complete is the transcript recovery?** Answered by SP2: complete as
+   of 2026-05-27. The recovered rows match the file's archived size byte for
+   byte from then until its deletion; anything removed before then, when the
+   archive barely begins, cannot be known. What the
    archive cannot give is when each site was checked, so those dates stay null.
 3. **Nested git repository in `data/curated/`, yes or no?** SP0. It changes what
    SP1 builds.
