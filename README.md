@@ -658,6 +658,8 @@ python -m job_scraper.tools.sources exclude <org> <url> <reason>
 python -m job_scraper.tools.sources candidate add <org> <url> --blocker "..."
 python -m job_scraper.tools.sources candidate promote <org>
 python -m job_scraper.tools.sources candidate record-check <org> --blocker "..."
+python -m job_scraper.tools.sources candidate recheck <org> --blocker "..." --last-checked YYYY-MM-DD --source-of-record "..."
+python -m job_scraper.tools.sources candidate activate <org>
 ```
 
 The two hand-maintained lists in `data/curated/` — `excluded_sources.yaml`,
@@ -680,8 +682,9 @@ Every writing command is append-only. It refuses a board that is already on a
 list rather than editing the entry, leaves a timestamped `.bak` beside the file
 before touching it, and replaces the file through a temp file in the same
 directory, so an interrupted write leaves the previous list readable.
-`promote` is the one command that removes anything — that is what moving a
-candidate to the tombstone means — and it backs up both files first. It writes
+`promote` and `activate` (below) are the only commands that remove anything —
+moving a candidate to the tombstone means removing it from the candidates — and
+`promote` backs up both files first. It writes
 the tombstone before it removes the candidate, so if it is interrupted in
 between, run the same `promote` again: it sees the board already tombstoned
 under that name and finishes the move.
@@ -695,6 +698,26 @@ what is there with `; `, never substituted. It has no default date: give
 `--last-checked` only when you know when the check happened. For the same
 reason `candidate add --undated` records a candidate with no date, for a
 finding recovered from a record rather than checked today.
+
+**`candidate recheck` replaces a finding, and keeps the old one in
+`source_of_record`.** Use it when a candidate has been checked again and is
+still not a source. `--blocker`, `--last-checked` and `--source-of-record` are
+all required, and there is no default date. It replaces `blocker` and
+`last_checked`, and `ats` if you pass it. Before it does, it appends
+`rechecked <date>: was blocker=..., last_checked=...` (plus `ats=...` when that
+changes, and `null` for a value that was empty) and then your
+`--source-of-record` text, so the entry keeps its own history. It never touches
+the organisation, URL or category. It refuses, changing nothing, when the date
+is earlier than the one recorded, when nothing would change, when the board is
+tombstoned, or when the board is already in `sources.yaml`.
+
+**`candidate activate` refuses unless the board is in `sources.yaml`.** It
+removes a candidate that is now scraped, and it needs proof: the candidate's
+board, matched by board and not by name or host, must be an entry in
+`sources.yaml`. Otherwise it refuses and names the board it looked for. A
+missing `sources.yaml` is a refusal too. It prints the whole entry before
+removing it, so the terminal holds a copy beside the `.bak` and the commit.
+There is no `--force`.
 
 If `data/curated/` is a git repository of its own (`git init` there; the outer
 repository cannot see it, because everything under `data/curated/` is ignored
@@ -768,7 +791,7 @@ registry line.
 python -m pytest -q
 ```
 
-757 tests, about fourteen seconds, no network access required. Extractors are
+794 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
