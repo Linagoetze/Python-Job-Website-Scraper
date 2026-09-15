@@ -529,3 +529,15 @@ session — see `CLAUDE.md`.
   reading the code — that is how this was settled, after a first attempt
   removed the needed three on the strength of an argument.
 
+- **A two-file write must be finishable by re-running it** (SP1). `promote`
+  writes the tombstone first and removes the candidate second, so a crash in
+  between leaves the board on both lists rather than on neither. That order
+  was right but was not enough: the retry refused (already tombstoned),
+  `exclude` refused (still a candidate) and pointed back at `promote`, and the
+  only way out was a hand-edit of a curated file. A retried `promote` now
+  completes the move when the tombstone holds that board under the *same*
+  organisation, and refuses as a conflict under a different one. The general
+  rule for any later command that touches more than one curated file: after a
+  crash at any point, running the same command again must succeed or say
+  exactly what conflicts. Choosing the safest write order is not enough.
+

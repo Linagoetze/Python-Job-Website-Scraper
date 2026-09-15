@@ -480,7 +480,7 @@ Branch sp1-curated-yaml. Commit, do not push. Update this plan file.
   for all seven tombstone rows, and everything but organisation and URL for
   the twenty candidates. The old `notes` column maps to `blocker`; it is empty
   in all twenty rows, so nothing was actually coerced.
-- **100 new tests** (602 to 702), all against `tmp_path`. An autouse fixture
+- **110 new tests** (602 to 712), all against `tmp_path`. An autouse fixture
   makes the real `data/curated/` unreachable from the suite rather than
   trusting each test to pass `--curated-dir`: a test suite that writes to the
   file it is protecting is the same mistake it is testing for. The interrupted
@@ -500,7 +500,24 @@ Branch sp1-curated-yaml. Commit, do not push. Update this plan file.
 - **README**: the new CLI and the migration script are in "Maintenance
   commands" (including that `--help` exits without acting, and that matching
   is by board rather than host), the `data/curated/` and `scripts/` rows of
-  the Layout table are updated, and the test count moved 602 → 702.
+  the Layout table are updated, and the test count moved 602 → 712.
+
+- **Follow-up in the same package, three gaps closed** after the result above
+  was first written. (1) A crash between `promote`'s two writes was a trap:
+  the retry refused because the board was tombstoned, `exclude` refused
+  because it was still a candidate and pointed back at `promote`, and the only
+  way out was hand-editing a curated file. Writing the test exposed it. A
+  retried `promote` now finishes the move when the tombstone holds that board
+  under the same organisation, and refuses with "conflict" under a different
+  one. (2) A failed commit to the curated repository is now tested with a
+  real git that has no identity, and with git missing from `PATH`: the file
+  is written and the failure is reported. (3) The CLI and the migration
+  script are run as real processes, because the migration script's import
+  failure earlier in this package was invisible to every in-process test.
+  Also in the follow-up, approved by the owner as slightly out of scope: the
+  four `# noqa: E402` comments this package added suppressed nothing and were
+  removed, and the `pyproject.toml` comment now says which module does need
+  one (`tests/fixture_cases.py`) and why.
 
 **One thing to know before running the migration:** `candidate_sources.xlsx`
 holds twenty rows and its `notes` column is empty in every one of them, so the

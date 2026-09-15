@@ -680,7 +680,10 @@ list rather than editing the entry, leaves a timestamped `.bak` beside the file
 before touching it, and replaces the file through a temp file in the same
 directory, so an interrupted write leaves the previous list readable.
 `promote` is the one command that removes anything — that is what moving a
-candidate to the tombstone means — and it backs up both files first.
+candidate to the tombstone means — and it backs up both files first. It writes
+the tombstone before it removes the candidate, so if it is interrupted in
+between, run the same `promote` again: it sees the board already tombstoned
+under that name and finishes the move.
 
 If `data/curated/` is a git repository of its own (`git init` there; the outer
 repository cannot see it, because everything under `data/curated/` is ignored
@@ -743,7 +746,7 @@ registry line.
 python -m pytest -q
 ```
 
-702 tests, about fourteen seconds, no network access required. Extractors are
+712 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
