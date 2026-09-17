@@ -66,9 +66,13 @@ _HEADERS = {
     CANDIDATES_KEY: """\
 # Sources still to check — candidates. Not "rejected": "not done yet".
 #
-# WRITTEN BY `python -m job_scraper.tools.sources`, NOT BY HAND. The tool is
-# append-only, refuses a duplicate board, backs this file up before every write
-# and replaces it atomically. Comments added here are not preserved.
+# WRITTEN BY `python -m job_scraper.tools.sources`, NOT BY HAND. The tool
+# refuses a duplicate board, backs this file up before every write and replaces
+# it atomically. Comments added here are not preserved. It adds entries, and
+# changes existing ones only in four narrow ways: `candidate record-check` fills
+# empty fields, `candidate recheck` replaces a finding after copying the old one
+# into source_of_record, and `candidate promote` and `candidate activate` remove
+# an entry (to the tombstone, or because its board is now in sources.yaml).
 #
 # `blocker` and `last_checked` are the point of this file: a candidate that was
 # checked and rejected must carry why and when, or the check gets repeated

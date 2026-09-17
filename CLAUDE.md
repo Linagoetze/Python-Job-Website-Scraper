@@ -106,8 +106,9 @@ These exist because the codebase has drifted in specific ways. Respect them.
   its case — `candidate promote` moves a candidate to the tombstone,
   `record-check` fills empty fields only, `recheck` replaces a finding after
   writing the old one into `source_of_record`, and `activate` removes a
-  candidate only when its board is in `sources.yaml` — see `docs/DECISIONS.md`. Every other operation on that directory — deleting, reordering, editing
-  an existing entry, changing a schema — belongs to the owner and must be asked
+  candidate only when its board is in `sources.yaml` — see `docs/DECISIONS.md`.
+  Every other operation on that directory — deleting, reordering, editing an
+  existing entry, changing a schema — belongs to the owner and must be asked
   for first. This is narrower than it looks: the two files this project has lost
   were both lost by a person with the file open, so an append-only writer with a
   backup is the safer path rather than the looser one. The tool exists as of

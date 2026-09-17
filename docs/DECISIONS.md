@@ -627,3 +627,13 @@ session — see `CLAUDE.md`.
   the whole entry before writing, and has no `--force`. `activate` reads
   `sources.yaml` itself (`curated.activate` takes its path) rather than being
   handed a list, so no caller can pass an empty list and get a removal.
+- **The candidates file's header no longer says "append-only"** (SP2b
+  follow-up, owner's request). It had been untrue since SP1's `promote`. The
+  tombstone's header still says it, because that file genuinely is only ever
+  appended to. The header is part of what `curated.render_list` writes, so the
+  new wording reaches `candidate_sources.yaml` on its next write through the
+  tool, with no entry changing. One side effect: the migration script counts
+  a YAML file as "already migrated" only if it is byte-identical to what it
+  would write now, so re-running `scripts/migrate_curated_to_yaml.py` after
+  this would report the candidates file as conflicting. The migration is
+  finished and needs no re-run, so this is accepted rather than worked around.
