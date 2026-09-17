@@ -1093,6 +1093,8 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
   rewording would have broken silently. The stand-in refusal in fix (2)'s
   tests gained that field, since the real one now has it; their assertions
   are unchanged. **5 more tests (903 to 908).**
+  After the owner's live probe of `canonical`, the printed entry takes its
+  company from an active source too. **3 more tests (908 to 911).**
 
 **Found while testing, not fixed here (scope).** The probe's first run against
 the saved `path` page called it short, and it is right: `path.html` states
@@ -1114,9 +1116,20 @@ the readers the EU APIs belongs to SP4.
 
 - [x] **Decide what to do about the Workday reader** (above). Planned as
       SP3b, below: its own package, before SP5 adds any Workday employer.
-- [ ] Nothing during the package. Afterwards, run `probe` against one site you
+- [x] Nothing during the package. Afterwards, run `probe` against one site you
       already know the answer for — an existing Personio or Greenhouse source —
       and check the verdict matches reality before trusting it on a new one.
+      **Done 2026-09-17** against the `canonical` Greenhouse source: found as
+      active by board identity, robots.txt allowed, the static page carries
+      job data, Greenhouse recognised from the URL, the reader read 304 rows
+      with real samples, verdict `reuse greenhouse` with `strategy: static` —
+      matching `sources.yaml`. The board page has a pager (52 posting links),
+      which is expected: the reader takes the whole board from one API
+      response. One weakness it showed, fixed in the same branch: the printed
+      entry said the company was unknown although the active entry names it;
+      the probe now takes the company from an active source (after `--company`,
+      before a candidate's organisation). A Personio source has not been
+      probed; its reader has no saved page until SP4.
 
 ---
 
