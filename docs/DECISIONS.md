@@ -643,3 +643,67 @@ session — see `CLAUDE.md`.
   would write now, so re-running `scripts/migrate_curated_to_yaml.py` after
   this would report the candidates file as conflicting. The migration is
   finished and needs no re-run, so this is accepted rather than worked around.
+
+- **`sources probe` fetches through one seam, and the live side of it is a
+  scrape's own fetcher** (SP3, 2026-09-17). `probe.ProbeFetcher` is four calls
+  — robots, page, text, rendered — and `probe.live_fetcher` fills them from
+  `http.py` inside `polite_fetching` and `http_cache`, so a probe carries the
+  owner's User-Agent, honours robots.txt, waits its turn per host and reads the
+  cache like any run. It passes **no** `ignore_robots` overrides, even for a
+  board already in `sources.yaml`: a probe asks "may we?", and the override is
+  the owner's answer for one existing source, not a default. Two additions to
+  `http.py`/`robots.py` exist only to make the report honest, and neither
+  changes what a run does: `fetch_page` is `fetch_text` with the redirect chain
+  kept (`fetch_text` is now `fetch_page(...).text`, one code path, not two),
+  and `RobotsPolicy.explain` quotes the line and group behind an answer.
+  `explain` never decides anything — `allowed` is `allows()`'s answer — and if
+  its own walk of the file disagrees, it reports the rule as unidentified
+  rather than quoting the wrong line. **It follows whichever `urllib.robotparser` the
+  running Python has** (found when CI failed): Python 3.13.15 moved that
+  module to RFC 9309 in a *patch* release — groups looked up through
+  `_find_entry` with `*` among them, the longest matching line deciding —
+  while 3.13.12 kept `*` aside as `default_entry` and let the first matching
+  line decide. `explain` supports both shapes; the tests assert only what
+  holds on either. The same change means **a scrape obeys robots.txt with
+  whatever semantics the local Python has**, so the owner's Mac and CI can
+  disagree on an edge case until they run the same patch release. The tests hand in a stub that serves
+  saved pages by URL; the one reader that does not use the fetcher it is given
+  (`workable`, which POSTs through `http.post_json`) is stubbed at its module.
+- **The probe's verdict never blames the wrong module** (SP3). `reuse` needs a
+  reader that read rows *and* no sign of a short read: a listing that states a
+  total larger than the rows, or a pager with a typical page size of rows from
+  a reader that does not check a total itself. A short read is
+  `needs a new extractor` — the existing reader does not walk that listing —
+  and prints no paste blocks, because pasting them would add a source that
+  silently drops everything after page one (WP11's failure, by another route).
+  A *recognised* platform whose reader raised or read nothing is
+  `not feasible — rung 5`, not `needs a new extractor`: the fix for a broken
+  generic reader is that reader (SP4), not a second module beside it.
+  **Except a robots.txt refusal**, which is `not feasible — rung 2`, naming
+  the URL the reader asked for and blaming no module (added in review). Many
+  readers fetch from a host other than the board's — `boards-api.greenhouse.io`,
+  `api.lever.co`, `api.smartrecruiters.com` — so the first the probe learns of
+  that host's robots.txt is the `RobotsDisallowed` the fetcher raises inside
+  the reader. The probe records that refusal rather than pre-checking guessed
+  API hosts, which would drift from what the readers actually request.
+  `RobotsDisallowed` carries the refused URL as a field (`.url`, set by
+  `http._check_robots` for GET and POST alike), and the probe reads that
+  field, never the message: a first version parsed the wording, which a
+  harmless rewording would have broken without failing any test.
+  `needs a new extractor` is kept for postings on no supported platform.
+  Rungs 3-4 (private API, third-party index) are named and pointed at
+  `probably_good`, never attempted. The command exits 0 only on `reuse`.
+- **A board the page points at is checked against the lists too** (SP3). The
+  tombstone check on the URL typed is not enough: a careers page on the
+  employer's own domain can embed a tombstoned hosted board. Every board the
+  fingerprint names is looked up by board identity before its reader runs, and
+  a tombstoned one is reported and not read.
+- **The probe's own fixtures are handwritten, and say so** (SP3). The rungs no
+  capture covers — a client-rendered shell, a page embedding a hosted board, a
+  bespoke listing, a robots.txt that says no — are small invented pages under
+  `tests/fixtures/probe/` (Contoso, Fabrikam, Litware), with a README saying
+  nothing there was fetched. Every other probe test reads a real capture from
+  `tests/fixtures/`. CLAUDE.md's "never invent fixtures from live sites"
+  forbids scraping during a session; it does not forbid writing a ten-line
+  shell by hand, which is the only way to test "no postings anywhere" without
+  a live site.

@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2 and SP2b are done** (as of 2026-09-15); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b and SP3 are done** (as of 2026-09-17); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -93,13 +93,14 @@ the ordering below.
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
 | 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
 | 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
-| 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
+| 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
+| 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | not started | `sp3b-workday-walk` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Tombstone guard at startup (optional) | 1 hr | Sonnet 5 | none | not started | `sp7-tombstone-guard` |
 
-**Roughly 17 hours** for SP0–SP4 (SP2b included) and SP7, plus SP5 and SP6 as recurring
+**Roughly 20 hours** for SP0–SP4 (SP2b and SP3b included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here.
@@ -110,16 +111,21 @@ plan's own seven included. Then SP1, which unblocks everything that stores an
 answer. SP2 is
 cheap and independent after SP1. **SP2b before SP5**: SP5 re-checks candidates
 and turns some of them into sources, and until SP2b lands neither answer can be
-recorded. SP3 before SP5. **SP4 before SP5** if any new
+recorded. SP3 before SP5. **SP3b as soon as SP3 is merged**: it fixes data
+loss in six live sources, and it must land before SP5 adds any Workday
+employer. It is independent of SP4. **SP4 before SP5** if any new
 company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
 do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline and
 SP7 is optional throughout.
 
 ### Model recommendations
 
-`Opus 5` for SP1, SP2, SP2b and SP3: each is a design decision with a data-loss edge
+`Opus 5` for SP1, SP2, SP2b, SP3 and SP3b: each is a design decision with a data-loss edge
 (a schema people will live with, a one-shot recovery from an archive, a
-judgement ladder that has to know when to stop). `Sonnet 5` for SP0b, SP4, SP5, SP6
+judgement ladder that has to know when to stop, and — for SP3b — a choice
+between two fragile routes where a changed detail URL would silently
+rewrite review history). SP3b looks like SP4's capture-and-fix work, but the
+route choice and the dedupe-key edge are why it is not a Sonnet package. `Sonnet 5` for SP0b, SP4, SP5, SP6
 and SP7: capture, diagnose, fix, pin — mechanical work with a strong test net
 under it, which is exactly the split the refactor settled on across its
 twenty-six packages. Effort cues are the repo's usual `think` / `think hard`.
@@ -140,7 +146,7 @@ The surfaces, and what invalidates each:
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7 | A startup warning is user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
+| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — Layout table | SP1 | The `data/curated/` row lists what lives there. |
@@ -993,11 +999,272 @@ a source now starts with `probe`. Update the test count in README.md.
 Branch sp3-source-probe. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-09-17, branch `sp3-source-probe`
+
+- **`python -m job_scraper.tools.sources probe <url> [--name ...] [--company ...]`**
+  prints the seven sections in the order the prompt gives and exits 0 only on
+  `reuse`. The logic is `job_scraper/probe.py`, one function per rung; the CLI
+  is a thin door in `tools/sources.py`, and `--help` fetches nothing.
+- **Rung 1 is by board identity**, through `curated.find_board` and
+  `urlutil.board_identity`. A tombstoned board stops the probe before any
+  request, robots.txt included, and the test asserts the fetch log is empty.
+  A candidate's blocker, `last_checked` and `source_of_record` are printed
+  before the first request, and a null date reads "UNKNOWN, which is not the
+  same as never checked". A missing `sources.yaml` is reported as a skipped
+  check, not a pass. **Not in the prompt:** every board the page *points at*
+  is checked too, because an employer's own careers page can embed a
+  tombstoned hosted board; such a board is named and not read.
+- **Rung 2** quotes the deciding line, its `User-agent` group, the full
+  User-Agent and the product token robots.txt actually matches on, and any
+  Crawl-delay. That needed `RobotsPolicy.explain` in `robots.py`, which reports
+  `allows()`'s own answer and refuses to quote a line its walk cannot confirm.
+- **Rung 3** reports bytes, visible text, posting-shaped links, job-card
+  elements, JSON-LD postings and embedded data payloads, and names a shell by
+  its signs (a `<noscript>` asking for JavaScript, an empty mount point). The
+  rendered route runs only when the static page shows no postings, or failed.
+- **Rung 4** reads the redirect chain as well as the page. That needed
+  `http.fetch_page`, which is `fetch_text` keeping `final_url` and the hops;
+  `fetch_text` is now that function trimmed to its body, so there is still one
+  request path. Boards are named for the seven hosted platforms; Teamtailor
+  and SuccessFactors live on the employer's host, so the page is the board.
+  At most three boards per platform are read.
+- **Rung 5** runs the generic reader bound as `registry.py` would bind it
+  (org slug for Lever and SmartRecruiters; `page_step` and `base_search_url`
+  for SuccessFactors, the page size read off "1 to N of T" or counted), with
+  the rendering fetcher for Workday and for a page that only showed postings
+  rendered. A board on another host gets its own robots check first. Samples
+  are three rows of title, location and `detail_url`, plus flags for empty
+  locations, rows linking back to the listing, and duplicate URLs. A reader
+  that raises is reported, never raised.
+- **Rung 6** reads a stated total ("1 - 20 of 61 jobs", "61 JOBS FOUND",
+  "Vacant positions: 2", `totalFound`) and pager signs, and marks a read
+  `SHORT` when it holds fewer rows than the total, or a typical page size
+  under a pager from a reader that checks no total.
+- **Rung 7, and a choice the prompt left open.** `needs a new extractor` is
+  for postings on no supported platform and for a reader that reads only a
+  first page. A *recognised* platform whose reader fails or reads nothing is
+  `not feasible — rung 5`, naming that reader's module as the thing to fix:
+  a second module beside a broken generic one is the wrong answer. Only a
+  whole read is `reuse`, and only then are the paste blocks printed (a YAML
+  entry the tests parse back, and a registry line they `eval` into the same
+  partial). When both routes show nothing and no platform is recognised, the
+  report names rungs 3–4 and points at `probably_good` in
+  `docs/REFACTOR-PLAN.md`. Reasoning in `docs/DECISIONS.md`.
+- **Writes nothing.** A test snapshots `tests/fixtures/`, `registry.py`, a
+  temp `sources.yaml` and the curated directory around a `reuse` probe and
+  finds them unchanged; another asserts `probe.py` contains no file-writing
+  call.
+- **92 new tests** (795 to 887): 86 in `tests/test_source_probe.py`, and six
+  more from the existing secret scan over the new fixture files. Every rung is
+  driven through a stub fetcher from saved pages: real captures
+  (`kognity`, `storytel`, `busuu`, `path`, `novo_nordisk` as its whole walk,
+  `dsv`, `givewell`) and five handwritten ones under `tests/fixtures/probe/`
+  for the cases no capture covers. The one localhost test is `fetch_page`'s
+  redirect chain, live and from the cache. Four mutations of the probe's key
+  guards (tombstone stop, board-not-host, short-read check, render fallback)
+  each fail the suite.
+- **Docs:** README "Adding a source" rewritten as check, probe, then reuse and
+  capture, write a module, or record the finding (with a table of which
+  candidate command fits where, `recheck` included since SP2b has merged);
+  `probe` in "Maintenance commands", `probe.py` in the Layout table, the test
+  count; the header of `sources.example.yaml` now starts with `check` and
+  `probe`; `probe.py` in `CLAUDE.md`'s architecture block; three entries in
+  `docs/DECISIONS.md`.
+
+- **Follow-up after review, three fixes in `probe.py`, one commit each.**
+  (1) Lever boards on `jobs.eu.lever.co` or `api.eu.lever.co` kept losing the
+  `.eu`; the board URL now keeps it (the two are different boards by board
+  identity), and the report says beside the board and beside the reader run
+  that `lever.py` only calls the non-EU API. (2) A robots.txt refusal raised
+  inside a reader — whose API host is often not the board's — was reported as
+  "rung 5 … a bug in <reader>.py". It is now "rung 2: robots.txt forbids
+  <the URL the reader asked for>", with the `ignore_robots` wording, and no
+  module is blamed; the probe still does not pre-check guessed API hosts.
+  (3) A Teamtailor board taken from the page itself now says, in rung 4 and
+  again above the paste blocks, that the page probed is assumed to be the
+  listing. SuccessFactors does not need it: it moves to `/search/`, and its
+  walk fails a short read. **11 new tests (887 to 898)**; no existing test
+  changed. Then, at the owner's request, Greenhouse EU boards got the same
+  note as Lever's (their `.eu` was already kept): **5 more tests (898 to
+  903)**.
+  Last, also at the owner's request: `RobotsDisallowed` now carries the
+  refused URL as a field, set in `http.py`, and the probe reads it instead of
+  parsing the message — fix (2) had taken it from the wording, which a
+  rewording would have broken silently. The stand-in refusal in fix (2)'s
+  tests gained that field, since the real one now has it; their assertions
+  are unchanged. **5 more tests (903 to 908).**
+  After the owner's live probe of `canonical`, the printed entry takes its
+  company from an active source too. **3 more tests (908 to 911).** Then,
+  at the owner's request, the name as well: a board already in `sources.yaml`
+  is printed under the name it has there (exactly as written, since it is a
+  registry key), and that name is not reported as a registry clash.
+  **4 more tests (911 to 915).**
+  **CI then failed three robots tests** that passed locally: CI runs Python
+  3.13.15, whose `urllib.robotparser` was rewritten for RFC 9309 in that patch
+  release, and `RobotsPolicy.explain` read the old layout. It now follows
+  either (the allow/deny answer was never affected — only the quoted line).
+  Checked by running the suite against both versions' copies of that module.
+  **2 more tests (915 to 917).**
+
+**Found while testing, not fixed here (scope).** The probe's first run against
+the saved `path` page called it short, and it is right: `path.html` states
+"1 - 20 of 61 jobs" and `workday.py` reads the 20 on the first rendered page.
+The golden test pins 20. Every Workday source in `sources.yaml` has the same
+reader, so any of them with more than one page of postings is being read short
+today, silently — the WP11 failure in a reader WP11 did not cover. Separately,
+`workable.py` reads one API response and follows no next-page token; whether
+that loses anything is for SP4's capture to show.
+`lever.py` always calls `api.lever.co`, and `greenhouse.py` always calls
+`boards-api.greenhouse.io`, so neither can read a board hosted in the EU
+(`jobs.eu.lever.co` / `api.eu.lever.co`, `job-boards.eu.greenhouse.io` /
+`boards-api.eu.greenhouse.io`). The probe keeps the `.eu` in the board it
+names and says beside it that the reader only calls the non-EU API, so the
+failure that follows is not mistaken for an unexplained reader bug. Teaching
+the readers the EU APIs belongs to SP4.
+
 ### Your to-dos
 
-- [ ] Nothing during the package. Afterwards, run `probe` against one site you
+- [x] **Decide what to do about the Workday reader** (above). Planned as
+      SP3b, below: its own package, before SP5 adds any Workday employer.
+- [x] Nothing during the package. Afterwards, run `probe` against one site you
       already know the answer for — an existing Personio or Greenhouse source —
       and check the verdict matches reality before trusting it on a new one.
+      **Done 2026-09-17** against the `canonical` Greenhouse source: found as
+      active by board identity, robots.txt allowed, the static page carries
+      job data, Greenhouse recognised from the URL, the reader read 304 rows
+      with real samples, verdict `reuse greenhouse` with `strategy: static` —
+      matching `sources.yaml`. The board page has a pager (52 posting links),
+      which is expected: the reader takes the whole board from one API
+      response. One weakness it showed, fixed in the same branch: the printed
+      entry said the company was unknown although the active entry names it;
+      the probe now takes the company from an active source (after `--company`,
+      before a candidate's organisation). A Personio source has not been
+      probed; its reader has no saved page until SP4.
+
+---
+
+## SP3b — Workday reads the whole board
+
+Added 2026-09-17, from SP3's result. The probe's first run against a saved page
+found a data-loss bug in a live reader: `tests/fixtures/path.html` states
+"1 - 20 of 61 jobs", and `extractors/workday.py` returns the 20 on the first
+rendered page. Nothing fails, and `tests/test_extractors_golden.py` pins 20 as
+correct. Six sources use this reader — `slack`, `busuu`, `airbus`, `path`,
+`irc` and `axis_comms` in `registry.py` — so any of them with more than one
+page of postings is read short on every run today. It is WP11's failure in a
+reader WP11 never treated as paginated.
+
+**Why it is its own package, and why before SP4.** It is live data loss, not
+a coverage gap, and SP4's five readers do not include Workday. It also blocks
+SP5 for any Workday employer: until it lands, `probe` calls every multi-page
+Workday board `needs a new extractor`, correctly.
+
+**Two parts, in this order.** A guard first, so a short read fails loudly the
+day it lands; then a walk, so it stops failing. Landing only the guard turns
+every multi-page Workday source into a failing source until the walk exists —
+the store keeps their jobs and nothing is delisted, which is priority 2
+working as intended, but the run summary will name them on every run. So the
+package lands both, guard commit first.
+
+**The data-loss edge is the dedupe key, not the walk.** A stored job is
+recognised by its `detail_url` (`storage/db.py`, `dedupe_key_for_job`). If a
+new route builds that URL even slightly differently — a missing `/en-US`, a
+different board segment — every stored Workday job looks new, and the old
+rows are delisted after two runs. That is a silent rewrite of review history,
+which is worse than the bug being fixed.
+
+```
+think hard
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP3b
+only. SP3 must be merged first.
+
+extractors/workday.py reads only the first rendered page of a Workday board.
+tests/fixtures/path.html says "1 - 20 of 61 jobs" (and "61 JOBS FOUND" in
+data-automation-id="jobFoundText"); the reader returns 20. Six sources use this
+reader: slack, busuu, airbus, path, irc, axis_comms. Fix it so every page is
+read, and so a short read fails loudly.
+
+1. GUARD FIRST, as its own commit. Read the board's total from the page
+   (jobFoundText, or the "1 - 20 of 61" range) and call
+   extractors/pagination.reconcile once the read has ended, as
+   successfactors_html.py does. A page with no readable total goes through
+   pagination.unverifiable_end, not a silent pass. busuu.html states 6 and
+   yields 6, so its golden is unchanged. path.html will now RAISE: that is the
+   bug made visible. Do not edit path's golden to make the suite pass: stop,
+   and replace its single-page case with a whole-walk capture in step 3.
+
+2. CHOOSE THE WALK, and put the choice to the owner before building it.
+   A `fetch(url) -> str` fetcher cannot click Workday's pager, which is why
+   probably_good's "Load more" was a dead end (docs/REFACTOR-PLAN.md,
+   "`probably_good` — genuinely unfixable within this design"). Investigate,
+   with ONE live request each at most, through http.py's polite fetchers:
+   a. whether the rendered listing accepts a page or offset in its URL;
+   b. the JSON endpoint the page itself calls,
+      POST https://<tenant>.<dc>.myworkdayjobs.com/wday/cxs/<tenant>/<board>/jobs
+      with {"limit": 20, "offset": N, "searchText": "", "appliedFacets": {}}.
+   FOR EACH, check that host's robots.txt first (RobotsPolicy.explain) and
+   quote the rule. A route robots.txt forbids is not a route. For (b), check
+   whether the response holds a total, and whether its fields give the same
+   title, location and detail URL the rendered page does.
+   Report both in chat with a recommendation, and wait for the owner's choice.
+
+3. BUILD THE CHOSEN WALK behind the same extract() signature, so registry.py
+   does not change. Rules:
+   - DETAIL URLS MUST NOT CHANGE. dedupe_key_for_job keys stored jobs on
+     detail_url; a different URL shape makes every stored Workday job look
+     new and delists the old rows two runs later. Before and after, for
+     busuu and path, compare every detail_url the old reader produced from
+     the saved page with what the new one produces for the same postings.
+     They must be identical. If they cannot be, STOP and put it to the owner.
+   - Compare location too, posting by posting. A route that says
+     "2 Locations" where the page named a city moves jobs at Layer 0 (see
+     DECISIONS.md on WP8d). Report every difference; do not paper over one.
+   - The walk ends when it holds the stated total, and fails through
+     pagination.reconcile when it does not. Posts go through http.post_json,
+     never requests directly.
+   - The rendered route is still needed if (a) was chosen; if (b) was, say
+     whether sources.yaml's `strategy: dynamic` is still needed for these six
+     and PRINT the change for the owner — sources.yaml is not yours to edit.
+
+4. CAPTURE, then pin. Re-capture path as its whole walk
+   (scripts/capture_fixtures.py --pages all path) and busuu. NOTE that
+   capture_fixtures.py records only what goes through the fetcher it hands
+   the extractor; http.post_json bypasses it (workable.py has the same gap).
+   If (b) was chosen, fix the capture path for POSTed pages first, with its
+   own test, rather than hand-writing a fixture. Pin the new goldens, with a
+   comment on path's saying why its count moved from 20.
+
+5. THE PROBE. job_scraper/probe.py describes Workday's walk as "reads the first
+   rendered page only" and does not mark it guarded; update both. Its test
+   test_a_first_page_read_as_the_whole_board_is_short drives path.html through
+   the old reader and expects SHORT. After this package that expectation is
+   wrong. Do not quietly edit it: say in chat what it now shows and why, then
+   change it so it still proves a short read is caught (a stub that serves
+   fewer pages than the stated total will do).
+
+No test may touch the network. The two investigation requests in step 2 are
+the only live traffic besides the captures in step 4.
+
+DOCS. README.md: test and fixture counts. docs/DECISIONS.md: the route chosen
+and why, the robots.txt findings, and the detail-URL rule. This plan file: the
+result, with before/after row counts for path and busuu.
+
+Branch sp3b-workday-walk. One commit per step. Do not push.
+```
+
+### Your to-dos
+
+- [ ] **Before the session:** decide whether you are happy for the guard to
+      land first, which means any multi-page Workday source shows as failing
+      in the run summary until the walk is built. Its stored jobs are kept.
+- [ ] **During the session:** choose the route in step 2. The session will
+      recommend one; the choice is about fragility, and it is yours.
+- [ ] If the detail URLs cannot be kept identical, the session stops. Then the
+      decision is whether to migrate stored keys, which is a bigger package.
+- [ ] Apply any `sources.yaml` change the session prints.
+- [ ] Run it at a civilised hour: it makes live requests to six employers'
+      Workday tenants, and `rules.json` should carry your contact details.
 
 ---
 
@@ -1092,7 +1359,7 @@ think
 
 Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP5 only. SP1, SP2b and
 SP3 must be merged; SP4 too if any of these companies runs on Breezy, Lever, Personio,
-SmartRecruiters or Workable.
+SmartRecruiters or Workable; SP3b too if any runs on Workday.
 
 Add the following companies to the scraper: <OWNER FILLS IN NAMES AND URLS>
 

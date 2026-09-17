@@ -9,6 +9,12 @@
     python -m job_scraper.tools.sources candidate recheck <org> --blocker ...
         --last-checked YYYY-MM-DD --source-of-record ...
     python -m job_scraper.tools.sources candidate activate <org>
+    python -m job_scraper.tools.sources probe <url> [--name ...] [--company ...]
+
+`probe` answers "can this career page be scraped within this design?" by
+fetching it politely and trying every generic ATS reader on it. It prints a
+report and a verdict, and writes nothing: not `sources.yaml`, not
+`registry.py`, not `tests/fixtures/`. It exits 0 only on a `reuse` verdict.
 
 `check` searches both curated lists *and* `sources.yaml`, and exits 1 when it
 finds nothing, so `sources check <url> || echo new` works.
@@ -34,12 +40,20 @@ from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import AbstractContextManager
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from job_scraper import curated
-from job_scraper.config_loader import default_curated_dir, default_sources_path, load_sources
+from job_scraper import curated, probe
+from job_scraper.config_loader import (
+    default_curated_dir,
+    default_rules_path,
+    default_sources_path,
+    load_rules,
+    load_sources,
+)
+from job_scraper.http import DEFAULT_USER_AGENT, default_http_cache_path, user_agent_from_rules
 from job_scraper.urlutil import board_identity
 
 _EXCLUDED = curated.EXCLUDED_KEY
@@ -157,6 +171,28 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     activate.add_argument("organisation", help="the candidate's name, or its board URL")
+
+    probing = sub.add_parser(
+        "probe",
+        help="can this career page be scraped? fetches it politely; reports, never writes",
+        description=(
+            "Works the first two rungs of the feasibility ladder: the lists (a tombstoned board "
+            "stops here, unfetched), robots.txt, the static and then the rendered page, the ten "
+            "supported ATS platforms and their generic readers, and pagination. Ends with a "
+            "verdict: `reuse <extractor>`, `needs a new extractor`, or `not feasible`. On "
+            "`reuse` it PRINTS the sources.yaml entry and the registry line; it never edits "
+            "either, and never writes a fixture. Exits 0 only on `reuse`."
+        ),
+    )
+    probing.add_argument("url", help="the career page or job board")
+    probing.add_argument(
+        "--name", default=None, help="source name for the printed blocks (default: from the board)"
+    )
+    probing.add_argument(
+        "--company",
+        default=None,
+        help="company for the printed sources.yaml entry (default: the candidate's organisation)",
+    )
 
     return parser.parse_args(argv)
 
@@ -479,6 +515,33 @@ def _cmd_candidate_activate(args: argparse.Namespace, curated_dir: Path) -> int:
     return 0
 
 
+def _probe_user_agent() -> str:
+    """The User-Agent a scrape would send: `rules.json`'s contact details, if it exists."""
+    path = default_rules_path()
+    if not path.is_file():
+        return DEFAULT_USER_AGENT
+    return user_agent_from_rules(load_rules(path))
+
+
+def _probe_fetcher(user_agent: str) -> AbstractContextManager[probe.ProbeFetcher]:
+    """The live fetcher. A seam for the tests, which hand in saved fixtures instead."""
+    return probe.live_fetcher(user_agent, default_http_cache_path())
+
+
+def _cmd_probe(args: argparse.Namespace, curated_dir: Path) -> int:
+    with _probe_fetcher(_probe_user_agent()) as fetcher:
+        result = probe.probe(
+            args.url,
+            fetcher,
+            curated_dir=curated_dir,
+            sources_path=default_sources_path(),
+            emit=print,
+            name=args.name,
+            company=args.company,
+        )
+    return 0 if result.kind == probe.REUSE else 1
+
+
 def _finish_interrupted_promote(
     args: argparse.Namespace,
     curated_dir: Path,
@@ -538,6 +601,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_check(args, curated_dir)
         if args.command == "exclude":
             return _cmd_exclude(args, curated_dir)
+        if args.command == "probe":
+            return _cmd_probe(args, curated_dir)
         if args.candidate_command == "add":
             return _cmd_candidate_add(args, curated_dir)
         if args.candidate_command == "record-check":

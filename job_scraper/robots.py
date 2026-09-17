@@ -28,9 +28,11 @@ from __future__ import annotations
 
 import logging
 import threading
+import urllib.robotparser
 from collections.abc import Callable
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from typing import Any
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -48,7 +50,16 @@ def _plain_get(url: str, user_agent: str, timeout: int) -> tuple[int, str]:
 
 
 class RobotsDisallowed(RuntimeError):
-    """A site's robots.txt forbids the URL we were about to fetch."""
+    """A site's robots.txt forbids the URL we were about to fetch.
+
+    `url` is that URL, as a field rather than only as words in the message, so
+    a caller reporting the refusal (`sources probe`) never has to parse the
+    wording. Optional only so a bare `RobotsDisallowed("...")` still works.
+    """
+
+    def __init__(self, message: str, *, url: str | None = None) -> None:
+        super().__init__(message)
+        self.url = url
 
 
 def as_origin(value: str) -> str:
@@ -80,6 +91,78 @@ class _Rules:
     """One host's answer. `parser` is None when robots.txt could not be read."""
 
     parser: RobotFileParser | None
+    # The site answered 4xx: there is no robots.txt, which means no restrictions.
+    absent: bool = False
+
+
+@dataclass(frozen=True)
+class RobotsVerdict:
+    """`RobotsPolicy.allows`, with its working shown.
+
+    `allowed` is always the policy's own answer. `rule` is the line of
+    robots.txt that decided it, as the parser holds it (`Disallow: /careers`),
+    and `group` the `User-agent:` lines it sits under; both are None when no
+    line decided — an unreadable file, an exemption, or a file with nothing to
+    say about this URL — and `reason` says which.
+    """
+
+    url: str
+    robots_url: str
+    user_agent: str
+    allowed: bool
+    reason: str
+    rule: str | None = None
+    group: str | None = None
+    crawl_delay: float | None = None
+
+
+def _robots_path(url: str) -> str:
+    """The path-and-query `RobotFileParser.can_fetch` compares rules against."""
+    parts = urlsplit(url)
+    path = urlunsplit(("", "", parts.path, parts.query, parts.fragment))
+    # The stdlib has renamed this between patch releases: 3.13.15 calls it
+    # `normalize_uri`, 3.13.12 `normalize_path`, and older ones had neither.
+    normalise = getattr(urllib.robotparser, "normalize_uri", None) or getattr(
+        urllib.robotparser, "normalize_path", None
+    )
+    path = normalise(path) if normalise is not None else quote(unquote(path))
+    return path or "/"
+
+
+# `explain` has to find the group and the line the parser itself used, and the
+# stdlib changed how it does both in a patch release. Up to 3.13.12 the first
+# group naming the agent wins, else the `*` group kept aside as
+# `default_entry`, and the first matching line decides. From 3.13.15 (RFC 9309)
+# groups are looked up through `_find_entry`, `*` is one of them, and the
+# longest matching line decides, an Allow winning a tie. These two helpers
+# follow whichever the running parser has. Both are private stdlib details,
+# which is why `explain` checks its finding against `allows()` and never
+# quotes a line that disagrees with it.
+
+
+def _deciding_group(parser: RobotFileParser, user_agent: str) -> Any:
+    find = getattr(parser, "_find_entry", None)
+    if find is not None:
+        return find(user_agent)
+    for entry in parser.entries:
+        if entry.applies_to(user_agent):
+            return entry
+    return getattr(parser, "default_entry", None)
+
+
+def _deciding_line(entry: Any, path: str) -> tuple[Any, str]:
+    best, best_length = None, 0
+    for line in entry.rulelines:
+        match = line.applies_to(path)
+        if isinstance(match, bool):
+            if match:
+                return line, "the first matching line decides"
+            continue
+        if match > best_length or (
+            match == best_length and best is not None and not best.allowance
+        ):
+            best, best_length = line, match
+    return best, "the most specific matching line decides"
 
 
 class RobotsPolicy:
@@ -143,6 +226,66 @@ class RobotsPolicy:
             return None
         return float(delay) if delay is not None else None
 
+    def explain(self, url: str) -> RobotsVerdict:
+        """Why *url* is or is not allowed, quoting the rule that decided.
+
+        For `sources probe`, which has to show its reasoning to someone deciding
+        whether to add a source. The answer itself is `allows`, unchanged; this
+        only finds the line behind it, the same way `can_fetch` walks the file —
+        first group naming our product token, else the `*` group, first
+        matching line wins. If that walk ever disagrees with `allows`, the rule
+        is reported as unidentified rather than quoted wrongly.
+        """
+        host = host_of(url)
+        robots_url = f"{host}/robots.txt" if host else ""
+        verdict = {"url": url, "robots_url": robots_url, "user_agent": self._user_agent}
+        if not host:
+            return RobotsVerdict(**verdict, allowed=True, reason="not an http(s) URL")
+        if host in self._overrides:
+            return RobotsVerdict(
+                **verdict, allowed=True, reason="exempted by ignore_robots in sources.yaml"
+            )
+        parser = self._rules_for(host).parser
+        if parser is None:
+            return RobotsVerdict(
+                **verdict,
+                allowed=True,
+                reason="robots.txt could not be read; an unreadable file allows the crawl "
+                "(see job_scraper/robots.py)",
+            )
+        if self._rules_for(host).absent:
+            return RobotsVerdict(
+                **verdict,
+                allowed=True,
+                reason="the host has no robots.txt (4xx), so nothing is restricted",
+            )
+        allowed = self.allows(url)
+        delay = self.crawl_delay(url)
+        path = _robots_path(url)
+        if path == "/robots.txt":
+            return RobotsVerdict(
+                **verdict, allowed=allowed, reason="robots.txt itself is always allowed"
+            )
+        entry = _deciding_group(parser, self._user_agent)
+        if entry is None:
+            return RobotsVerdict(
+                **verdict,
+                allowed=allowed,
+                reason="robots.txt has no group for this user agent and no `*` group",
+                crawl_delay=delay,
+            )
+        group = "\n".join(f"User-agent: {agent}" for agent in entry.useragents)
+        line, how = _deciding_line(entry, path)
+        if line is None:
+            decided, rule, reason = True, None, "no line in the matching group covers this path"
+        else:
+            decided, rule, reason = bool(line.allowance), str(line), how
+        if decided != allowed:
+            rule, reason = None, "the deciding line could not be identified"
+        return RobotsVerdict(
+            **verdict, allowed=allowed, reason=reason, rule=rule, group=group, crawl_delay=delay
+        )
+
     # -- internals ------------------------------------------------------------
 
     def _rules_for(self, host: str) -> _Rules:
@@ -158,29 +301,29 @@ class RobotsPolicy:
                 cached = self._rules.get(host)
             if cached is not None:
                 return cached
-            rules = _Rules(self._fetch(host))
+            rules = self._fetch(host)
             with self._guard:
                 self._rules[host] = rules
             return rules
 
-    def _fetch(self, host: str) -> RobotFileParser | None:
+    def _fetch(self, host: str) -> _Rules:
         url = f"{host}/robots.txt"
         try:
             status, text = self._fetch_robots(url, self._user_agent, ROBOTS_TIMEOUT)
         except Exception as exc:
             logger.warning("Could not read %s (%s); proceeding as if it allowed us", url, exc)
-            return None
+            return _Rules(None)
 
         if status >= 500:
             logger.warning("%s answered %d; proceeding as if it allowed us", url, status)
-            return None
+            return _Rules(None)
         parser = RobotFileParser()
         parser.set_url(url)
         if status >= 400:
             # No robots.txt is the ordinary case, and it means "no restrictions".
             parser.parse([])
             parser.modified()
-            return parser
+            return _Rules(parser, absent=True)
         parser.parse(text.splitlines())
         # `parse` does not stamp the read time and `RobotFileParser.crawl_delay`
         # returns None without one — so a site's stated delay would be silently
@@ -188,4 +331,4 @@ class RobotsPolicy:
         # of seconds there.
         parser.modified()
         logger.debug("Read %s", url)
-        return parser
+        return _Rules(parser)
