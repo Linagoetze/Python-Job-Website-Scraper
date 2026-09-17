@@ -6,6 +6,9 @@
     python -m job_scraper.tools.sources candidate add <org> <url> --blocker ...
     python -m job_scraper.tools.sources candidate promote <org>
     python -m job_scraper.tools.sources candidate record-check <org> --blocker ...
+    python -m job_scraper.tools.sources candidate recheck <org> --blocker ...
+        --last-checked YYYY-MM-DD --source-of-record ...
+    python -m job_scraper.tools.sources candidate activate <org>
 
 `check` searches both curated lists *and* `sources.yaml`, and exits 1 when it
 finds nothing, so `sources check <url> || echo new` works.
@@ -18,6 +21,9 @@ removing it from the candidates file — and it backs up both files.
 `candidate record-check` is the other: it fills fields that are still empty on
 an existing candidate, refuses outright if any of them already holds a value,
 and appends to `source_of_record` rather than replacing it.
+`candidate recheck` replaces a finding after a later check, but writes the old
+one into `source_of_record` first. `candidate activate` removes a candidate,
+and only when its board is in `sources.yaml`.
 
 Matching is by **board identity**, not by host: `job-boards.greenhouse.io`
 carries six different employers in `sources.yaml` today, and a host match would
@@ -118,6 +124,39 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     record.add_argument("--last-checked", dest="last_checked", default=None, help="YYYY-MM-DD")
     record.add_argument("--ats", default=None)
     record.add_argument("--source-of-record", dest="source_of_record", default=None)
+
+    recheck = candidate_sub.add_parser(
+        "recheck",
+        help="replace a candidate's finding after a later check, keeping the old one",
+        description=(
+            "For a candidate checked again and still not a source. Replaces blocker and "
+            "last_checked, and ats when given, after appending the old values to "
+            "source_of_record — never replacing it. Never touches organisation, url or "
+            "category. Refuses an earlier date, an identical finding, a tombstoned board and "
+            "a board already in sources.yaml (use `activate`). There is no default date."
+        ),
+    )
+    recheck.add_argument("organisation", help="the candidate's name, or its board URL")
+    recheck.add_argument("--blocker", required=True, help="why it is still not a source")
+    recheck.add_argument(
+        "--last-checked", dest="last_checked", required=True, help="YYYY-MM-DD, of this check"
+    )
+    recheck.add_argument(
+        "--source-of-record", dest="source_of_record", required=True, help="who checked, and how"
+    )
+    recheck.add_argument("--ats", default=None)
+
+    activate = candidate_sub.add_parser(
+        "activate",
+        help="remove a candidate whose board is now in sources.yaml",
+        description=(
+            "For a candidate that is now scraped. Removes it only when its board matches an "
+            "entry in sources.yaml, by board identity; otherwise refuses and names the board it "
+            "looked for. A missing sources.yaml is a refusal. Prints the whole entry before "
+            "removing it."
+        ),
+    )
+    activate.add_argument("organisation", help="the candidate's name, or its board URL")
 
     return parser.parse_args(argv)
 
@@ -388,6 +427,58 @@ def _cmd_candidate_record_check(args: argparse.Namespace, curated_dir: Path) -> 
     return 0
 
 
+def _cmd_candidate_recheck(args: argparse.Namespace, curated_dir: Path) -> int:
+    path = curated.candidates_path(curated_dir)
+    entry, backup = curated.recheck(
+        path,
+        args.organisation,
+        blocker=args.blocker,
+        last_checked=args.last_checked,
+        source_of_record=args.source_of_record,
+        ats=args.ats,
+        excluded=curated.load_excluded(curated_dir),
+        sources_path=default_sources_path(),
+    )
+    _report_write(
+        curated_dir,
+        [path],
+        [b for b in [backup] if b],
+        f"recorded the re-check of {entry['organisation']}; the old finding is in "
+        "source_of_record.",
+    )
+    _commit(curated_dir, [path], f"recheck {entry['organisation']}", skip=args.no_commit)
+    return 0
+
+
+def _cmd_candidate_activate(args: argparse.Namespace, curated_dir: Path) -> int:
+    path = curated.candidates_path(curated_dir)
+
+    def announce(entry: dict[str, Any], source: dict[str, Any]) -> None:
+        # Every field, nulls included: the terminal is the third copy of what is
+        # being removed, beside the .bak and the curated commit.
+        print(f"removing this candidate — its board is active as {source.get('name')!r}:")
+        for name in curated.CANDIDATE_FIELDS:
+            value = entry.get(name)
+            print(f"    {name}: {'null' if value is None else value}")
+
+    entry, backup = curated.activate(
+        path, args.organisation, default_sources_path(), before_write=announce
+    )
+    _report_write(
+        curated_dir,
+        [path],
+        [b for b in [backup] if b],
+        f"removed {entry['organisation']} from the candidates: it is an active source.",
+    )
+    _commit(
+        curated_dir,
+        [path],
+        f"activate {entry['organisation']}: now in sources.yaml",
+        skip=args.no_commit,
+    )
+    return 0
+
+
 def _finish_interrupted_promote(
     args: argparse.Namespace,
     curated_dir: Path,
@@ -451,6 +542,10 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_candidate_add(args, curated_dir)
         if args.candidate_command == "record-check":
             return _cmd_candidate_record_check(args, curated_dir)
+        if args.candidate_command == "recheck":
+            return _cmd_candidate_recheck(args, curated_dir)
+        if args.candidate_command == "activate":
+            return _cmd_candidate_activate(args, curated_dir)
         return _cmd_candidate_promote(args, curated_dir)
     except (curated.CuratedError, ValueError) as exc:
         print(f"refused: {exc}", file=sys.stderr)

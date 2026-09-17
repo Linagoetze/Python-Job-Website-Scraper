@@ -1,7 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1 and SP2 are done** (as of 2026-09-15; SP2b was
-added that day); the
+**In progress: SP0, SP0b, SP1, SP2 and SP2b are done** (as of 2026-09-15); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -93,7 +92,7 @@ the ordering below.
 | 0b | Split the refactor plan, retire the startup read | 0.5 hr | Sonnet 5 | none | done | `sp0b-split-plan` |
 | 1 | Curated lists to YAML, and a writer CLI | 2.5 hr | Opus 5 | `think hard` | done | `sp1-curated-yaml` |
 | 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
-| 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | not started | `sp2b-candidate-lifecycle` |
+| 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | not started | `sp3-source-probe` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
@@ -857,13 +856,62 @@ docs/DECISIONS.md. docs/DECISIONS.md: the second exception and its reason.
 Branch sp2b-candidate-lifecycle. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-09-15, branch `sp2b-candidate-lifecycle`
+
+- **`candidate recheck` and `candidate activate`** are in
+  `job_scraper/tools/sources.py`, with the logic in `curated.recheck` and
+  `curated.activate` beside `record_check`. `record-check` is unchanged.
+- **`recheck`** requires `--blocker`, `--last-checked` and
+  `--source-of-record` (argparse refuses a missing one before anything runs),
+  replaces blocker and `last_checked` and, when passed, ats, and first appends
+  `rechecked <date>: was blocker=<old>, last_checked=<old>` (with `ats=<old>`
+  only when ats actually changes, `null` for an empty old value) and then the
+  new text to `source_of_record`. It refuses, with the file byte-identical and
+  no backup taken, an unknown organisation, an earlier date, an identical
+  finding, a tombstoned board and a board in `sources.yaml`. Two choices the
+  prompt left open: the same date with a different blocker counts as a change
+  (only an *earlier* date is refused), and a new `--source-of-record` text
+  alone does not — "nothing would change" means the finding, not the note.
+- **`activate`** removes a candidate only when its board identity matches a
+  `sources.yaml` entry, refuses and names the board otherwise, and refuses a
+  missing `sources.yaml`. `curated.activate` takes the path and reads the
+  file itself, so no caller can hand it an empty list and get a removal. The
+  whole entry, nulls included, is printed through a callback that runs after
+  every check has passed and before the file is touched.
+- Both take the timestamped `.bak`, write through a temp file and
+  `os.replace()`, commit to the curated repository, and refuse while a list is
+  unmigrated.
+- **37 new tests** (757 to 794), all in `tmp_path`, with autouse fixtures that
+  make both the real `data/curated/` and the real `sources.yaml` unreachable.
+  Everything the prompt listed is covered, plus a second recheck keeping the
+  first's history, a changed ats, a name-only match in `sources.yaml` refused
+  by `activate`, and the unmigrated refusal. The real-process `recheck` runs
+  via `-m`. The real-process `activate` runs `main()` in a fresh interpreter
+  via `-c`, with only `default_sources_path` pointed at a temp file. Without
+  that it would read the owner's real `sources.yaml`, and a `--sources` flag
+  would have given `activate` the `--force` the prompt rules out.
+- **Docs:** README "Maintenance commands" and test count, `CLAUDE.md`'s
+  `data/curated/` rule (the four exceptions in one sentence), and
+  `docs/DECISIONS.md` (the second exception, and why `activate` reads
+  `sources.yaml` itself).
+- **Follow-up after review, two fixes.** (1) `recheck` read a missing
+  `sources.yaml` as "nothing is active", so it could have re-checked a board
+  already being scraped instead of pointing at `activate`. It now refuses,
+  through the same `curated.load_active_sources` as `activate`, and a test
+  covers it (795 tests). Both missing-file tests were confirmed to fail when
+  the refusal is replaced by an empty list. (2) The real-process `recheck`
+  test ran plain `-m`, so it read the owner's real `sources.yaml`. It now runs
+  the same way as the `activate` one, with `sources.yaml` pointed at a temp
+  file. Since (1), a plain `-m` run would refuse on any machine without that
+  file anyway, so neither real-process test is a literal `-m` run.
+
 ### Your to-dos
 
-- [ ] **Approve the second exception**, or strike this package. `recheck`
+- [x] **Approve the second exception**, or strike this package. `recheck`
       replaces a recorded finding (keeping the old one in the entry) and
       `activate` removes a candidate. If you strike it, SP5 falls back to
       reporting these cases in chat and writing nothing.
-- [ ] Nothing during the session: it writes no curated file, only tests in
+- [x] Nothing during the session: it writes no curated file, only tests in
       `tmp_path`.
 
 ---

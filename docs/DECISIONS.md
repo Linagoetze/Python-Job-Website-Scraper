@@ -598,7 +598,7 @@ session — see `CLAUDE.md`.
   why a half-remembered blocker should be left empty rather than recorded —
   empty can still be filled after a real check, and a wrong value cannot.
 - **Candidates get a lifecycle, not a general edit** (owner's decision,
-  2026-09-15; planned as SP2b in `docs/SOURCES-PLAN.md`, not yet built). SP2
+  2026-09-15; built in SP2b, see the next entry). SP2
   left two dead ends: `record-check` cannot record a re-check once a finding
   exists, and nothing removes a candidate that has become a source except
   `promote`, which tombstones it. Rejected alternatives: leaving SP5 to report
@@ -609,3 +609,37 @@ session — see `CLAUDE.md`.
   finding but writes the old one into `source_of_record` first, and
   `activate` removes a candidate only when its board is in `sources.yaml`.
   Whichever command is used, a finding that changes is never simply lost.
+- **`recheck` and `activate` are the second exception, and each needs its own
+  evidence** (SP2b, owner-approved 2026-09-15). `recheck` replaces blocker,
+  `last_checked` and, when given, ats, because a finding that cannot be updated
+  goes stale. It pays for that with history: before replacing anything it
+  appends `rechecked <date>: was blocker=..., last_checked=...` (ats too when it
+  changes, `null` for an empty old value) to `source_of_record`, so the file
+  holds the old finding as well as the `.bak` and the commit. Its date is
+  required, never defaulted, and may not be earlier than the recorded one, and
+  an identical finding is refused rather than written as a no-op with a
+  history line. It refuses a tombstoned board, which is a conflict for the
+  owner, and an active one, which is `activate`'s case. `activate` removes an
+  entry only when the candidate's **board** is in `sources.yaml`; a matching
+  name or host is not proof, and a missing `sources.yaml` is a refusal rather
+  than "not active" — for `recheck` too, since both decide something from
+  whether a board is scraped (`curated.load_active_sources`, added after
+  review). These are the only two commands that do not read a missing
+  `sources.yaml` as empty, because there emptiness would be the evidence for a
+  removal or for replacing a finding. `activate` prints
+  the whole entry before writing, and has no `--force`. `activate` reads
+  `sources.yaml` itself (`curated.activate` takes its path) rather than being
+  handed a list, so no caller can pass an empty list and get a removal;
+  `recheck` does the same. `check`, `exclude` and `candidate add` still read a
+  missing file as empty, which is right for a fresh clone and decides nothing
+  irreversible.
+- **The candidates file's header no longer says "append-only"** (SP2b
+  follow-up, owner's request). It had been untrue since SP1's `promote`. The
+  tombstone's header still says it, because that file genuinely is only ever
+  appended to. The header is part of what `curated.render_list` writes, so the
+  new wording reaches `candidate_sources.yaml` on its next write through the
+  tool, with no entry changing. One side effect: the migration script counts
+  a YAML file as "already migrated" only if it is byte-identical to what it
+  would write now, so re-running `scripts/migrate_curated_to_yaml.py` after
+  this would report the candidates file as conflicting. The migration is
+  finished and needs no re-run, so this is accepted rather than worked around.
