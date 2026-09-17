@@ -1,0 +1,4 @@
+# Crawlers are welcome; please keep it slow.
+User-agent: *
+Disallow: /admin/
+Crawl-delay: 2
