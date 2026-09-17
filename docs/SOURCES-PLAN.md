@@ -894,6 +894,16 @@ Branch sp2b-candidate-lifecycle. Commit, do not push. Update this plan file.
   `data/curated/` rule (the four exceptions in one sentence), and
   `docs/DECISIONS.md` (the second exception, and why `activate` reads
   `sources.yaml` itself).
+- **Follow-up after review, two fixes.** (1) `recheck` read a missing
+  `sources.yaml` as "nothing is active", so it could have re-checked a board
+  already being scraped instead of pointing at `activate`. It now refuses,
+  through the same `curated.load_active_sources` as `activate`, and a test
+  covers it (795 tests). Both missing-file tests were confirmed to fail when
+  the refusal is replaced by an empty list. (2) The real-process `recheck`
+  test ran plain `-m`, so it read the owner's real `sources.yaml`. It now runs
+  the same way as the `activate` one, with `sources.yaml` pointed at a temp
+  file. Since (1), a plain `-m` run would refuse on any machine without that
+  file anyway, so neither real-process test is a literal `-m` run.
 
 ### Your to-dos
 

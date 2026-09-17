@@ -433,6 +433,23 @@ def _history_value(value: Any) -> str:
     return "null" if _is_empty(value) else str(value)
 
 
+def load_active_sources(sources_path: Path, *, purpose: str) -> list[dict[str, Any]]:
+    """The parsed `sources.yaml`, or a refusal when it does not exist.
+
+    `recheck` and `activate` both decide something from whether a board is
+    scraped, so a missing file must not read as "nothing is active": for
+    `activate` that would be the evidence for a removal, and for `recheck` it
+    would let a scraped board be re-checked instead of activated. *purpose*
+    finishes the refusal's sentence.
+    """
+    if not sources_path.is_file():
+        raise CuratedError(
+            f"{sources_path} does not exist, so there is no way to tell which boards are "
+            f"scraped — refusing to {purpose}"
+        )
+    return load_sources(sources_path)
+
+
 def recheck(
     path: Path,
     organisation: str,
@@ -442,7 +459,7 @@ def recheck(
     source_of_record: str,
     ats: str | None = None,
     excluded: list[dict[str, Any]],
-    active: list[dict[str, Any]],
+    sources_path: Path,
 ) -> tuple[dict[str, Any], Path | None]:
     """Replace a candidate's finding after a later check. Returns the entry and the backup.
 
@@ -456,7 +473,8 @@ def recheck(
 
     Refused with the file untouched when the date moves backwards, when
     nothing would change, and when the board is tombstoned (a conflict for the
-    owner) or in *active*, the parsed `sources.yaml` (that is `activate`).
+    owner) or in *sources_path* (that is `activate`). A missing `sources.yaml`
+    is a refusal, as it is for `activate`.
     """
     given = {"blocker": blocker, "last_checked": last_checked, "source_of_record": source_of_record}
     if ats is not None:
@@ -469,6 +487,7 @@ def recheck(
     except ValueError as exc:
         raise CuratedError(f"last_checked must be a YYYY-MM-DD date, got {last_checked!r}") from exc
 
+    active = load_active_sources(sources_path, purpose="re-check a candidate")
     entries = load_list(path, CANDIDATES_KEY, CANDIDATE_FIELDS)
     entry = _find_candidate(entries, path, organisation)
     url = str(entry["url"])
@@ -536,17 +555,12 @@ def activate(
     Part of SP2b's exception. Removal needs proof, not a name: the candidate's
     board identity must match an entry in *sources_path*. A missing
     `sources.yaml` proves nothing either way, so it is a refusal rather than
-    "not active" — the one place in this module where a missing file is not
-    read as empty. *before_write* is called with the entry and the matching
-    source once every check has passed and before the file is touched, so the
-    caller can put the whole entry on the terminal first.
+    "not active" — see `load_active_sources`. *before_write* is called with the
+    entry and the matching source once every check has passed and before the
+    file is touched, so the caller can put the whole entry on the terminal
+    first.
     """
-    if not sources_path.is_file():
-        raise CuratedError(
-            f"{sources_path} does not exist, so there is no proof that any board is scraped — "
-            "refusing to remove a candidate"
-        )
-    active = load_sources(sources_path)
+    active = load_active_sources(sources_path, purpose="remove a candidate")
 
     entries = load_list(path, CANDIDATES_KEY, CANDIDATE_FIELDS)
     entry = _find_candidate(entries, path, organisation)

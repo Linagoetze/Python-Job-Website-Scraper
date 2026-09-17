@@ -709,7 +709,8 @@ changes, and `null` for a value that was empty) and then your
 `--source-of-record` text, so the entry keeps its own history. It never touches
 the organisation, URL or category. It refuses, changing nothing, when the date
 is earlier than the one recorded, when nothing would change, when the board is
-tombstoned, or when the board is already in `sources.yaml`.
+tombstoned, when the board is already in `sources.yaml`, or when `sources.yaml`
+is missing (it cannot tell whether the board is scraped).
 
 **`candidate activate` refuses unless the board is in `sources.yaml`.** It
 removes a candidate that is now scraped, and it needs proof: the candidate's
@@ -791,7 +792,7 @@ registry line.
 python -m pytest -q
 ```
 
-794 tests, about fourteen seconds, no network access required. Extractors are
+795 tests, about fourteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the

@@ -622,11 +622,17 @@ session — see `CLAUDE.md`.
   owner, and an active one, which is `activate`'s case. `activate` removes an
   entry only when the candidate's **board** is in `sources.yaml`; a matching
   name or host is not proof, and a missing `sources.yaml` is a refusal rather
-  than "not active". That is the one place a missing file is not read as
-  empty, because here emptiness would be the evidence for a removal. It prints
+  than "not active" — for `recheck` too, since both decide something from
+  whether a board is scraped (`curated.load_active_sources`, added after
+  review). These are the only two commands that do not read a missing
+  `sources.yaml` as empty, because there emptiness would be the evidence for a
+  removal or for replacing a finding. `activate` prints
   the whole entry before writing, and has no `--force`. `activate` reads
   `sources.yaml` itself (`curated.activate` takes its path) rather than being
-  handed a list, so no caller can pass an empty list and get a removal.
+  handed a list, so no caller can pass an empty list and get a removal;
+  `recheck` does the same. `check`, `exclude` and `candidate add` still read a
+  missing file as empty, which is right for a fresh clone and decides nothing
+  irreversible.
 - **The candidates file's header no longer says "append-only"** (SP2b
   follow-up, owner's request). It had been untrue since SP1's `promote`. The
   tombstone's header still says it, because that file genuinely is only ever

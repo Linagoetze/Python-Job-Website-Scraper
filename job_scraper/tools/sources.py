@@ -437,7 +437,7 @@ def _cmd_candidate_recheck(args: argparse.Namespace, curated_dir: Path) -> int:
         source_of_record=args.source_of_record,
         ats=args.ats,
         excluded=curated.load_excluded(curated_dir),
-        active=_active_sources(),
+        sources_path=default_sources_path(),
     )
     _report_write(
         curated_dir,

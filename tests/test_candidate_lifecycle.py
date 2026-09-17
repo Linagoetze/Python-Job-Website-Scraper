@@ -26,6 +26,7 @@ from job_scraper.tools import sources as sources_cli
 CONTOSO = "https://job-boards.greenhouse.io/contoso"
 FABRIKAM = "https://careers.fabrikam.example/jobs"
 MIGRATED = "migrated from candidate_sources.xlsx"
+UNRELATED = {"name": "litware", "url": "https://litware.example/careers"}
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +36,8 @@ def no_real_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(sources_cli, "default_curated_dir", boom)
     monkeypatch.setattr(sources_cli, "_active_sources", list)
-    # Nowhere by default: an activate test that forgets to write one is refused.
+    # A temp path for both writers. `listed` puts an unrelated board there; a
+    # test that deletes it sees the missing-file refusal.
     monkeypatch.setattr(
         sources_cli, "default_sources_path", lambda: tmp_path / "config" / "sources.yaml"
     )
@@ -58,7 +60,12 @@ def write_sources(tmp_path: Path, *sources: dict[str, Any]) -> Path:
 
 @pytest.fixture
 def listed(tmp_path: Path) -> Path:
-    """Two candidates: one with a full finding, one as the migration left it."""
+    """Two candidates: one with a full finding, one as the migration left it.
+
+    Also a `sources.yaml` scraping neither of them, since both writers refuse
+    to run without one.
+    """
+    write_sources(tmp_path, UNRELATED)
     curated_dir = tmp_path / "curated"
     curated_dir.mkdir()
     curated.save_list(
@@ -218,22 +225,25 @@ class TestRecheck:
         assert "tombstoned" in self.refused(listed, RECHECK, capsys)
 
     def test_an_active_board_is_refused_and_pointed_at_activate(
-        self, listed: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, listed: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(
-            sources_cli,
-            "_active_sources",
-            lambda: [{"name": "contoso", "url": "http://www.job-boards.greenhouse.io/contoso"}],
+        write_sources(
+            tmp_path, {"name": "contoso", "url": "http://www.job-boards.greenhouse.io/contoso"}
         )
         assert "candidate activate" in self.refused(listed, RECHECK, capsys)
 
-    def test_a_sibling_board_on_the_same_host_is_not_active(
-        self, listed: Path, monkeypatch: pytest.MonkeyPatch
+    def test_a_missing_sources_yaml_is_a_refusal_not_nothing_active(
+        self, tmp_path: Path, listed: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(
-            sources_cli,
-            "_active_sources",
-            lambda: [{"name": "northwind", "url": "https://job-boards.greenhouse.io/northwind"}],
+        """Otherwise a scraped board could be re-checked instead of activated."""
+        (tmp_path / "config" / "sources.yaml").unlink()
+        assert "does not exist" in self.refused(listed, RECHECK, capsys)
+
+    def test_a_sibling_board_on_the_same_host_is_not_active(
+        self, tmp_path: Path, listed: Path
+    ) -> None:
+        write_sources(
+            tmp_path, {"name": "northwind", "url": "https://job-boards.greenhouse.io/northwind"}
         )
         assert cli(listed, *RECHECK) == 0
 
@@ -297,8 +307,9 @@ class TestActivate:
         assert "job-boards.greenhouse.io/contoso" in self.refused(listed, capsys)
 
     def test_a_missing_sources_yaml_is_a_refusal_not_not_active(
-        self, listed: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, listed: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        (tmp_path / "config" / "sources.yaml").unlink()
         assert "does not exist" in self.refused(listed, capsys)
 
     def test_the_same_host_with_a_different_board_is_refused(
@@ -330,8 +341,14 @@ class TestActivate:
 
 class TestBothWriters:
     @pytest.fixture
-    def active(self, tmp_path: Path) -> None:
-        write_sources(tmp_path, {"name": "contoso", "url": CONTOSO})
+    def ready(self, tmp_path: Path, listed: Path, argv: list[str]) -> Path:
+        """`listed`, with Contoso scraped when the command is `activate`.
+
+        `recheck` refuses an active board, so it keeps the unrelated one.
+        """
+        if "activate" in argv:
+            write_sources(tmp_path, {"name": "contoso", "url": CONTOSO})
+        return listed
 
     @pytest.mark.parametrize(
         "argv",
@@ -339,26 +356,22 @@ class TestBothWriters:
         ids=["recheck", "activate"],
     )
     def test_help_writes_nothing(
-        self, listed: Path, active: None, argv: list[str], capsys: pytest.CaptureFixture[str]
+        self, ready: Path, argv: list[str], capsys: pytest.CaptureFixture[str]
     ) -> None:
-        before = snapshot(listed)
+        before = snapshot(ready)
         with pytest.raises(SystemExit) as exit_info:
-            cli(listed, *argv)
+            cli(ready, *argv)
         assert exit_info.value.code == 0
         assert "usage:" in capsys.readouterr().out
-        assert snapshot(listed) == before
+        assert snapshot(ready) == before
 
     @pytest.mark.parametrize(
         "argv", [RECHECK, ["candidate", "activate", "Contoso"]], ids=["recheck", "activate"]
     )
-    def test_the_backup_is_the_file_as_it_was(
-        self, listed: Path, active: None, argv: list[str]
-    ) -> None:
-        # recheck reads sources.yaml through `_active_sources`, which the autouse
-        # fixture empties, so the same `active` file does not refuse it.
-        before = curated.candidates_path(listed).read_bytes()
-        assert cli(listed, *argv) == 0
-        backups = list(listed.glob("candidate_sources.yaml.*.bak"))
+    def test_the_backup_is_the_file_as_it_was(self, ready: Path, argv: list[str]) -> None:
+        before = curated.candidates_path(ready).read_bytes()
+        assert cli(ready, *argv) == 0
+        backups = list(ready.glob("candidate_sources.yaml.*.bak"))
         assert len(backups) == 1
         assert backups[0].read_bytes() == before
 
@@ -366,9 +379,9 @@ class TestBothWriters:
         "argv", [RECHECK, ["candidate", "activate", "Contoso"]], ids=["recheck", "activate"]
     )
     def test_an_interrupted_write_leaves_the_original_intact(
-        self, listed: Path, active: None, argv: list[str], monkeypatch: pytest.MonkeyPatch
+        self, ready: Path, argv: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        path = curated.candidates_path(listed)
+        path = curated.candidates_path(ready)
         before = path.read_bytes()
 
         def boom(src: object, dst: object, **kwargs: object) -> None:
@@ -376,11 +389,12 @@ class TestBothWriters:
 
         monkeypatch.setattr(os, "replace", boom)
         with pytest.raises(OSError, match="interrupted"):
-            cli(listed, *argv)
+            cli(ready, *argv)
         assert path.read_bytes() == before
-        assert list(listed.glob(".candidate_sources-*")) == []
+        assert list(ready.glob(".candidate_sources-*")) == []
 
-    def test_both_refuse_before_the_migration(self, listed: Path, active: None) -> None:
+    def test_both_refuse_before_the_migration(self, tmp_path: Path, listed: Path) -> None:
+        write_sources(tmp_path, {"name": "contoso", "url": CONTOSO})
         (listed / "candidate_sources.yaml").unlink()
         (listed / "candidate_sources.xlsx").write_bytes(b"not really a workbook")
         before = snapshot(listed)
@@ -393,32 +407,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestAsARealProcess:
-    """Only a real process proves the command runs, not just that the parser parses."""
+    """Only a real process proves the command runs, not just that the parser parses.
+
+    Both run `main()` in a fresh interpreter via `-c` rather than `-m`, with
+    only `default_sources_path` pointed at a temp file. `-m` would read the
+    owner's real `sources.yaml`, so the result would depend on a private file;
+    and on a machine without one, both commands refuse. Everything else — the
+    import, the parser, `main()`, the write — is the command as a shell runs it.
+    """
 
     @staticmethod
-    def python(cwd: Path, *argv: str) -> subprocess.CompletedProcess[str]:
-        env = {**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
-        return subprocess.run(
-            [sys.executable, *argv], cwd=cwd, env=env, capture_output=True, text=True, timeout=60
-        )
-
-    def test_recheck(self, listed: Path) -> None:
-        done = self.python(
-            listed, "-m", "job_scraper.tools.sources", "--curated-dir", str(listed),
-            "--no-commit", *RECHECK,
-        )  # fmt: skip
-        assert done.returncode == 0, done.stderr
-        assert "rechecked 2026-09-14: was blocker=persistent 403" in str(
-            entry(listed, "Contoso")["source_of_record"]
-        )
-
-    def test_activate(self, tmp_path: Path, listed: Path) -> None:
-        """`-m` would read the owner's real sources.yaml, so the path is pointed here.
-
-        Everything else — the import, the parser, `main()`, the write — is the
-        command as it runs from a shell.
-        """
-        sources_path = write_sources(tmp_path, {"name": "contoso", "url": CONTOSO})
+    def sources(cwd: Path, sources_path: Path, *argv: str) -> subprocess.CompletedProcess[str]:
         script = (
             "import sys\n"
             "from pathlib import Path\n"
@@ -426,10 +425,26 @@ class TestAsARealProcess:
             f"sources.default_sources_path = lambda: Path({str(sources_path)!r})\n"
             "raise SystemExit(sources.main(sys.argv[1:]))\n"
         )
-        done = self.python(
-            listed, "-c", script, "--curated-dir", str(listed), "--no-commit",
-            "candidate", "activate", "Contoso",
-        )  # fmt: skip
+        env = {**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
+        return subprocess.run(
+            [sys.executable, "-c", script, "--curated-dir", str(cwd), "--no-commit", *argv],
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_recheck(self, tmp_path: Path, listed: Path) -> None:
+        done = self.sources(listed, tmp_path / "config" / "sources.yaml", *RECHECK)
+        assert done.returncode == 0, done.stderr
+        assert "rechecked 2026-09-14: was blocker=persistent 403" in str(
+            entry(listed, "Contoso")["source_of_record"]
+        )
+
+    def test_activate(self, tmp_path: Path, listed: Path) -> None:
+        sources_path = write_sources(tmp_path, {"name": "contoso", "url": CONTOSO})
+        done = self.sources(listed, sources_path, "candidate", "activate", "Contoso")
         assert done.returncode == 0, done.stderr
         assert "organisation: Contoso" in done.stdout
         assert [e["organisation"] for e in curated.load_candidates(listed)] == ["Fabrikam"]
