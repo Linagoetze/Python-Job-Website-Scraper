@@ -61,7 +61,7 @@ from job_scraper.extractors import (
 )
 from job_scraper.extractors.registry import REGISTRY
 from job_scraper.http import FetchedPage
-from job_scraper.robots import RobotsVerdict
+from job_scraper.robots import RobotsDisallowed, RobotsVerdict
 from job_scraper.urlutil import board_identity
 
 Emit = Callable[[str], None]
@@ -77,6 +77,16 @@ LADDER_REFERENCE = (
 MAX_BOARDS_PER_PLATFORM = 3
 
 SAMPLE_ROWS = 3
+
+IGNORE_ROBOTS_NOTE = (
+    "`ignore_robots` exists for a rule not meant for us; using it is the owner's "
+    "judgement about the site, not the probe's."
+)
+
+# How http._check_robots names the refused URL, for a refusal raised outside
+# the fetcher the probe hands the reader (workable.py POSTs through
+# http.post_json itself).
+_REFUSED_URL = re.compile(r"robots\.txt forbids (\S+) for")
 
 # Page sizes listings tend to come in. A reader that returns exactly one of
 # these from a listing with a pager has probably read one page.
@@ -659,6 +669,9 @@ class ReaderRun:
     total: DeclaredTotal | None = None  # the listing's own total, if its page states one
     pager: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Set when robots.txt refused a request the reader made: the URL it asked
+    # for. The reader did nothing wrong, so the verdict must not blame it.
+    refused_url: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -759,7 +772,10 @@ def run_reader(
     *listing* is the scan of the probed page when it is this board's page, so
     its declared total and pager apply to what the reader reads.
     """
-    fetch = _rendering(fetcher) if strategy == "dynamic" else _static(fetcher)
+    refused: list[str] = []
+    fetch = _noting_refusals(
+        _rendering(fetcher) if strategy == "dynamic" else _static(fetcher), refused
+    )
     run = ReaderRun(board=board, strategy=strategy)
     if board.eu_note:
         run.notes.append(board.eu_note)
@@ -789,14 +805,46 @@ def run_reader(
                 return run
         reader, run.call = _source_call(board, name, page_step)
         run.rows = reader(board.url, fetch)
+    except RobotsDisallowed as exc:
+        # The reader's own host may differ from the board's (boards-api.
+        # greenhouse.io, api.lever.co, api.smartrecruiters.com), so this is the
+        # first the probe hears of that host's robots.txt. Reported as what
+        # the fetcher refused, never guessed in advance.
+        run.error = f"{type(exc).__name__}: {exc}"
+        match = _REFUSED_URL.search(str(exc))
+        run.refused_url = (
+            refused[-1] if refused else match.group(1) if match else "(URL not reported)"
+        )
     except Exception as exc:  # noqa: BLE001 — every failure is part of the report
         run.error = f"{type(exc).__name__}: {exc}"
     return run
 
 
+def _noting_refusals(inner: Fetch, refused: list[str]) -> Fetch:
+    """*inner*, recording the URL of any request robots.txt refuses."""
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        try:
+            return inner(url, *args, **kwargs)
+        except RobotsDisallowed:
+            refused.append(url)
+            raise
+
+    if getattr(inner, "renders", False):
+        fetch.renders = True  # type: ignore[attr-defined]
+    return fetch
+
+
 def describe_run(run: ReaderRun) -> list[str]:
     head = f"{run.board.platform.key} on {run.board.url} ({run.strategy})"
     notes = [f"    {note}" for note in run.notes]
+    if run.refused_url is not None:
+        return [
+            head,
+            *notes,
+            f"    REFUSED by robots.txt — the reader asked for {run.refused_url}",
+            f"    ({run.error})",
+        ]
     if run.error is not None:
         return [head, *notes, f"    FAILED — {run.error}"]
     lines = [head, f"    {len(run.rows)} row(s)", *notes]
@@ -1036,8 +1084,7 @@ def _step_robots(state: _Probe) -> ProbeResult | None:
     return ProbeResult(
         NOT_FEASIBLE,
         f"{NOT_FEASIBLE} — rung 2: robots.txt forbids {state.url} ({verdict.rule}). "
-        "`ignore_robots` exists for a rule not meant for us; using it is the owner's "
-        "judgement about the site, not the probe's.",
+        + IGNORE_ROBOTS_NOTE,
     )
 
 
@@ -1207,7 +1254,8 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
 
     A recognised platform whose reader fails or reads nothing is `not
     feasible` at rung 5, never `needs a new extractor`: the fix for a broken
-    generic reader is that reader (SP4), not a second module beside it.
+    generic reader is that reader (SP4), not a second module beside it. A
+    reader stopped by robots.txt is rung 2, and the reader is not blamed.
     """
     whole = [r for r in runs if r.ok and not r.short]
     if whole:
@@ -1226,6 +1274,16 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
             f"{NEW_EXTRACTOR} — {run.board.platform.key} {run.short}: the existing reader "
             "does not walk this listing, so it needs a walking reader (or a fix to "
             f"{run.board.platform.key}.py) before it is a source.",
+            run,
+        )
+    refused = [r for r in runs if r.refused_url is not None]
+    if refused:
+        run = refused[0]
+        return ProbeResult(
+            NOT_FEASIBLE,
+            f"{NOT_FEASIBLE} — rung 2: robots.txt forbids {run.refused_url}, which the "
+            f"{run.board.platform.key} reader asked for while reading {run.board.url}. "
+            + IGNORE_ROBOTS_NOTE,
             run,
         )
     failed = [r for r in runs if r.error is not None]

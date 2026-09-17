@@ -671,6 +671,13 @@ session — see `CLAUDE.md`.
   A *recognised* platform whose reader raised or read nothing is
   `not feasible — rung 5`, not `needs a new extractor`: the fix for a broken
   generic reader is that reader (SP4), not a second module beside it.
+  **Except a robots.txt refusal**, which is `not feasible — rung 2`, naming
+  the URL the reader asked for and blaming no module (added in review). Many
+  readers fetch from a host other than the board's — `boards-api.greenhouse.io`,
+  `api.lever.co`, `api.smartrecruiters.com` — so the first the probe learns of
+  that host's robots.txt is the `RobotsDisallowed` the fetcher raises inside
+  the reader. The probe records that refusal rather than pre-checking guessed
+  API hosts, which would drift from what the readers actually request.
   `needs a new extractor` is kept for postings on no supported platform.
   Rungs 3-4 (private API, third-party index) are named and pointed at
   `probably_good`, never attempted. The command exits 0 only on `reuse`.

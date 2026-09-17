@@ -34,7 +34,7 @@ from job_scraper import curated, probe
 from job_scraper import http as http_mod
 from job_scraper.extractors import workable
 from job_scraper.http import FetchedPage
-from job_scraper.robots import RobotsPolicy
+from job_scraper.robots import RobotsDisallowed, RobotsPolicy
 from job_scraper.tools import sources as sources_cli
 from tests.fixture_cases import FIXTURES_DIR
 
@@ -1196,3 +1196,77 @@ class TestLeverEu:
         assert note in section_5
         assert "FETCH text https://api.lever.co/v0/postings/contoso" in fetcher.log
         assert result.kind == probe.NOT_FEASIBLE
+
+
+# --- review fix 2: a robots refusal inside a reader is rung 2 --------------
+
+
+def _http_refusal(url: str) -> RobotsDisallowed:
+    """The exception http._check_robots raises, worded as it words it."""
+    return RobotsDisallowed(
+        f"robots.txt forbids {url} for this user agent. If that rule is not meant for "
+        "us, exempt https://boards-api.greenhouse.io by naming it in the source's "
+        "`ignore_robots` list in sources.yaml."
+    )
+
+
+class RefusingFetcher(StubFetcher):
+    """Serves the page, then refuses the listed URLs the way the live fetcher would."""
+
+    def __init__(self, log: list[str], refuse: set[str], **kwargs: Any) -> None:
+        super().__init__(log, **kwargs)
+        self.refuse = refuse
+
+    def text(self, url: str) -> str:
+        if url in self.refuse:
+            self.log.append(f"FETCH text {url} (refused)")
+            raise _http_refusal(url)
+        return super().text(url)
+
+
+class TestReaderRefusedByRobots:
+    def test_the_verdict_is_rung_two_and_names_the_url(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        page = probe_fixture("greenhouse_embed.html")
+        fetcher = RefusingFetcher(
+            [], {GIVEWELL_API}, static={CONTOSO: page}, rendered={CONTOSO: page}
+        )
+        result, report = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
+
+        assert result.kind == probe.NOT_FEASIBLE
+        assert result.line.startswith(f"not feasible — rung 2: robots.txt forbids {GIVEWELL_API}")
+        assert "greenhouse reader asked for" in result.line
+        assert "`ignore_robots` exists for a rule not meant for us" in result.line
+        assert "the owner's judgement" in result.line
+        assert "bug in" not in result.line
+        assert "rung 5" not in result.line
+        assert f"REFUSED by robots.txt — the reader asked for {GIVEWELL_API}" in report
+        assert "bug in" not in report
+
+    def test_a_refusal_outside_the_fetcher_is_read_from_the_exception(
+        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # workable.py POSTs through http.post_json, not through the fetcher the
+        # probe hands it, so the URL comes from the refusal's own message.
+        api = "https://apply.workable.com/api/v3/accounts/contoso/jobs"
+
+        def refuse(url: str, payload: Any, **kwargs: Any) -> Any:
+            raise _http_refusal(url)
+
+        monkeypatch.setattr(workable, "post_json", refuse)
+        board = "https://apply.workable.com/contoso/"
+        shell = probe_fixture("shell.html")
+        fetcher = StubFetcher([], static={board: shell}, rendered={board: shell})
+        result, _ = run_probe(board, fetcher, curated_dir, tmp_path)
+
+        assert result.line.startswith(f"not feasible — rung 2: robots.txt forbids {api}")
+        assert "bug in" not in result.line
+
+    def test_an_ordinary_failure_is_still_rung_five(self) -> None:
+        platform = next(p for p in probe.PLATFORMS if p.key == "greenhouse")
+        board = probe.Board(platform, GIVEWELL_BOARD, "givewell", "test")
+        run = probe.ReaderRun(board, "static", error="JSONDecodeError: x")
+        result = probe.decide([run], [], None)
+        assert "rung 5" in result.line
+        assert "bug in greenhouse.py" in result.line
