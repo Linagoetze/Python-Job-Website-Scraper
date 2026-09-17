@@ -30,10 +30,21 @@
 #             site, not about one page.
 #
 # The nine entries below are chosen to exercise a different extractor each, so
-# you can see one working example per supported ATS. Add your own employers by
-# registering them in registry.py — most big ATS platforms already have a
-# generic extractor, so a new employer usually needs one registry line and no
-# new code.
+# you can see one working example per supported ATS.
+#
+# To add an employer, start with the probe, not with this file:
+#
+#   python -m job_scraper.tools.sources check <url>
+#   python -m job_scraper.tools.sources probe <url>
+#
+# `check` says whether the board is already tombstoned, a candidate or a source.
+# `probe` fetches the page politely, tries the generic reader for each ATS it
+# recognises, and ends with a verdict. On `reuse <extractor>` it prints the
+# entry to paste here and the one line to paste into registry.py — most big ATS
+# platforms already have a generic extractor, so that is usually all the code a
+# new employer needs. It edits neither file. Then capture the page it reads
+# with scripts/capture_fixtures.py. On `needs a new extractor` or
+# `not feasible`, see README.md, "Adding a source", for what to do instead.
 sources:
   # --- Greenhouse ---
   - name: canonical

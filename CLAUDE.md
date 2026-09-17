@@ -35,6 +35,7 @@ job_scraper/
   urlutil.py          URL normalisation and dedupe keys
   blocklist.py        Permanently rejected postings
   curated.py          The two curated source lists (tombstone, candidates)
+  probe.py            The feasibility probe behind `sources probe`; reports, never writes
   extractors/         One module per ATS or site, registry.py maps names
   storage/            SQLite store (db.py, internal) and xlsx store (presentation)
   tools/              Maintenance commands, incl. sources.py (the curated lists)

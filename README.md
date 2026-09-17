@@ -660,7 +660,12 @@ python -m job_scraper.tools.sources candidate promote <org>
 python -m job_scraper.tools.sources candidate record-check <org> --blocker "..."
 python -m job_scraper.tools.sources candidate recheck <org> --blocker "..." --last-checked YYYY-MM-DD --source-of-record "..."
 python -m job_scraper.tools.sources candidate activate <org>
+python -m job_scraper.tools.sources probe <url>
 ```
+
+`probe` is the odd one out: it reads the lists and fetches the page, and writes
+nothing. It is step 2 of [Adding a source](#adding-a-source), which describes
+its report.
 
 The two hand-maintained lists in `data/curated/` — `excluded_sources.yaml`,
 the boards ruled out permanently, and `candidate_sources.yaml`, the ones still
@@ -751,9 +756,99 @@ would defeat the point of recording one.
 
 ## Adding a source
 
-Three steps.
+Adding an employer is a routine: **check, probe, then act on the verdict** —
+reuse a reader and capture its page, exclude the board, or record why it is not
+a source yet. The commands are in [The curated source lists](#the-curated-source-lists).
 
-**1. Write an extractor** in `job_scraper/extractors/`. The contract is:
+**1. Check it is not already known.**
+
+```bash
+python -m job_scraper.tools.sources check <url>
+```
+
+`check` looks in the tombstone, the candidates list and `sources.yaml`, by board
+rather than by host. If it prints `EXCLUDED`, stop: that board was ruled out for
+good, and re-investigating it is exactly what the tombstone exists to prevent.
+If it prints `CANDIDATE`, read the recorded `blocker`, `last_checked` and
+`source_of_record` first — it may have been checked recently for the same
+answer. `check` leaves out empty fields, so no `last_checked` line means the
+date is **unknown**, not that nobody ever looked. `ACTIVE SOURCE` means there is
+nothing to add.
+
+**2. Probe it.**
+
+```bash
+python -m job_scraper.tools.sources probe <url>
+```
+
+`probe` answers "can this career page be scraped within this design?" It works
+the first two rungs of the feasibility ladder and prints what it found, in
+order:
+
+1. the same three lists, by board — a tombstoned board stops the probe before
+   anything is fetched, and a candidate's finding is printed before the first
+   request;
+2. `robots.txt` for the host, quoting the rule that decided and the User-Agent
+   it was evaluated for;
+3. the page, fetched plainly, and rendered in headless Chromium only if the
+   plain page shows no postings: its size, and how many links and elements look
+   like postings;
+4. which of the ten supported platforms it shows signs of — in the page, in
+   what it loads, and in the redirect chain — and the board URL where one can
+   be named;
+5. each matching generic reader, run against that board through the normal
+   fetcher, with its row count and three sample postings (title, location,
+   `detail_url`), so a reader that parses the wrong thing is visible rather
+   than merely counted;
+6. whether the listing states a total or has a pager, and whether the rows
+   read fall short of it — a walk that stops after page one looks like success
+   otherwise;
+7. a verdict: `reuse <extractor>`, `needs a new extractor`, or
+   `not feasible — <which rung failed>`.
+
+It fetches the way a scrape does: your User-Agent from `rules.json`, robots.txt
+honoured, two requests at a time per host a second apart, and the response
+cache. It **writes nothing** — not `sources.yaml`, not `registry.py`, not
+`tests/fixtures/`. It exits 0 only on `reuse`. `--name` and `--company` set what
+goes into the printed entry; a candidate's organisation is the default for
+both.
+
+What it does not do: when neither the plain nor the rendered page shows any
+postings and no platform is recognised, the remaining routes — a private API
+behind the page, a third-party search index behind that — are judgement calls
+about fragility, not something a command can decide. The probe says so and
+points at the `probably_good` investigation in
+[docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md), which is what looking at those
+properly involves.
+
+**3a. `reuse <extractor>`: add it, and capture its page.** The probe prints two
+blocks. Paste the first under `sources:` in `sources.yaml` and the second into
+`REGISTRY` in `job_scraper/extractors/registry.py`:
+
+```python
+"my_employer": partial(greenhouse.extract, source_name="my_employer"),
+```
+
+Then capture the page it reads, in the same sitting — a source with no saved
+page has no golden test, and a reader bug stays invisible until a run comes
+back short:
+
+```bash
+python scripts/capture_fixtures.py my_employer
+```
+
+(`--pages all` for a listing that paginates.) Add the fixture to
+`FIXTURE_CASES` in `tests/fixture_cases.py` and pin its output in
+`tests/test_extractors_golden.py`; `test_every_fixture_has_a_golden` fails
+until you do. Try the source on its own with `--sources` pointing at a file
+holding just that entry and `--dry-run`, and check the postings look like
+postings. If the board was a candidate, remove it from the list:
+`sources candidate activate <org>`.
+
+**3b. `needs a new extractor`: write one.** The page carries job data that no
+generic reader can read — or a generic reader reads only its first page. A
+bespoke module has to earn its place, so it is a piece of work of its own.
+The contract is:
 
 ```python
 def extract(
@@ -767,24 +862,28 @@ Return one dict per posting with these keys: `source_name`, `title`, `location`,
 `department`, `listing_url`, `detail_url`, `apply_url`, `raw_snippet`. Use the
 `fetch_text` you were handed rather than calling `requests` yourself — it is what
 routes `dynamic` sources through Playwright, and what puts plain-HTTP fetches
-through the response cache.
+through the response cache. A listing that states a total must fail a short walk
+rather than return it (`job_scraper/extractors/pagination.py`).
+`greenhouse.py` is the shortest example (it reads the public Greenhouse API
+instead of parsing HTML); `teamtailor.py` is a representative HTML-parsing one.
+Then register it, add it to `sources.yaml` with `strategy` as the probe
+reported, and capture and pin its page as in 3a.
 
-`greenhouse.py` is the shortest example at 46 lines (it hits the public Greenhouse
-API instead of parsing HTML). `teamtailor.py` is a representative HTML-parsing
-one.
+**3c. `not feasible`: record the finding.** Decide whether it is not feasible
+*for now* — a candidate with a blocker — or *by design* — a tombstone. Date the
+finding with the day the probe ran. Which command depends on where the board
+already is:
 
-**2. Register it** in `job_scraper/extractors/registry.py`:
+| The board is | For now | By design |
+| --- | --- | --- |
+| on neither list | `sources candidate add <org> <url> --blocker "..."` | `sources exclude <org> <url> "<reason>"` |
+| a candidate with no finding yet | `sources candidate record-check <org> --blocker "..." --last-checked YYYY-MM-DD` | `sources candidate promote <org>` |
+| a candidate with a finding | `sources candidate recheck <org> --blocker "..." --last-checked YYYY-MM-DD --source-of-record "..."` | `sources candidate promote <org>` |
 
-```python
-"my_employer": partial(greenhouse.extract, source_name="my_employer"),
-```
-
-Many employers share an ATS — Greenhouse, Lever, Ashby, Workable, Teamtailor,
-Personio, SmartRecruiters, Workday, Breezy and SuccessFactors all have generic
-extractors already, so a new employer on one of those needs no new code, just a
-registry line.
-
-**3. Add it to `sources.yaml`** with a matching `name`.
+`record-check` only fills empty fields; `recheck` replaces the finding and keeps
+the old one in `source_of_record`. Never try `candidate add` or `exclude` on a
+board that is already a candidate: both refuse, and neither refusal is a reason
+to edit the file by hand.
 
 ## Tests
 
@@ -792,7 +891,7 @@ registry line.
 python -m pytest -q
 ```
 
-795 tests, about fourteen seconds, no network access required. Extractors are
+887 tests, about fifteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
@@ -852,7 +951,7 @@ site:
 
 | Path | What's in it |
 | --- | --- |
-| `job_scraper/` | `run.py` (CLI), `pipeline.py` (the run), the filter modules, `http.py`, `urlutil.py`, plus the commands you run between scrapes: `review.py`, `drops.py`, `eval.py`, and `scoring.py` for the optional LLM stage |
+| `job_scraper/` | `run.py` (CLI), `pipeline.py` (the run), the filter modules, `http.py`, `urlutil.py`, `curated.py` and `probe.py` (the curated source lists, and the feasibility probe behind `sources probe`), plus the commands you run between scrapes: `review.py`, `drops.py`, `eval.py`, and `scoring.py` for the optional LLM stage |
 | `job_scraper/config/` | your `sources.yaml`, `rules.json` and (for scoring) `profile.md` — all gitignored, created from the `.example` files — plus `title_exclude_keywords.csv` |
 | `job_scraper/extractors/` | one module per site or ATS platform, wired up in `registry.py` |
 | `job_scraper/storage/` | the SQLite job store (`db.py`) and the xlsx writer |
