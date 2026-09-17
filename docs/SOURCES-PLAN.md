@@ -1065,6 +1065,21 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
   `probe`; `probe.py` in `CLAUDE.md`'s architecture block; three entries in
   `docs/DECISIONS.md`.
 
+- **Follow-up after review, three fixes in `probe.py`, one commit each.**
+  (1) Lever boards on `jobs.eu.lever.co` or `api.eu.lever.co` kept losing the
+  `.eu`; the board URL now keeps it (the two are different boards by board
+  identity), and the report says beside the board and beside the reader run
+  that `lever.py` only calls the non-EU API. (2) A robots.txt refusal raised
+  inside a reader — whose API host is often not the board's — was reported as
+  "rung 5 … a bug in <reader>.py". It is now "rung 2: robots.txt forbids
+  <the URL the reader asked for>", with the `ignore_robots` wording, and no
+  module is blamed; the probe still does not pre-check guessed API hosts.
+  (3) A Teamtailor board taken from the page itself now says, in rung 4 and
+  again above the paste blocks, that the page probed is assumed to be the
+  listing. SuccessFactors does not need it: it moves to `/search/`, and its
+  walk fails a short read. **11 new tests (887 to 898)**; no existing test
+  changed.
+
 **Found while testing, not fixed here (scope).** The probe's first run against
 the saved `path` page called it short, and it is right: `path.html` states
 "1 - 20 of 61 jobs" and `workday.py` reads the 20 on the first rendered page.

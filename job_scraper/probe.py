@@ -78,6 +78,15 @@ MAX_BOARDS_PER_PLATFORM = 3
 
 SAMPLE_ROWS = 3
 
+# Said wherever a board was taken to be the page probed, because nothing on
+# that page proves it is the listing: a careers home page with three featured
+# roles parses as a small, whole board.
+PAGE_BOARD_NOTE = (
+    "the board is taken to be the page you probed; if that is not the jobs listing, "
+    "probe the listing page instead."
+)
+PAGE_ITSELF = "the page itself"
+
 IGNORE_ROBOTS_NOTE = (
     "`ignore_robots` exists for a rule not meant for us; using it is the owner's "
     "judgement about the site, not the probe's."
@@ -176,6 +185,10 @@ class Platform:
     # Printed beside an EU board (a pattern's `eu` group matched) whose reader
     # only calls the non-EU API, so the failure that follows is explained.
     eu_note: str = ""
+    # True where "the page itself" is taken as the board with nothing to check
+    # it against. SuccessFactors moves to its /search/ listing instead, and its
+    # walk fails a short read against the page's own total.
+    board_is_assumed: bool = False
 
 
 def _p(pattern: str) -> re.Pattern[str]:
@@ -258,6 +271,7 @@ PLATFORMS: tuple[Platform, ...] = (
         strategy="page",
         walk="reads the listing page only; a board behind a 'Show more' pager reads short",
         page_is_board=True,
+        board_is_assumed=True,
     ),
     Platform(
         key="personio",
@@ -561,6 +575,10 @@ class Board:
     eu: bool = False
 
     @property
+    def assumed_from_page(self) -> bool:
+        return self.found_in == PAGE_ITSELF and self.platform.board_is_assumed
+
+    @property
     def eu_note(self) -> str | None:
         return self.platform.eu_note if self.eu and self.platform.eu_note else None
 
@@ -634,7 +652,7 @@ def fingerprint(
             identity = board_identity(url)
             if identity not in identities:
                 identities.add(identity)
-                found.append(Board(platform, url, None, "the page itself"))
+                found.append(Board(platform, url, None, PAGE_ITSELF))
         if where:
             seen[platform.key] = list(dict.fromkeys(where))
         boards += found[:MAX_BOARDS_PER_PLATFORM]
@@ -1146,6 +1164,8 @@ def _step_fingerprint(state: _Probe) -> ProbeResult | None:
         emit(f"   board: {board.url}  ({board.platform.label}, from {board.found_in})")
         if board.eu_note:
             emit(f"      {board.eu_note}")
+        if board.assumed_from_page:
+            emit(f"      Note: {PAGE_BOARD_NOTE}")
         if board_identity(board.url) != probed:
             found = list_status(board.url, state.excluded, state.candidates, state.sources)
             if found.excluded is not None or found.candidate is not None or found.active:
@@ -1236,6 +1256,8 @@ def _report_verdict(state: _Probe, result: ProbeResult) -> ProbeResult:
         )
     if source_name in REGISTRY:
         emit(f"   {source_name!r} is already a key in registry.py: pass --name for another.")
+    if run.board.assumed_from_page:
+        emit(f"   Note: the url below comes from an assumption — {PAGE_BOARD_NOTE}")
     emit("   Printed, not written — paste them yourself:")
     emit("")
     _indent(emit, paste_blocks(run, source_name, company))

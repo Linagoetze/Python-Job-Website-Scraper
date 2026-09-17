@@ -1270,3 +1270,36 @@ class TestReaderRefusedByRobots:
         result = probe.decide([run], [], None)
         assert "rung 5" in result.line
         assert "bug in greenhouse.py" in result.line
+
+
+# --- review fix 3: a board assumed from the page says so -------------------
+
+
+class TestAssumedBoard:
+    def test_teamtailor_on_its_own_domain_says_the_page_is_assumed(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        fetcher = StubFetcher([], static={STORYTEL: fixture("storytel.html")})
+        result, report = run_probe(STORYTEL, fetcher, curated_dir, tmp_path)
+
+        assert result.kind == probe.REUSE
+        section_4 = report.split("4. ATS fingerprint")[1].split("5. Generic readers")[0]
+        assert f"board: {STORYTEL}  (Teamtailor, from the page itself)" in section_4
+        assert "the board is taken to be the page you probed" in section_4
+        assert "probe the listing page instead" in section_4
+
+        verdict = report.split("7. Verdict")[1]
+        before_blocks = verdict.split("sources.yaml (under `sources:`)")[0]
+        assert "the board is taken to be the page you probed" in before_blocks
+
+    def test_a_hosted_board_has_no_such_note(self, curated_dir: Path, tmp_path: Path) -> None:
+        result, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
+        assert result.kind == probe.REUSE
+        assert "taken to be the page you probed" not in report
+
+    def test_successfactors_moves_to_search_and_needs_no_note(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        result, report = run_probe(NOVO, novo([]), curated_dir, tmp_path)
+        assert result.kind == probe.REUSE
+        assert "taken to be the page you probed" not in report
