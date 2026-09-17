@@ -678,6 +678,10 @@ session — see `CLAUDE.md`.
   that host's robots.txt is the `RobotsDisallowed` the fetcher raises inside
   the reader. The probe records that refusal rather than pre-checking guessed
   API hosts, which would drift from what the readers actually request.
+  `RobotsDisallowed` carries the refused URL as a field (`.url`, set by
+  `http._check_robots` for GET and POST alike), and the probe reads that
+  field, never the message: a first version parsed the wording, which a
+  harmless rewording would have broken without failing any test.
   `needs a new extractor` is kept for postings on no supported platform.
   Rungs 3-4 (private API, third-party index) are named and pointed at
   `probably_good`, never attempted. The command exits 0 only on `reuse`.

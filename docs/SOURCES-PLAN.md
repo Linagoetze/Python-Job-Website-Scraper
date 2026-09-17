@@ -1087,6 +1087,12 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
   changed. Then, at the owner's request, Greenhouse EU boards got the same
   note as Lever's (their `.eu` was already kept): **5 more tests (898 to
   903)**.
+  Last, also at the owner's request: `RobotsDisallowed` now carries the
+  refused URL as a field, set in `http.py`, and the probe reads it instead of
+  parsing the message — fix (2) had taken it from the wording, which a
+  rewording would have broken silently. The stand-in refusal in fix (2)'s
+  tests gained that field, since the real one now has it; their assertions
+  are unchanged. **5 more tests (903 to 908).**
 
 **Found while testing, not fixed here (scope).** The probe's first run against
 the saved `path` page called it short, and it is right: `path.html` states

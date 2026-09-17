@@ -422,7 +422,8 @@ def _check_robots(url: str) -> None:
         raise RobotsDisallowed(
             f"robots.txt forbids {url} for this user agent. If that rule is not "
             f"meant for us, exempt {host_of(url)} by naming it in the source's "
-            "`ignore_robots` list in sources.yaml."
+            "`ignore_robots` list in sources.yaml.",
+            url=url,
         )
 
 

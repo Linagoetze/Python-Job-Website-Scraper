@@ -1202,11 +1202,12 @@ class TestLeverEu:
 
 
 def _http_refusal(url: str) -> RobotsDisallowed:
-    """The exception http._check_robots raises, worded as it words it."""
+    """The exception http._check_robots raises, worded and fielded as it is."""
     return RobotsDisallowed(
         f"robots.txt forbids {url} for this user agent. If that rule is not meant for "
         "us, exempt https://boards-api.greenhouse.io by naming it in the source's "
-        "`ignore_robots` list in sources.yaml."
+        "`ignore_robots` list in sources.yaml.",
+        url=url,
     )
 
 
@@ -1348,3 +1349,60 @@ class TestGreenhouseEu:
     def test_a_non_eu_board_has_no_note(self, curated_dir: Path, tmp_path: Path) -> None:
         _, report = run_probe(CONTOSO, contoso_embed([]), curated_dir, tmp_path)
         assert "EU board" not in report
+
+
+# --- the refused URL travels as a field, not as words ----------------------
+
+
+class TestRefusalCarriesItsUrl:
+    @pytest.fixture
+    def disallowing(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+        # The robots.txt fetch is replaced, and the refusal happens before any
+        # request is made, so nothing here reaches the network.
+        monkeypatch.setattr(
+            http_mod,
+            "_fetch_robots",
+            lambda url, agent, timeout: (200, "User-agent: *\nDisallow: /\n"),
+        )
+        with http_mod.polite_fetching(user_agent=UA, delay=0):
+            yield
+
+    def test_fetch_text_sets_it(self, disallowing: None) -> None:
+        url = "https://refusing.example/api/jobs?page=1"
+        with pytest.raises(RobotsDisallowed) as info:
+            http_mod.fetch_text(url)
+        assert info.value.url == url
+
+    def test_post_json_sets_it(self, disallowing: None) -> None:
+        url = "https://refusing.example/api/v3/accounts/contoso/jobs"
+        with pytest.raises(RobotsDisallowed) as info:
+            http_mod.post_json(url, {})
+        assert info.value.url == url
+
+    def test_a_bare_refusal_still_works(self) -> None:
+        assert RobotsDisallowed("robots.txt forbids it").url is None
+
+    def test_the_probe_reads_the_field_not_the_wording(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        class Reworded(StubFetcher):
+            def text(self, url: str) -> str:
+                if url == GIVEWELL_API:
+                    raise RobotsDisallowed("the site said no", url=url)
+                return super().text(url)
+
+        page = probe_fixture("greenhouse_embed.html")
+        fetcher = Reworded([], static={CONTOSO: page}, rendered={CONTOSO: page})
+        result, _ = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
+        assert result.line.startswith(f"not feasible — rung 2: robots.txt forbids {GIVEWELL_API}")
+
+    def test_a_refusal_without_a_url_says_so(self, curated_dir: Path, tmp_path: Path) -> None:
+        class Unnamed(StubFetcher):
+            def text(self, url: str) -> str:
+                raise RobotsDisallowed("robots.txt forbids something")
+
+        page = probe_fixture("greenhouse_embed.html")
+        fetcher = Unnamed([], static={CONTOSO: page}, rendered={CONTOSO: page})
+        result, _ = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
+        assert "rung 2: robots.txt forbids (URL not reported)" in result.line
+        assert "bug in" not in result.line

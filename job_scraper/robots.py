@@ -49,7 +49,16 @@ def _plain_get(url: str, user_agent: str, timeout: int) -> tuple[int, str]:
 
 
 class RobotsDisallowed(RuntimeError):
-    """A site's robots.txt forbids the URL we were about to fetch."""
+    """A site's robots.txt forbids the URL we were about to fetch.
+
+    `url` is that URL, as a field rather than only as words in the message, so
+    a caller reporting the refusal (`sources probe`) never has to parse the
+    wording. Optional only so a bare `RobotsDisallowed("...")` still works.
+    """
+
+    def __init__(self, message: str, *, url: str | None = None) -> None:
+        super().__init__(message)
+        self.url = url
 
 
 def as_origin(value: str) -> str:

@@ -92,11 +92,6 @@ IGNORE_ROBOTS_NOTE = (
     "judgement about the site, not the probe's."
 )
 
-# How http._check_robots names the refused URL, for a refusal raised outside
-# the fetcher the probe hands the reader (workable.py POSTs through
-# http.post_json itself).
-_REFUSED_URL = re.compile(r"robots\.txt forbids (\S+) for")
-
 # Page sizes listings tend to come in. A reader that returns exactly one of
 # these from a listing with a pager has probably read one page.
 TYPICAL_PAGE_SIZES = frozenset({10, 12, 15, 16, 18, 20, 24, 25, 30, 36, 40, 48, 50, 60, 100})
@@ -795,10 +790,7 @@ def run_reader(
     *listing* is the scan of the probed page when it is this board's page, so
     its declared total and pager apply to what the reader reads.
     """
-    refused: list[str] = []
-    fetch = _noting_refusals(
-        _rendering(fetcher) if strategy == "dynamic" else _static(fetcher), refused
-    )
+    fetch = _rendering(fetcher) if strategy == "dynamic" else _static(fetcher)
     run = ReaderRun(board=board, strategy=strategy)
     if board.eu_note:
         run.notes.append(board.eu_note)
@@ -832,30 +824,14 @@ def run_reader(
         # The reader's own host may differ from the board's (boards-api.
         # greenhouse.io, api.lever.co, api.smartrecruiters.com), so this is the
         # first the probe hears of that host's robots.txt. Reported as what
-        # the fetcher refused, never guessed in advance.
+        # the fetcher refused, never guessed in advance. The URL is the
+        # exception's own field, so it is right however the reader fetched
+        # (workable.py POSTs through http.post_json, not through `fetch`).
         run.error = f"{type(exc).__name__}: {exc}"
-        match = _REFUSED_URL.search(str(exc))
-        run.refused_url = (
-            refused[-1] if refused else match.group(1) if match else "(URL not reported)"
-        )
+        run.refused_url = exc.url or "(URL not reported)"
     except Exception as exc:  # noqa: BLE001 — every failure is part of the report
         run.error = f"{type(exc).__name__}: {exc}"
     return run
-
-
-def _noting_refusals(inner: Fetch, refused: list[str]) -> Fetch:
-    """*inner*, recording the URL of any request robots.txt refuses."""
-
-    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
-        try:
-            return inner(url, *args, **kwargs)
-        except RobotsDisallowed:
-            refused.append(url)
-            raise
-
-    if getattr(inner, "renders", False):
-        fetch.renders = True  # type: ignore[attr-defined]
-    return fetch
 
 
 def describe_run(run: ReaderRun) -> list[str]:
