@@ -520,6 +520,23 @@ def _retry_delay(attempt: int) -> float:
     return 2.0 * attempt
 
 
+@dataclass(frozen=True)
+class FetchedPage:
+    """One static fetch, with the redirects that led to it.
+
+    `redirects` lists every URL answered with a redirect, in order, before
+    `final_url`. `redirects_known` is False when the curl fallback served the
+    page: curl follows redirects without reporting them, and an empty chain
+    there would claim "no redirects" rather than "not recorded".
+    """
+
+    url: str
+    final_url: str
+    redirects: tuple[str, ...]
+    text: str
+    redirects_known: bool = True
+
+
 def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None) -> str:
     """GET *url* and return response text. Raises on HTTP errors.
 
@@ -536,6 +553,20 @@ def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | No
     response the cache answered refunds that turn: it cost the site nothing, so
     it must not delay the next request that does reach them.
     """
+    return fetch_page(url, timeout=timeout, user_agent=user_agent).text
+
+
+def fetch_page(
+    url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None
+) -> FetchedPage:
+    """`fetch_text`, keeping where the request ended up.
+
+    The same request, cache, robots check and throttle — `fetch_text` is this
+    with the answer trimmed to its body. It exists for `sources probe`, which
+    reads an ATS off the redirect chain as well as off the page: a careers link
+    that forwards to a hosted board says which platform it is before the page
+    says anything at all.
+    """
     agent = user_agent or current_user_agent()
     headers = {"User-Agent": agent}
     _check_robots(url)
@@ -550,10 +581,19 @@ def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | No
             r.raise_for_status()
             _record_cache_outcome(url, r)
             r.encoding = r.apparent_encoding or "utf-8"
-            return r.text
+            history = tuple(str(h.url) for h in (getattr(r, "history", None) or ()))
+            return FetchedPage(
+                url=url,
+                final_url=str(getattr(r, "url", None) or url),
+                redirects=history,
+                text=r.text,
+            )
         except (SSLError, requests.exceptions.Timeout):
             with _slot_for(url):
-                return _fetch_text_curl(url, timeout=timeout, user_agent=agent)
+                text = _fetch_text_curl(url, timeout=timeout, user_agent=agent)
+            return FetchedPage(
+                url=url, final_url=url, redirects=(), text=text, redirects_known=False
+            )
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else 0
             if status < 500 or attempt == _RETRY_ATTEMPTS:
