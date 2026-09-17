@@ -961,8 +961,24 @@ class ProbeResult:
     ladder_exhausted: bool = False
 
 
-def source_name_for(explicit: str | None, candidate: dict[str, Any] | None, board: Board) -> str:
-    raw = explicit or (candidate or {}).get("organisation") or board.slug or ""
+def source_name_for(
+    explicit: str | None,
+    candidate: dict[str, Any] | None,
+    board: Board,
+    active: list[dict[str, Any]] | None = None,
+) -> str:
+    """The source name for the printed blocks.
+
+    `--name` first; then the name *board* already has in sources.yaml, kept
+    exactly as written because it is a registry key; then a candidate's
+    organisation, the board slug, or the host.
+    """
+    if explicit:
+        return re.sub(r"[^a-z0-9]+", "_", explicit.casefold()).strip("_") or "new_source"
+    for source in _active_matches(board.url, active or []):
+        if str(source.get("name") or "").strip():
+            return str(source["name"]).strip()
+    raw = (candidate or {}).get("organisation") or board.slug or ""
     if not raw:
         host = urlsplit(board.url).hostname or ""
         labels = [x for x in host.removeprefix("www.").split(".") if x]
@@ -1187,7 +1203,7 @@ def _step_readers(state: _Probe) -> None:
         listing = next((s for s in same_page if s.has_job_data), None) or (
             same_page[-1] if same_page else None
         )
-        source_name = source_name_for(state.name, state.candidate, board)
+        source_name = source_name_for(state.name, state.candidate, board, state.sources)
         run = run_reader(board, state.fetcher, source_name, strategy, listing)
         state.runs.append(run)
         _indent(emit, describe_run(run))
@@ -1226,7 +1242,7 @@ def _report_verdict(state: _Probe, result: ProbeResult) -> ProbeResult:
     if result.kind != REUSE or result.run is None:
         return result
     run = result.run
-    source_name = source_name_for(state.name, state.candidate, run.board)
+    source_name = source_name_for(state.name, state.candidate, run.board, state.sources)
     active = state.status.active if state.status else []
     # --company first; then what sources.yaml already says, since the blocks
     # are printed for comparison with it; then a candidate's organisation.
@@ -1241,7 +1257,8 @@ def _report_verdict(state: _Probe, result: ProbeResult) -> ProbeResult:
             f"   Already active as {active[0].get('name')!r}: the blocks below are for "
             "comparison with sources.yaml, not for pasting."
         )
-    if source_name in REGISTRY:
+    own_name = any(str(s.get("name") or "").strip() == source_name for s in active)
+    if source_name in REGISTRY and not own_name:
         emit(f"   {source_name!r} is already a key in registry.py: pass --name for another.")
     if run.board.assumed_from_page:
         emit(f"   Note: the url below comes from an assumption — {PAGE_BOARD_NOTE}")

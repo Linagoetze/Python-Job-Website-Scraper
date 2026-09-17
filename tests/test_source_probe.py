@@ -1437,3 +1437,49 @@ class TestCompanyFromActiveSource:
         write_sources(tmp_path, {"name": "kognity", "url": KOGNITY, "strategy": "static"})
         _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
         assert "# company: <the employer's name>" in report
+
+
+# --- an active source supplies the name ------------------------------------
+
+
+class TestNameFromActiveSource:
+    def test_the_active_entry_names_the_source(self, curated_dir: Path, tmp_path: Path) -> None:
+        # A sources.yaml name that the board URL would never produce.
+        write_sources(tmp_path, {"name": "Kognity_EdTech", "url": KOGNITY, "strategy": "static"})
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
+
+        block = report.split("sources.yaml (under `sources:`):")[1].split("registry.py")[0]
+        assert yaml.safe_load(block)[0]["name"] == "Kognity_EdTech"
+        assert '"Kognity_EdTech": partial(ashby.extract, source_name="Kognity_EdTech"),' in report
+
+    def test_its_own_registry_key_is_not_called_a_clash(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        write_sources(tmp_path, {"name": "kognity", "url": KOGNITY, "strategy": "static"})
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
+        assert "- name: kognity" in report
+        assert "already a key in registry.py" not in report
+
+    def test_an_explicit_name_still_wins_and_is_checked(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        write_sources(tmp_path, {"name": "kognity_new", "url": KOGNITY, "strategy": "static"})
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path, name="givewell")
+        assert "- name: givewell" in report
+        assert "'givewell' is already a key in registry.py" in report
+
+    def test_an_active_source_on_another_board_does_not_lend_its_name(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # Same shared host, different board: not this board's name.
+        write_sources(
+            tmp_path,
+            {
+                "name": "other_ashby",
+                "url": "https://jobs.ashbyhq.com/contoso",
+                "strategy": "static",
+            },
+        )
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
+        assert "- name: kognity" in report
+        assert "other_ashby" not in report

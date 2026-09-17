@@ -1094,7 +1094,11 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
   tests gained that field, since the real one now has it; their assertions
   are unchanged. **5 more tests (903 to 908).**
   After the owner's live probe of `canonical`, the printed entry takes its
-  company from an active source too. **3 more tests (908 to 911).**
+  company from an active source too. **3 more tests (908 to 911).** Then,
+  at the owner's request, the name as well: a board already in `sources.yaml`
+  is printed under the name it has there (exactly as written, since it is a
+  registry key), and that name is not reported as a registry clash.
+  **4 more tests (911 to 915).**
 
 **Found while testing, not fixed here (scope).** The probe's first run against
 the saved `path` page called it short, and it is right: `path.html` states
