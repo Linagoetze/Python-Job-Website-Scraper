@@ -216,6 +216,11 @@ PLATFORMS: tuple[Platform, ...] = (
         strategy="static",
         walk="reads the whole board from one Greenhouse API response",
         not_slugs=frozenset({"embed", "v1"}),
+        eu_note=(
+            "EU board: greenhouse.py only calls the non-EU API (boards-api.greenhouse.io), so "
+            "its reader is expected to fail here. That is a gap in the reader (SP4), not a "
+            "fault in this board."
+        ),
     ),
     Platform(
         key="lever",

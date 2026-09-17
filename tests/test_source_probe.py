@@ -1303,3 +1303,48 @@ class TestAssumedBoard:
         result, report = run_probe(NOVO, novo([]), curated_dir, tmp_path)
         assert result.kind == probe.REUSE
         assert "taken to be the page you probed" not in report
+
+
+# --- Greenhouse EU boards get the same note --------------------------------
+
+
+class TestGreenhouseEu:
+    @pytest.mark.parametrize(
+        "snippet",
+        [
+            '<a href="https://job-boards.eu.greenhouse.io/contoso/jobs/1">Analyst</a>',
+            '<script src="https://boards.eu.greenhouse.io/embed/job_board/js?for=contoso"></script>',
+            '<script src="https://boards-api.eu.greenhouse.io/v1/boards/contoso/jobs"></script>',
+        ],
+    )
+    def test_an_eu_board_keeps_its_eu_and_is_marked(self, snippet: str) -> None:
+        html = f"<html><body>{snippet}</body></html>"
+        _, boards = probe.fingerprint(FABRIKAM, None, [probe.scan_page(html, FABRIKAM, "static")])
+        assert [(b.platform.key, b.url, b.eu) for b in boards] == [
+            ("greenhouse", "https://job-boards.eu.greenhouse.io/contoso", True)
+        ]
+        assert boards[0].eu_note is not None
+        assert "boards-api.greenhouse.io" in boards[0].eu_note
+
+    def test_the_report_explains_the_reader_gap(self, curated_dir: Path, tmp_path: Path) -> None:
+        page = probe_fixture("greenhouse_embed.html").replace(
+            "boards.greenhouse.io/embed/job_board/js?for=givewell",
+            "boards.eu.greenhouse.io/embed/job_board/js?for=contoso",
+        )
+        fetcher = StubFetcher([], static={CONTOSO: page}, rendered={CONTOSO: page})
+        result, report = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
+
+        note = "EU board: greenhouse.py only calls the non-EU API"
+        section_4 = report.split("5. Generic readers")[0]
+        section_5 = report.split("5. Generic readers")[1].split("6. Pagination")[0]
+        assert "board: https://job-boards.eu.greenhouse.io/contoso  (Greenhouse" in section_4
+        assert note in section_4
+        assert note in section_5
+        assert "FETCH text https://boards-api.greenhouse.io/v1/boards/contoso/jobs" in "\n".join(
+            fetcher.log
+        )
+        assert result.kind == probe.NOT_FEASIBLE
+
+    def test_a_non_eu_board_has_no_note(self, curated_dir: Path, tmp_path: Path) -> None:
+        _, report = run_probe(CONTOSO, contoso_embed([]), curated_dir, tmp_path)
+        assert "EU board" not in report

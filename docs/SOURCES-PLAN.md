@@ -1078,7 +1078,9 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
   again above the paste blocks, that the page probed is assumed to be the
   listing. SuccessFactors does not need it: it moves to `/search/`, and its
   walk fails a short read. **11 new tests (887 to 898)**; no existing test
-  changed.
+  changed. Then, at the owner's request, Greenhouse EU boards got the same
+  note as Lever's (their `.eu` was already kept): **5 more tests (898 to
+  903)**.
 
 **Found while testing, not fixed here (scope).** The probe's first run against
 the saved `path` page called it short, and it is right: `path.html` states
@@ -1088,11 +1090,13 @@ reader, so any of them with more than one page of postings is being read short
 today, silently — the WP11 failure in a reader WP11 did not cover. Separately,
 `workable.py` reads one API response and follows no next-page token; whether
 that loses anything is for SP4's capture to show.
-`lever.py` always calls `api.lever.co`, so it cannot read a Lever board hosted
-in the EU (`jobs.eu.lever.co`, whose API is `api.eu.lever.co`). The probe keeps
-the `.eu` in the board it names and says beside it that the reader only calls
-the non-EU API, so the failure that follows is not mistaken for an unexplained
-reader bug. Teaching the reader the EU API belongs to SP4.
+`lever.py` always calls `api.lever.co`, and `greenhouse.py` always calls
+`boards-api.greenhouse.io`, so neither can read a board hosted in the EU
+(`jobs.eu.lever.co` / `api.eu.lever.co`, `job-boards.eu.greenhouse.io` /
+`boards-api.eu.greenhouse.io`). The probe keeps the `.eu` in the board it
+names and says beside it that the reader only calls the non-EU API, so the
+failure that follows is not mistaken for an unexplained reader bug. Teaching
+the readers the EU APIs belongs to SP4.
 
 ### Your to-dos
 
