@@ -31,6 +31,7 @@ import threading
 import urllib.robotparser
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
@@ -119,10 +120,49 @@ def _robots_path(url: str) -> str:
     """The path-and-query `RobotFileParser.can_fetch` compares rules against."""
     parts = urlsplit(url)
     path = urlunsplit(("", "", parts.path, parts.query, parts.fragment))
-    # Python 3.13.x added `normalize_path`; older point releases quote instead.
-    normalise = getattr(urllib.robotparser, "normalize_path", None)
+    # The stdlib has renamed this between patch releases: 3.13.15 calls it
+    # `normalize_uri`, 3.13.12 `normalize_path`, and older ones had neither.
+    normalise = getattr(urllib.robotparser, "normalize_uri", None) or getattr(
+        urllib.robotparser, "normalize_path", None
+    )
     path = normalise(path) if normalise is not None else quote(unquote(path))
     return path or "/"
+
+
+# `explain` has to find the group and the line the parser itself used, and the
+# stdlib changed how it does both in a patch release. Up to 3.13.12 the first
+# group naming the agent wins, else the `*` group kept aside as
+# `default_entry`, and the first matching line decides. From 3.13.15 (RFC 9309)
+# groups are looked up through `_find_entry`, `*` is one of them, and the
+# longest matching line decides, an Allow winning a tie. These two helpers
+# follow whichever the running parser has. Both are private stdlib details,
+# which is why `explain` checks its finding against `allows()` and never
+# quotes a line that disagrees with it.
+
+
+def _deciding_group(parser: RobotFileParser, user_agent: str) -> Any:
+    find = getattr(parser, "_find_entry", None)
+    if find is not None:
+        return find(user_agent)
+    for entry in parser.entries:
+        if entry.applies_to(user_agent):
+            return entry
+    return getattr(parser, "default_entry", None)
+
+
+def _deciding_line(entry: Any, path: str) -> tuple[Any, str]:
+    best, best_length = None, 0
+    for line in entry.rulelines:
+        match = line.applies_to(path)
+        if isinstance(match, bool):
+            if match:
+                return line, "the first matching line decides"
+            continue
+        if match > best_length or (
+            match == best_length and best is not None and not best.allowance
+        ):
+            best, best_length = line, match
+    return best, "the most specific matching line decides"
 
 
 class RobotsPolicy:
@@ -221,25 +261,25 @@ class RobotsPolicy:
             )
         allowed = self.allows(url)
         delay = self.crawl_delay(url)
-        entries = [e for e in parser.entries if e.applies_to(self._user_agent)]
-        if not entries and parser.default_entry is not None:
-            entries = [parser.default_entry]
-        if not entries:
+        path = _robots_path(url)
+        if path == "/robots.txt":
+            return RobotsVerdict(
+                **verdict, allowed=allowed, reason="robots.txt itself is always allowed"
+            )
+        entry = _deciding_group(parser, self._user_agent)
+        if entry is None:
             return RobotsVerdict(
                 **verdict,
                 allowed=allowed,
                 reason="robots.txt has no group for this user agent and no `*` group",
                 crawl_delay=delay,
             )
-        entry = entries[0]
         group = "\n".join(f"User-agent: {agent}" for agent in entry.useragents)
-        path = _robots_path(url)
-        line = next((ln for ln in entry.rulelines if ln.applies_to(path)), None)
+        line, how = _deciding_line(entry, path)
         if line is None:
             decided, rule, reason = True, None, "no line in the matching group covers this path"
         else:
-            decided, rule = bool(line.allowance), str(line)
-            reason = "the first matching line decides"
+            decided, rule, reason = bool(line.allowance), str(line), how
         if decided != allowed:
             rule, reason = None, "the deciding line could not be identified"
         return RobotsVerdict(

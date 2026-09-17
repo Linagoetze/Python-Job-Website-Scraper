@@ -1483,3 +1483,32 @@ class TestNameFromActiveSource:
         _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
         assert "- name: kognity" in report
         assert "other_ashby" not in report
+
+
+# --- explain follows whichever robots parser this Python has ---------------
+
+
+class TestExplainAcrossParserVersions:
+    """Python 3.13.15 moved urllib.robotparser to RFC 9309 in a patch release.
+
+    Before it, the first matching line decided; after it, the longest one does.
+    CI and a laptop can run either, so these assert what holds on both: the
+    quoted line always agrees with the policy's own answer.
+    """
+
+    def test_the_quoted_line_agrees_where_the_versions_differ(self) -> None:
+        text = "User-agent: *\nDisallow: /\nAllow: /careers\n"
+        policy = RobotsPolicy(UA, fetch=lambda *a: (200, text))
+        verdict = policy.explain("https://a.example/careers/1")
+        assert verdict.allowed == policy.allows("https://a.example/careers/1")
+        assert verdict.group == "User-agent: *"
+        assert verdict.rule == ("Allow: /careers" if verdict.allowed else "Disallow: /")
+
+    def test_a_star_group_is_found(self) -> None:
+        text = "User-agent: somebot\nDisallow: /\n\nUser-agent: *\nDisallow: /private\n"
+        verdict = RobotsPolicy(UA, fetch=lambda *a: (200, text)).explain(
+            "https://a.example/private/x"
+        )
+        assert verdict.allowed is False
+        assert verdict.group == "User-agent: *"
+        assert verdict.rule == "Disallow: /private"

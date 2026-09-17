@@ -658,7 +658,15 @@ session — see `CLAUDE.md`.
   and `RobotsPolicy.explain` quotes the line and group behind an answer.
   `explain` never decides anything — `allowed` is `allows()`'s answer — and if
   its own walk of the file disagrees, it reports the rule as unidentified
-  rather than quoting the wrong line. The tests hand in a stub that serves
+  rather than quoting the wrong line. **It follows whichever `urllib.robotparser` the
+  running Python has** (found when CI failed): Python 3.13.15 moved that
+  module to RFC 9309 in a *patch* release — groups looked up through
+  `_find_entry` with `*` among them, the longest matching line deciding —
+  while 3.13.12 kept `*` aside as `default_entry` and let the first matching
+  line decide. `explain` supports both shapes; the tests assert only what
+  holds on either. The same change means **a scrape obeys robots.txt with
+  whatever semantics the local Python has**, so the owner's Mac and CI can
+  disagree on an edge case until they run the same patch release. The tests hand in a stub that serves
   saved pages by URL; the one reader that does not use the fetcher it is given
   (`workable`, which POSTs through `http.post_json`) is stubbed at its module.
 - **The probe's verdict never blames the wrong module** (SP3). `reuse` needs a

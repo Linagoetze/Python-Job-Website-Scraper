@@ -1099,6 +1099,12 @@ Branch sp3-source-probe. Commit, do not push. Update this plan file.
   is printed under the name it has there (exactly as written, since it is a
   registry key), and that name is not reported as a registry clash.
   **4 more tests (911 to 915).**
+  **CI then failed three robots tests** that passed locally: CI runs Python
+  3.13.15, whose `urllib.robotparser` was rewritten for RFC 9309 in that patch
+  release, and `RobotsPolicy.explain` read the old layout. It now follows
+  either (the allow/deny answer was never affected — only the quoted line).
+  Checked by running the suite against both versions' copies of that module.
+  **2 more tests (915 to 917).**
 
 **Found while testing, not fixed here (scope).** The probe's first run against
 the saved `path` page called it short, and it is right: `path.html` states
