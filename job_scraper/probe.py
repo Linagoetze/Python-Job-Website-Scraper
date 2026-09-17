@@ -1227,9 +1227,15 @@ def _report_verdict(state: _Probe, result: ProbeResult) -> ProbeResult:
         return result
     run = result.run
     source_name = source_name_for(state.name, state.candidate, run.board)
-    company = state.company or (state.candidate or {}).get("organisation")
-    emit("")
     active = state.status.active if state.status else []
+    # --company first; then what sources.yaml already says, since the blocks
+    # are printed for comparison with it; then a candidate's organisation.
+    company = (
+        state.company
+        or (str(active[0].get("company") or "").strip() if active else "")
+        or (state.candidate or {}).get("organisation")
+    )
+    emit("")
     if active:
         emit(
             f"   Already active as {active[0].get('name')!r}: the blocks below are for "

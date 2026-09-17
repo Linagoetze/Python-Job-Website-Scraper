@@ -1406,3 +1406,34 @@ class TestRefusalCarriesItsUrl:
         result, _ = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
         assert "rung 2: robots.txt forbids (URL not reported)" in result.line
         assert "bug in" not in result.line
+
+
+# --- an active source supplies the company ---------------------------------
+
+
+class TestCompanyFromActiveSource:
+    def test_the_active_entry_names_the_company(self, curated_dir: Path, tmp_path: Path) -> None:
+        write_sources(
+            tmp_path,
+            {"name": "kognity", "url": KOGNITY, "strategy": "static", "company": "Kognity"},
+        )
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
+
+        block = report.split("sources.yaml (under `sources:`):")[1].split("registry.py")[0]
+        assert yaml.safe_load(block)[0]["company"] == "Kognity"
+        assert "# company: <the employer's name>" not in report
+
+    def test_an_explicit_company_still_wins(self, curated_dir: Path, tmp_path: Path) -> None:
+        write_sources(
+            tmp_path,
+            {"name": "kognity", "url": KOGNITY, "strategy": "static", "company": "Kognity"},
+        )
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path, company="Kognity AB")
+        assert "company: Kognity AB" in report
+
+    def test_an_active_entry_without_a_company_leaves_the_comment(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        write_sources(tmp_path, {"name": "kognity", "url": KOGNITY, "strategy": "static"})
+        _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
+        assert "# company: <the employer's name>" in report

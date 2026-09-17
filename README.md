@@ -811,7 +811,8 @@ honoured, two requests at a time per host a second apart, and the response
 cache. It **writes nothing** — not `sources.yaml`, not `registry.py`, not
 `tests/fixtures/`. It exits 0 only on `reuse`. `--name` and `--company` set what
 goes into the printed entry; a candidate's organisation is the default for
-both.
+both, and for a board already in `sources.yaml` its `company` is the default
+for `--company`.
 
 What it does not do: when neither the plain nor the rendered page shows any
 postings and no platform is recognised, the remaining routes — a private API
@@ -891,7 +892,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-908 tests, about fifteen seconds, no network access required. Extractors are
+911 tests, about fifteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
