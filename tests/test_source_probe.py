@@ -1146,3 +1146,53 @@ def test_fetch_page_keeps_the_redirect_chain(redirecting_server: str, tmp_path: 
         cached = http_mod.fetch_page(f"{origin}/old")
     assert cached.final_url == f"{origin}/jobs"
     assert cached.redirects == (f"{origin}/old", f"{origin}/careers")
+
+
+# --- review fix 1: Lever EU boards keep their .eu --------------------------
+
+
+class TestLeverEu:
+    @pytest.mark.parametrize(
+        "snippet",
+        [
+            '<a href="https://jobs.eu.lever.co/contoso/abc">Analyst</a>',
+            '<script src="https://api.eu.lever.co/v0/postings/contoso?mode=json"></script>',
+        ],
+    )
+    def test_an_eu_board_keeps_its_eu(self, snippet: str) -> None:
+        html = f"<html><body>{snippet}</body></html>"
+        _, boards = probe.fingerprint(FABRIKAM, None, [probe.scan_page(html, FABRIKAM, "static")])
+        assert [(b.platform.key, b.url, b.eu) for b in boards] == [
+            ("lever", "https://jobs.eu.lever.co/contoso", True)
+        ]
+
+    def test_a_non_eu_board_is_not_marked_eu(self) -> None:
+        html = '<a href="https://api.lever.co/v0/postings/contoso">x</a>'
+        _, boards = probe.fingerprint(FABRIKAM, None, [probe.scan_page(html, FABRIKAM, "static")])
+        assert [(b.url, b.eu) for b in boards] == [("https://jobs.lever.co/contoso", False)]
+        assert boards[0].eu_note is None
+
+    def test_eu_and_non_eu_are_different_boards(self) -> None:
+        from job_scraper.urlutil import board_identity
+
+        eu = board_identity("https://jobs.eu.lever.co/contoso")
+        assert eu != board_identity("https://jobs.lever.co/contoso")
+        assert eu == board_identity("https://jobs.eu.lever.co/contoso/")
+
+    def test_the_report_explains_the_reader_gap(self, curated_dir: Path, tmp_path: Path) -> None:
+        # No fixture for api.lever.co, so the reader fails as it would live —
+        # and the note beside it says why.
+        html = probe_fixture("bespoke.html").replace(
+            "</main>", '<a href="https://jobs.eu.lever.co/contoso/abc">Apply</a></main>'
+        )
+        fetcher = StubFetcher([], static={LITWARE: html})
+        result, report = run_probe(LITWARE, fetcher, curated_dir, tmp_path)
+
+        assert "board: https://jobs.eu.lever.co/contoso  (Lever" in report
+        note = "EU board: lever.py only calls the non-EU API (api.lever.co)"
+        section_4 = report.split("5. Generic readers")[0]
+        section_5 = report.split("5. Generic readers")[1].split("6. Pagination")[0]
+        assert note in section_4
+        assert note in section_5
+        assert "FETCH text https://api.lever.co/v0/postings/contoso" in fetcher.log
+        assert result.kind == probe.NOT_FEASIBLE

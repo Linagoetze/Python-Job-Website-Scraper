@@ -163,6 +163,9 @@ class Platform:
     not_slugs: frozenset[str] = frozenset()
     # Platforms served from the employer's own host: the page is the board.
     page_is_board: bool = False
+    # Printed beside an EU board (a pattern's `eu` group matched) whose reader
+    # only calls the non-EU API, so the failure that follows is explained.
+    eu_note: str = ""
 
 
 def _p(pattern: str) -> re.Pattern[str]:
@@ -196,13 +199,19 @@ PLATFORMS: tuple[Platform, ...] = (
         label="Lever",
         markers=(_p(r"lever\.co\b"),),
         boards=(
-            _p(r"api(?:\.eu)?\.lever\.co/v0/postings/" + _SLUG),
+            _p(r"api(?P<eu>\.eu)?\.lever\.co/v0/postings/" + _SLUG),
             _p(r"jobs(?P<eu>\.eu)?\.lever\.co/" + _SLUG),
         ),
-        board_url=lambda m: f"https://jobs.lever.co/{m.group('slug')}",
+        board_url=lambda m: (
+            f"https://jobs{'.eu' if m.group('eu') else ''}.lever.co/{m.group('slug')}"
+        ),
         strategy="static",
         walk="reads the whole board from one Lever API response",
         not_slugs=frozenset({"v0"}),
+        eu_note=(
+            "EU board: lever.py only calls the non-EU API (api.lever.co), so its reader is "
+            "expected to fail here. That is a gap in the reader (SP4), not a fault in this board."
+        ),
     ),
     Platform(
         key="ashby",
@@ -539,6 +548,11 @@ class Board:
     url: str
     slug: str | None
     found_in: str
+    eu: bool = False
+
+    @property
+    def eu_note(self) -> str | None:
+        return self.platform.eu_note if self.eu and self.platform.eu_note else None
 
 
 def _evidence(
@@ -601,7 +615,8 @@ def fingerprint(
                     if identity in identities:
                         continue
                     identities.add(identity)
-                    found.append(Board(platform, url, slug, label))
+                    eu = bool(match.groupdict().get("eu"))
+                    found.append(Board(platform, url, slug, label, eu=eu))
                     if label not in where:
                         where.append(label)
         if platform.page_is_board and where and page is not None:
@@ -746,6 +761,8 @@ def run_reader(
     """
     fetch = _rendering(fetcher) if strategy == "dynamic" else _static(fetcher)
     run = ReaderRun(board=board, strategy=strategy)
+    if board.eu_note:
+        run.notes.append(board.eu_note)
     if listing is not None:
         run.total, run.pager = listing.total, listing.pager
     page_step: int | None = None
@@ -1080,6 +1097,8 @@ def _step_fingerprint(state: _Probe) -> ProbeResult | None:
     probed = board_identity(state.url)
     for board in boards:
         emit(f"   board: {board.url}  ({board.platform.label}, from {board.found_in})")
+        if board.eu_note:
+            emit(f"      {board.eu_note}")
         if board_identity(board.url) != probed:
             found = list_status(board.url, state.excluded, state.candidates, state.sources)
             if found.excluded is not None or found.candidate is not None or found.active:

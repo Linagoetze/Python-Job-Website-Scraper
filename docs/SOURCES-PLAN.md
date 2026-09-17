@@ -1073,6 +1073,11 @@ reader, so any of them with more than one page of postings is being read short
 today, silently — the WP11 failure in a reader WP11 did not cover. Separately,
 `workable.py` reads one API response and follows no next-page token; whether
 that loses anything is for SP4's capture to show.
+`lever.py` always calls `api.lever.co`, so it cannot read a Lever board hosted
+in the EU (`jobs.eu.lever.co`, whose API is `api.eu.lever.co`). The probe keeps
+the `.eu` in the board it names and says beside it that the reader only calls
+the non-EU API, so the failure that follows is not mistaken for an unexplained
+reader bug. Teaching the reader the EU API belongs to SP4.
 
 ### Your to-dos
 
