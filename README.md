@@ -406,7 +406,7 @@ sources:
 | --- | --- |
 | `name` | Identifier for the source. **Must match a key in `job_scraper/extractors/registry.py`** — a source with no registered extractor is skipped with a log line. |
 | `url` | The career page or job board to fetch. |
-| `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. |
+| `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page. |
 
 The example ships nine entries chosen to exercise a different extractor each, so
 there's one working example per supported ATS.
@@ -892,7 +892,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-917 tests, about fifteen seconds, no network access required. Extractors are
+946 tests, about fifteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
@@ -905,7 +905,8 @@ To refresh a saved page after a site redesign:
 python scripts/capture_fixtures.py <source_name>
 ```
 
-A paginated source needs its whole walk, not its first page:
+A paginated source needs its whole walk, not its first page. That includes a
+walk made by POST, like Workday's; each response is saved as JSON:
 
 ```bash
 python scripts/capture_fixtures.py --pages all <source_name>

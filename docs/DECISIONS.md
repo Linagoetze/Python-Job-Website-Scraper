@@ -707,3 +707,105 @@ session — see `CLAUDE.md`.
   forbids scraping during a session; it does not forbid writing a ten-line
   shell by hand, which is the only way to test "no postings anywhere" without
   a live site.
+
+- **Workday is read through its own JSON endpoint, not the rendered page**
+  (SP3b, owner's choice 2026-09-23). The rendered listing shows 20 postings
+  and pages by JavaScript: its pager is `<button type="button">` with no
+  `href`, and a live render of `/en-US/External?page=2` came back as page 1
+  ("1 - 20 of 64 jobs", page 1 current) with `?page=2` appended to every job
+  link — so a URL parameter is not a route, and trying it would also have
+  changed every stored key. The page's own
+  `POST /wday/cxs/<tenant>/<board>/jobs` (`{"limit": 20, "offset": N,
+  "searchText": "", "appliedFacets": {}}`) returns `total` and, per posting,
+  `title`, `externalPath` and `locationsText`; on 2026-09-23 all 20 postings
+  on path's first page matched the rendered page exactly in title, location
+  (both empty ones, and the "N Locations" placeholders, included) and detail
+  URL. Chosen over clicking the pager because a `fetch(url) -> str` fetcher
+  cannot click, and over the rendered page because the rendered page calls
+  this same endpoint and adds Workday's markup on top as a second thing to
+  break. It is an undocumented API — rung 3 of the CU2 ladder — accepted
+  because it is the one the board's own front end depends on. It is also the
+  lighter guest: four small POSTs for 64 postings, against a browser render
+  that loads the whole app and makes the same POST itself.
+- **robots.txt allows both Workday routes, and each tenant is checked at run
+  time** (SP3b). `path.wd1.myworkdayjobs.com/robots.txt` on 2026-09-23 was
+  `User-agent: *` / `Allow: /External/` / `Disallow: /refreshFacet/`, which
+  covers neither `/en-US/External` nor `/wday/cxs/…`, so `RobotsPolicy.explain`
+  found no deciding line and allowed both. Each tenant is its own host with its
+  own file; the other five were not fetched in the investigation, and do not
+  need to be — `http.post_json` checks robots.txt before every POST inside a
+  run, and a refusal fails that source rather than emptying it.
+- **A Workday detail URL is `https://<host>/<locale>/<board>` + `externalPath`,
+  with the locale taken from the listing URL, or `en-US` when it has none**
+  (SP3b). This is the dedupe-key rule, not a formatting choice:
+  `dedupe_key_for_job` keys a stored job on its full `detail_url`, so a URL
+  built one character differently makes every stored Workday job look new and
+  delists the old rows two runs later. Four of the six sources (busuu, slack,
+  airbus, axis_comms) have no locale in `sources.yaml`, yet the rendered page
+  linked every posting under `/en-US/` — Chromium's default — and all 72 stored
+  rows for the six sources have exactly the form `<host>/en-US/<board>/job/…`,
+  with no query and no fragment (checked read-only against the store). Any
+  change to this construction needs the same check first.
+- **`strategy: dynamic` stays on the Workday sources although the listing no
+  longer renders** (SP3b, owner's decision). `pipeline.py` also uses `strategy`
+  to choose the fetcher for detail pages at Layers 2 and 5, and a Workday
+  detail page is client-rendered. The reader now ignores the rendering for the
+  listing; the setting is still doing its other job.
+- **A fetcher carries `post_json`, and a reader that POSTs uses the one it is
+  handed** (SP3b). The WP8g rule — an extractor uses the callable it is given,
+  or the capture script records nothing — extended to POST the way `renders`
+  extended it to rendering: `http.fetch_text` and `http.fetch_rendered` carry
+  `http.post_json` as `.post_json`, the capture script's recording fetcher and
+  `recorded_pages_fetch` carry a recording and a replaying one, and the probe's
+  wrappers carry its fetcher's. `workday.py` **refuses** a fetcher without one
+  rather than falling back to `http.post_json`: a fallback would let a test or
+  a capture reach the network by a route it did not choose. A POSTed page is
+  saved as the JSON it decoded to, in the same positional sequence as GETs.
+  `workable.py` still calls `http.post_json` itself and is still invisible to
+  the capture; moving it onto the fetcher is SP4's to do when it captures it.
+- **The Workday endpoint's tenant is the host's with `-` read as `_`** (SP3b).
+  busuu's POST to `/wday/cxs/osv-chegg/Busuu/jobs` answered 422. One
+  diagnostic render (owner-approved) logged the page's own call:
+  `/wday/cxs/osv_chegg/Busuu/jobs`, same body, 200 — and the page's config says
+  `tenant: "osv_chegg"`. A hostname cannot carry an underscore. No other
+  source's host has a hyphen. If a tenant ever breaks the rule, the endpoint
+  answers 4xx and the source fails loudly; reading the tenant off the page
+  instead would cost a request per run to guard a case not yet seen.
+- **Workday's `total` is capped at 2000, and a board at the cap is refused,
+  not walked** (SP3b, 2026-09-23). Airbus answered `total: 2000`; in the same
+  response its single-valued facets summed to about 2,940 (full/part time
+  2,937, worker type 2,947). For axis_comms (98) and irc (350) the same kind of
+  facet summed to the total exactly, so below the cap the number is honest. At
+  the cap it is a floor, and a walk reconciled against it would report a short
+  read as whole — the failure this whole package exists to stop. So a first
+  response stating 2000 or more raises after one request. Consequence: airbus
+  fails every run until its listing is narrowed below the cap or read another
+  way; its stored jobs are kept. It is named only in the run's WARNING log
+  line: the run summary counts a source whose extractor raised as "skipped",
+  together with config skips, and does not name it (seen in the SP3b dry run,
+  2026-09-23). Before SP3b it silently returned 20 of ~2,940.
+- **Every Workday source was being read at one page, and the store said so**
+  (SP3b). `source_health` held exactly 20 rows for airbus (once 19),
+  axis_comms, irc and path in all 27 runs to 2026-09-22; busuu (5-7) and slack
+  (7-16) moved with their boards. A constant row count equal to a platform's
+  page size is the signature of this bug, and a query worth running before
+  trusting any reader that has no total to check.
+- **A replaced rendered page is kept for the probe, under a name the capture
+  does not own** (SP3b). A JSON capture removes its HTML sibling as stale, but
+  the probe's tests need a real rendered Workday listing (its shell,
+  fingerprint and stated total). path's lives on as `path.rendered.html`,
+  which `capture_fixtures._page_of` does not read as that source's fixture.
+  It is a month older than the JSON walk, which is why the probe's "whole"
+  test reads 64 against a stated 61 (more, never short) rather than an exact
+  match; the exact case is novo_nordisk's, from one capture. busuu's rendered
+  page was kept too, then removed in review once no test read it (6 then,
+  5 now, so it could not be paired with its walk).
+- **A short read from a guarded reader is that reader's bug, not a missing
+  walk** (SP3b review). The probe's verdict for a read shorter than the
+  page's stated total said "the existing reader does not walk this listing,
+  so it needs a walking reader" — true when it was written, because every
+  reader it could fire for read one page. Marking Workday guarded made it
+  false: a reader that walks and checks a total itself, yet reads short, got
+  past its own check. That is `not feasible — rung 5`, a bug in that reader,
+  matching the SP3 rule that a broken generic reader is fixed, not joined by
+  a second module. `needs a new extractor` stays for an unguarded reader.

@@ -113,6 +113,8 @@ class ProbeFetcher(Protocol):
 
     def rendered(self, url: str, **kwargs: Any) -> str: ...
 
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any: ...
+
 
 class LiveFetcher:
     """`http.py`'s fetchers, as the pipeline uses them. Built by `live_fetcher`."""
@@ -138,6 +140,11 @@ class LiveFetcher:
         from job_scraper import http
 
         return http.fetch_rendered(url, **kwargs)
+
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        from job_scraper import http
+
+        return http.post_json(url, payload, **kwargs)
 
 
 @contextmanager
@@ -310,7 +317,11 @@ PLATFORMS: tuple[Platform, ...] = (
             f"https://{m.group('tenant')}.{m.group('dc')}.myworkdayjobs.com/{m.group('slug')}"
         ),
         strategy="dynamic",
-        walk="reads the first rendered page only, so a board longer than one page reads short",
+        walk=(
+            "walks the board's JSON endpoint to its stated total and fails a short walk "
+            "(pagination.py); a board stating 2000, Workday's cap on that count, fails unread"
+        ),
+        guarded=True,
         not_slugs=frozenset({"wday", "assets"}),
     ),
     Platform(
@@ -723,9 +734,11 @@ def _rendering(fetcher: ProbeFetcher) -> Fetch:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return fetcher.rendered(url, **kwargs)
 
-    # The mark workday.py and successfactors_html.py look for before adding a
-    # selector wait; see http.is_rendering_fetcher.
+    # The mark successfactors_html.py looks for before adding a selector
+    # wait; see http.is_rendering_fetcher.
     fetch.renders = True  # type: ignore[attr-defined]
+    # workday.py POSTs through the fetcher it is handed (see http.py).
+    fetch.post_json = fetcher.post_json  # type: ignore[attr-defined]
     return fetch
 
 
@@ -733,6 +746,7 @@ def _static(fetcher: ProbeFetcher) -> Fetch:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return fetcher.text(url)
 
+    fetch.post_json = fetcher.post_json  # type: ignore[attr-defined]
     return fetch
 
 
@@ -1280,8 +1294,10 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
 
     A recognised platform whose reader fails or reads nothing is `not
     feasible` at rung 5, never `needs a new extractor`: the fix for a broken
-    generic reader is that reader (SP4), not a second module beside it. A
-    reader stopped by robots.txt is rung 2, and the reader is not blamed.
+    generic reader is that reader (SP4), not a second module beside it. The
+    same goes for a short read from a reader that walks and checks a total
+    itself. A reader stopped by robots.txt is rung 2, and the reader is not
+    blamed.
     """
     whole = [r for r in runs if r.ok and not r.short]
     if whole:
@@ -1295,11 +1311,24 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
     partial_reads = [r for r in runs if r.ok and r.short]
     if partial_reads:
         run = partial_reads[0]
+        key = run.board.platform.key
+        if run.board.platform.guarded:
+            # This reader walks the listing and checks a total itself, so a
+            # short read got past its own check: that reader is broken, and
+            # "needs a walking reader" would send someone to write one it
+            # already is (SP3b, when Workday became guarded).
+            return ProbeResult(
+                NOT_FEASIBLE,
+                f"{NOT_FEASIBLE} — rung 5: {key} walks this listing and checks a total "
+                f"itself, yet {run.short}. Its own check did not catch that, which is a "
+                f"bug in {key}.py, not a case for a new module.",
+                run,
+            )
         return ProbeResult(
             NEW_EXTRACTOR,
-            f"{NEW_EXTRACTOR} — {run.board.platform.key} {run.short}: the existing reader "
+            f"{NEW_EXTRACTOR} — {key} {run.short}: the existing reader "
             "does not walk this listing, so it needs a walking reader (or a fix to "
-            f"{run.board.platform.key}.py) before it is a source.",
+            f"{key}.py) before it is a source.",
             run,
         )
     refused = [r for r in runs if r.refused_url is not None]

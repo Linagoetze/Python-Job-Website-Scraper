@@ -20,6 +20,10 @@ the first response and saves them as `<name>.p1.<ext>`, `<name>.p2.<ext>`, … s
 the fixture replays the real walk. J-PAL is captured this way; see
 docs/REFACTOR-PLAN.md, WP11.
 
+A POST made through the fetcher's `post_json` (Workday's JSON walk) is recorded
+in the same sequence as the GETs, saved as the JSON it decoded to. An extractor
+that calls `http.post_json` itself (workable.py) still bypasses the recorder.
+
 Run this by hand whenever a fixture goes stale; see docs/REFACTOR-PLAN.md, WP0,
 for the how-to.
 
@@ -125,6 +129,14 @@ def recorded_pages_fetch(texts: Sequence[str]) -> Callable[..., str]:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return remaining.pop(0) if remaining else ""
 
+    def post_json(url: str, payload: Any, *args: Any, **kwargs: Any) -> Any:
+        # A POSTed page was saved as the JSON it decoded to, so it replays as
+        # that; past the end, an empty object is the POST's empty body.
+        return json.loads(remaining.pop(0)) if remaining else {}
+
+    # Replay shares one queue with GET, because an extractor's requests are
+    # replayed in the order it made them, whichever verb it used.
+    fetch.post_json = post_json  # type: ignore[attr-defined]
     return fetch
 
 
@@ -164,6 +176,23 @@ def capture_one(source: dict[str, str], pages: int = 1) -> tuple[bool, str]:
     # Carry the rendering mark through the wrapper, so extractors that add a
     # selector wait for JS-heavy pages still do so during capture.
     recording_fetch.renders = getattr(fetch, "renders", False)  # type: ignore[attr-defined]
+
+    # And the POST, recorded like a GET. workday.py walks a JSON endpoint by
+    # POST through the fetcher it is handed; without this the capture would
+    # record nothing for it, as it still records nothing for workable.py, which
+    # calls http.post_json directly. The decoded answer is saved re-encoded,
+    # which is what replay decodes again.
+    inner_post = getattr(fetch, "post_json", None)
+    if inner_post is not None:
+
+        def recording_post(url: str, payload: Any, *args: Any, **kwargs: Any) -> Any:
+            data = inner_post(url, payload, *args, **kwargs)
+            recorded.append((url, json.dumps(data, ensure_ascii=False, indent=1) + "\n"))
+            if pages and len(recorded) >= pages:
+                raise _CaptureComplete
+            return data
+
+        recording_fetch.post_json = recording_post  # type: ignore[attr-defined]
 
     try:
         if extractor is None:

@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b and SP3 are done** (as of 2026-09-17); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3 and SP3b are done** (as of 2026-09-23); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -82,7 +82,8 @@ the ordering below.
   that generates one line of code has to be maintained forever to save a paste.
   Config over code cuts both ways.
 - **No new filter layer.** Nothing here touches the five-layer ladder. The
-  tombstone guard in SP7 is a source-level startup warning, not a sixth pass.
+  three warnings in SP7 (failed, one-page, tombstoned) are source-level
+  warnings in the run's output, not a sixth pass.
 
 ## Status
 
@@ -94,13 +95,14 @@ the ordering below.
 | 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
 | 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
-| 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | not started | `sp3b-workday-walk` |
+| 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
+| 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | not started | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
-| 7 | Tombstone guard at startup (optional) | 1 hr | Sonnet 5 | none | not started | `sp7-tombstone-guard` |
+| 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
 
-**Roughly 20 hours** for SP0–SP4 (SP2b and SP3b included) and SP7, plus SP5 and SP6 as recurring
+**Roughly 23 hours** for SP0–SP4 (SP2b, SP3b and SP3c included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here.
@@ -113,10 +115,15 @@ cheap and independent after SP1. **SP2b before SP5**: SP5 re-checks candidates
 and turns some of them into sources, and until SP2b lands neither answer can be
 recorded. SP3 before SP5. **SP3b as soon as SP3 is merged**: it fixes data
 loss in six live sources, and it must land before SP5 adds any Workday
-employer. It is independent of SP4. **SP4 before SP5** if any new
+employer. It is independent of SP4. **SP3c as soon as SP3b is merged**:
+airbus fails loudly on every run until it lands. It is independent of SP4,
+and it goes before SP5 only if SP5 adds a Workday board past the cap.
+**SP4 before SP5** if any new
 company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
-do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline and
-SP7 is optional throughout.
+do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline.
+SP7 needs only SP1 and SP3b, and sooner is better: until it lands, a source
+whose reader fails reads as "skipped" in the run summary. Its tombstone guard
+is the one optional part.
 
 ### Model recommendations
 
@@ -125,7 +132,15 @@ SP7 is optional throughout.
 judgement ladder that has to know when to stop, and — for SP3b — a choice
 between two fragile routes where a changed detail URL would silently
 rewrite review history). SP3b looks like SP4's capture-and-fix work, but the
-route choice and the dedupe-key edge are why it is not a Sonnet package. `Sonnet 5` for SP0b, SP4, SP5, SP6
+route choice and the dedupe-key edge are why it is not a Sonnet package. SP3c follows
+SP3b but is a Sonnet package: its route and config shape are decided in its
+prompt, its detail URLs are untouched by construction, and its one open
+judgement — what proves a facet was applied — is written as a stop-and-ask.
+SP7 now carries `think` rather than no cue, for the one-page warning SP3b's
+findings added to it:
+choosing its threshold means weighing a warning that cries wolf against one
+that stays silent for months, measured on the real store.
+`Sonnet 5` for SP0b, SP3c, SP4, SP5, SP6
 and SP7: capture, diagnose, fix, pin — mechanical work with a strong test net
 under it, which is exactly the split the refactor settled on across its
 twenty-six packages. Effort cues are the repo's usual `think` / `think hard`.
@@ -145,10 +160,11 @@ The surfaces, and what invalidates each:
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
-| `README.md` — "Reading the run summary" | SP7 | A startup warning is user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
+| `README.md` — "Reading the run summary" | SP7 | Three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
+| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
+| `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
 | `README.md` — Layout table | SP1 | The `data/curated/` row lists what lives there. |
 | `job_scraper/config/sources.example.yaml` | SP3 | Its header explains how to add a source. That advice becomes "run `probe` first". |
 | `CLAUDE.md` | SP0b, SP2b | Startup reads, the stale architecture block, the Definition of done. |
@@ -1253,18 +1269,267 @@ result, with before/after row counts for path and busuu.
 Branch sp3b-workday-walk. One commit per step. Do not push.
 ```
 
+### Result — done 2026-09-23, branch `sp3b-workday-walk`
+
+- **Route (b), the owner's choice.** `workday.py` now POSTs
+  `/wday/cxs/<tenant>/<board>/jobs` twenty at a time, takes `total` from the
+  first response, stops at the total or on an empty or short page, and calls
+  `pagination.reconcile` however it ended. Route (a) was ruled out with its
+  one request: a render of `/en-US/External?page=2` came back as page 1 and
+  put `?page=2` on every job link. robots.txt on
+  `path.wd1.myworkdayjobs.com` (`Allow: /External/`, `Disallow:
+  /refreshFacet/` under `*`) has no line for either route, so both were
+  allowed; each tenant's own file is checked by `post_json` at run time.
+  `registry.py` is unchanged.
+- **Detail URLs are unchanged.** `https://<host>/<locale>/<board>` +
+  `externalPath`, the locale from the listing or `en-US`. Checked four ways:
+  all 72 stored rows of the six sources have that exact shape; on the same
+  day, path's rendered first page and the JSON matched 20 of 20 and busuu's
+  5 of 5 in every field; every posting the old saved pages and the new
+  captures both hold is byte-identical (path 7 of 7, busuu 3 of 3 — the rest
+  were taken down between captures); and the 5 stored path jobs still listed
+  come back under the same key. **Locations: no difference anywhere**,
+  including the empty ones and the "N Locations" placeholders.
+- **Before and after, from the saved pages:** path **20 → 64** (the old
+  capture said "1 - 20 of 61"; the new one is the whole four-POST walk of 64),
+  busuu **6 → 5** (the board shrank; same-moment comparison identical). Live,
+  from one POST each: axis_comms 20 → 98, irc 20 → 350. `source_health` had
+  pinned all four of airbus, axis_comms, irc and path at exactly 20 in every
+  one of 27 runs.
+- **Two things only the captures showed**, fixed in their own commit:
+  (1) the tenant in the endpoint is `osv_chegg` where the host says
+  `osv-chegg` — busuu answered 422 until one owner-approved diagnostic render
+  logged the page's own call; (2) Workday caps `total` at 2000. **airbus**
+  states 2000 with about 2,940 postings behind it (by its facet counts), so a
+  walk would reconcile a short read as whole. A board at the cap now fails
+  after one request. **airbus therefore fails every run until SP3c narrows
+  it** — before this package it returned 20 of ~2,940
+  in silence.
+- **Guard first, as asked**: the first commit read the page's total and made
+  path's single page raise; six path-backed tests were left red on that
+  commit, not hidden, until the walk and its capture replaced them.
+- **Capture path for POSTs**: `capture_fixtures.py` records a POST made
+  through the fetcher's `post_json`, and `recorded_pages_fetch` replays it,
+  with three tests of their own. The fetchers now carry `post_json` as a
+  capability, and the reader refuses a fetcher without it. `workable.py`
+  still bypasses the recorder (SP4). path's replaced rendered page survives
+  as `path.rendered.html` for the probe's tests; busuu's was kept at first and
+  removed in review, once no test read it.
+- **Review fixes.** The probe's verdict for a short read assumed a reader
+  that reads one page, and told a guarded one it "needs a walking reader";
+  for a guarded reader it is now `not feasible — rung 5`, a bug in that
+  reader. The dropped check on the old wording is back for an unguarded
+  reader, in a direct `decide()` test. The path "whole" test is renamed for
+  what it checks (more rows than stated), with the exact case pointed at
+  novo_nordisk's. `tests/fixtures/probe/README.md` names the fixtures that
+  exist. Test count unchanged at 946 (one added, one secret-scan case gone
+  with the removed page).
+- **Probe**: Workday's walk is described as the JSON walk and marked guarded.
+  `test_a_first_page_read_as_the_whole_board_is_short` was replaced, not
+  edited to pass: with the walk, its fixtures read whole (64 against 61).
+  Two tests keep its point — a stub serving 2 of 4 pages makes the reader
+  fail (40 of 64), and a response without its total is caught by the probe's
+  own check against the rendered page (SHORT, 40 of 61).
+- **`strategy: dynamic` stays** on all six (owner's decision): it still picks
+  the detail-page fetcher at Layers 2 and 5. No `sources.yaml` change.
+- **29 new tests (917 to 946).** Live traffic: the two route requests, the
+  diagnostic render of busuu, one POST each to airbus, axis_comms and irc
+  (the owner asked for that diagnosis), and the captures (four POSTs for
+  path; one failed and one successful POST for busuu). No test touches the
+  network. **The capture POSTs carried no contact details**, and the capture
+  checked no robots.txt: `capture_fixtures.py` runs outside `polite_fetching`
+  (robots.txt had been checked by hand for both hosts). SP4's step 0 fixes
+  the script.
+- **Docs:** README test count, the `strategy` row, the POST capture note;
+  nine entries in `docs/DECISIONS.md`.
+
 ### Your to-dos
 
-- [ ] **Before the session:** decide whether you are happy for the guard to
+- [x] ~~**Before the session:** decide whether you are happy for the guard to
       land first, which means any multi-page Workday source shows as failing
-      in the run summary until the walk is built. Its stored jobs are kept.
-- [ ] **During the session:** choose the route in step 2. The session will
+      in the run summary until the walk is built. Its stored jobs are kept.~~
+      **Moot (2026-09-23):** the guard and the walk landed on the same branch,
+      so no run ever has the guard without the walk. Only airbus fails, and
+      that is the 2000 cap (SP3c), not a missing walk. The premise was also
+      wrong: a failed source is counted as "skipped" in the summary and named
+      only in the log (SP7, part 1).
+- [x] **During the session:** choose the route in step 2. The session will
       recommend one; the choice is about fragility, and it is yours.
+      **Chosen 2026-09-23: (b), the JSON endpoint; `strategy: dynamic` kept.**
 - [ ] If the detail URLs cannot be kept identical, the session stops. Then the
       decision is whether to migrate stored keys, which is a bigger package.
-- [ ] Apply any `sources.yaml` change the session prints.
+- [x] Apply any `sources.yaml` change the session prints. **None printed.**
+- [x] **Decide what to do about airbus.** Its board is past Workday's
+      2000-posting cap on `total`, so the reader refuses it and it fails every
+      run (stored jobs kept). **Decided 2026-09-23: narrow it to the owner's
+      chosen country with a facet. Planned as SP3c, below.**
 - [ ] Run it at a civilised hour: it makes live requests to six employers'
       Workday tenants, and `rules.json` should carry your contact details.
+
+---
+
+## SP3c — Narrow airbus below Workday's cap
+
+Added 2026-09-23, from SP3b's result. Workday's endpoint never reports a
+`total` above 2000. airbus reports exactly 2000, while the facet counts in
+the same response add up to about 2,940, so a walk checked against the total
+would call a short read whole. SP3b made the reader refuse a board at the cap,
+after one request, so airbus now fails on every run. Its stored jobs are kept.
+The failure is named in the run's WARNING log line; the summary itself only
+counts it among "skipped" sources. Before SP3b it silently returned 20.
+
+**The owner's decision (2026-09-23): narrow airbus to one country, the
+owner's chosen country.** The country and its `locationCountry` facet id are
+deliberately not in this file. It is public, and which country the owner
+wants to work in belongs with `rules.json` and `sources.yaml`, not here. The
+owner gives both to the session when it starts. On 2026-09-23 that country's
+count was far under the cap: one POST per run. Reading all ~2,940 by
+splitting the walk per country was rejected. It would be about 150 POSTs per
+run to one employer, almost all for postings the location filter drops.
+
+**Where the narrowing lives: the source's `url`, as Workday's own filter
+query.** Workday's listing puts a filter in its query string
+(`?locationCountry=<id>`), so the configured URL becomes
+`https://ag.wd3.myworkdayjobs.com/Airbus?locationCountry=<country-id>`, and the
+reader translates the query into `appliedFacets`. The URL lives only in the
+private `sources.yaml`. This was chosen
+over a registry argument or a new `sources.yaml` key for three reasons. It
+needs no pipeline or `registry.py` change: the pipeline hands an extractor
+only the URL. It is config rather than code. And a person can open the URL
+and see the same list the reader reads. SP3b's reader refuses a query today,
+precisely because silently dropping one would read a different board. This
+package replaces that refusal with a faithful translation.
+
+**The edge: a filter that is silently ignored.** If Workday ignores a facet
+it doesn't recognise, the walk reads the whole board. For airbus that
+surfaces as the cap refusal. For a smaller board it would read more than was
+configured, not less, but it would still not be the board the owner chose.
+So the reader has to prove the filter was applied, from the response it
+already has. Step 1 finds out whether that's possible.
+
+**The dedupe key is not at risk, but must stay that way.** Detail URLs are
+built from `externalPath`, so the query cannot reach them unless someone adds
+it. SP3b found that the rendered page appends its query to every job link
+(`?page=2` did). Stored airbus keys have no query, and they must keep having
+none.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP3c
+only. SP3b must be merged first.
+
+airbus fails every run: its Workday board states total 2000, Workday's cap on
+that count, and extractors/workday.py refuses a capped total rather than walk
+it (SP3b; docs/DECISIONS.md). The owner's decision, 2026-09-23: narrow airbus
+to one country, the owner's chosen country, so its walk is under the cap.
+
+THE COUNTRY IS PRIVATE. The owner will give you its name, its
+locationCountry facet id and the count it had on 2026-09-23 when the session
+starts. Neither the name nor the id may appear in any tracked file or commit
+message: not this plan, not DECISIONS.md, not a test, not a fixture name,
+not a docstring. Write "the owner's chosen country" and <country-id>. The
+only place they are written is sources.yaml, and the owner does that.
+
+The narrowing lives in the source's url, as the filter query Workday's own
+listing uses:
+    https://ag.wd3.myworkdayjobs.com/Airbus?locationCountry=<country-id>
+The reader translates that query into the POST's appliedFacets. No pipeline
+change and no registry.py change.
+
+1. VERIFY FIRST, with at most two live requests through http.py's polite
+   fetchers. Check each host's robots.txt with RobotsPolicy.explain first and
+   quote the rule, as SP3b did.
+   a. Render that URL once. Does the listing state the country's count, and do
+      its job links carry the query? (SP3b found ?page=2 appended to every
+      href.)
+   b. POST the endpoint once with
+      {"limit": 20, "offset": 0, "searchText": "",
+       "appliedFacets": {"locationCountry": ["<country-id>"]}}.
+      Report its total, whether that matches the facet count, and what in
+      THAT response could prove on every run, with no extra request, that
+      the facet was applied rather than silently ignored (for example the
+      applied value's own count among the response's facets, or the facet
+      parameter being present at all). If nothing in it proves that, STOP
+      and put it to the owner.
+
+2. BUILD, behind the same extract() signature.
+   - workday._endpoints stops refusing a query and translates it. Each key
+     is a facet parameter; a repeated key is a list of ids. Refuse anything
+     it cannot translate faithfully, and say what.
+   - Fail the source when the response does not show the filter applied, by
+     whatever 1b found. An ignored facet reads a different board from the
+     one configured.
+   - Detail URLs stay <host>/<locale>/<board> + externalPath. The listing's
+     query must never reach them: dedupe_key_for_job keys stored jobs on
+     detail_url (SP3b). listing_url is the configured URL as given.
+   - Keep the cap refusal. A narrowed board still at 2000 fails.
+   - Keep the tenant rule (host hyphen -> endpoint underscore).
+
+3. THE PROBE. A capped refusal now reads as "a bug in workday.py" at rung 5,
+   which is wrong. Raise a ShortWalkError subclass that carries the stated
+   total and the endpoint as fields, not in message text (see the
+   RobotsDisallowed entry in DECISIONS.md for why). Have the probe say the
+   board is past Workday's cap and must be narrowed with a facet query,
+   naming this package. A probe of a URL with a facet query keeps the query
+   in the board it reads and in the sources.yaml block it prints.
+
+4. PRINT the sources.yaml change for airbus. Do not edit sources.yaml.
+   Before printing, read the store (read-only) for airbus rows whose status
+   is 'new' or 'seen' and that are outside the chosen country. Narrowing means those rows
+   are no longer sighted and are delisted two runs later. On 2026-09-23 all
+   17 stored airbus rows were 'rejected' or 'delisted', so none would flip.
+   Check again and report the number, whatever it is.
+
+5. CAPTURE — ASK FIRST. A captured airbus walk would publish the country
+   anyway: every posting's location names it, and the listing URL in
+   FIXTURE_CASES carries its id. So put the choice to the owner:
+   Before either, know this: until SP4's step 0 lands, capture_fixtures.py
+   runs outside http.polite_fetching, so a capture sends no contact details,
+   checks no robots.txt and waits no turn at the host (SP3b's captures went
+   out that way). If SP4 has not landed, tell the owner so as part of the
+   choice.
+   a. capture it (scripts/capture_fixtures.py --pages all airbus, once the
+      owner has pasted the url), pin its golden, and compare its detail URLs
+      with the stored airbus rows for the same postings: they must be
+      identical, and if they are not, STOP; or
+   b. no airbus fixture. Test the translation with stubs whose facet id and
+      locations are invented, and check the detail-URL rule against the store
+      in chat only. The reader already has real captures through path and
+      busuu.
+   Tests for the translation must not use the real id either way.
+
+Tests: the query-to-facets translation, each refusal, the filter-not-applied
+failure, the capped refusal's subclass and the probe's wording. Build them
+from stubs and the saved capture. No test may touch the network. The two
+requests in step 1 and the capture in step 5 are the only live traffic.
+
+DOCS. README: test and fixture counts, and one sentence in the sources.yaml
+section saying a Workday url may carry the listing's own filter query, and
+why airbus has one (narrowed below the cap; the country is not named).
+docs/DECISIONS.md: the query-as-config choice, what proves a facet was
+applied, and that the country stays out of tracked files. This plan file:
+the result, with airbus's row count before (refused) and after, and no
+country.
+
+Branch sp3c-workday-facets. One commit per step. Do not push.
+```
+
+### Your to-dos
+
+- [ ] **At the start of the session:** give it the country, its
+      `locationCountry` facet id and the 2026-09-23 count. They are in the
+      SP3b session's closing message, and nowhere in the repository.
+- [ ] **During the session, after step 4:** paste the printed `url` into
+      `sources.yaml`.
+- [ ] **Step 5:** decide whether airbus gets a fixture. A fixture publishes
+      the country through its postings' locations.
+- [ ] If step 1 finds nothing in the response that proves the filter was
+      applied, the session stops. The choice is then between an extra request
+      per run to check it, or accepting an unverified filter. That choice is
+      yours.
+- [ ] After merging, check the next run's summary: airbus should report the
+      country's count instead of failing.
 
 ---
 
@@ -1300,6 +1565,30 @@ that reveals: breezy, lever, personio, smartrecruiters, workable.
 Method, and it is not negotiable — WP8g and CU2 both learned it the hard way:
 CAPTURE FIRST, THEN READ THE EXTRACTOR. Reasoning about a page layout identifies
 it correctly and gets the data wrong.
+
+STEP 0, BEFORE ANY CAPTURE: MAKE THE CAPTURE A POLITE GUEST. Its own commit.
+scripts/capture_fixtures.py runs outside http.polite_fetching, by a recorded
+decision (docs/DECISIONS.md, "Politeness is run-scoped"), so every capture so
+far, SP3b's included, went out as "no contact configured", consulted no
+robots.txt and paid no per-host spacing. That entry's reasoning (a test or a
+one-off fetch should pay nothing) holds for tests. It does not hold for a tool
+whose whole job is live requests to other people's sites, and this package
+makes five of them. Run each capture inside polite_fetching with the
+User-Agent from rules.json (http.user_agent_from_rules) and the source's own
+ignore_robots exemptions, built the way pipeline.py builds them: reuse that
+code, do not copy it. Rendered fetches then carry the same User-Agent
+(_render_once already reads it from the block). A robots.txt refusal is a
+failed capture, reported like any other. Test it with the network faked, as
+the other capture tests are. Amend the DECISIONS entry rather than
+contradicting it silently.
+
+WORKABLE FIRST NEEDS THE FETCHER'S POST. workable.py calls http.post_json
+itself, so capture_fixtures.py records nothing for it ("extractor made no
+request"). Move it onto the fetcher's post_json first, as SP3b did for
+workday.py (docs/DECISIONS.md, "A fetcher carries post_json"), refusing a
+fetcher that cannot POST in the same way; then capture it. The probe's test
+test_workable_reads_through_post_json stubs http.post_json at the module and
+will need the probe stub's post_json instead. Say so when you change it.
 
 FIRST, RESOLVE THE NAMES. These five are READER names. capture_fixtures.py
 takes SOURCE names from sources.yaml, and for these five no source is named
@@ -1342,7 +1631,8 @@ worth not repeating.
       and not alongside a scheduled scrape.
 - [ ] Confirm `rules.json` still has your contact details filled in — WP10 put
       them in the User-Agent, and a capture run is exactly when an administrator
-      might want to reach you.
+      might want to reach you. They reach a capture only once step 0 has
+      landed; before it, captures sent no contact details at all.
 - [ ] Expect this one to need a second session. That is the plan working, not
       slipping.
 
@@ -1463,47 +1753,111 @@ later instalment.
 
 ---
 
-## SP7 — Tombstone guard at startup (optional)
+## SP7 — Source warnings: failed, one-page, tombstoned
 
-Today nothing in the code reads `excluded_sources`. The tombstone is enforced by
-a session remembering to look, which is a rule of the kind CU3 replaced with an
-honest note precisely because nobody keeps them.
+Three warnings about *sources* rather than jobs, all printed in `run.py`'s
+user-facing output. Two were added on 2026-09-23 from SP3b, and neither of
+those is optional. The third, the tombstone guard, is the original SP7 and
+stays optional.
+
+**1. A failed source is not named in the run summary.** SP3b's dry run
+showed it. airbus's reader raised, and the summary said
+`5 / 6 processed (1 skipped)`. The source was named only in a WARNING log
+line above the summary. A source whose reader raises is counted with config
+skips (no extractor, unknown strategy, robots.txt refused), so a failure
+that isn't watched for in the log reads as routine. The summary already has
+a block for sources that shrank (WP10) and one for sources that returned
+nothing (CU2). A source that failed outright is the loudest case and has
+neither.
+
+**2. A source that returns exactly one page, run after run.** In
+`source_health`, airbus, axis_comms, irc and path returned exactly 20 rows,
+Workday's page size, in all 27 runs up to 2026-09-22. Their boards held
+between 64 and about 2,940 postings. Nothing warned. The WP10 health check
+compares a run with the one before it, so a source that is short *by the
+same amount every time* never shrinks and never trips it. That signature
+was in the store for months, and a check for it would have found SP3b's bug.
+
+**3. The tombstone guard (optional).** Nothing in the code reads
+`excluded_sources`. The tombstone is enforced by a session remembering to
+look, which is a rule of the kind CU3 replaced with an honest note, precisely
+because nobody keeps them.
 
 ```
-Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP7 only. SP1 must be
-merged.
+think
 
-At startup, run.py should warn — once, naming the organisation and the recorded
-reason — if any sources.yaml entry matches an entry in excluded_sources.yaml by
-BOARD IDENTITY (SP1's matcher, host plus board slug — never host alone; six
-sources share one Greenhouse hostname and a host match would warn on all of
-them).
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP7
+only. SP1 and SP3b must be merged.
 
-It WARNS. It does not skip the source and it does not exit. The owner may have
-re-added something deliberately, and this project does not silently drop a
-source (see the delisting guard in WP1 and the zero-row check in CU2 for the
-same principle applied to data).
+Three warnings about sources, printed through run.py's user-facing summary
+path, not through logging, so they appear for a normal run rather than only
+under -v. None of them is a filter layer: do not touch the five-layer ladder
+or the filtering modules. None of them skips a source or exits: this project
+does not silently drop a source (see the delisting guard in WP1 and the
+zero-row check in CU2 for the same principle applied to data). One commit
+per warning.
 
-This is a source-level startup check, not a filter layer. Do not touch the
-five-layer ladder, and do not add anything to the filtering modules.
+1. FAILED SOURCES. A source whose extractor raises is named today only in a
+   WARNING log line. The summary counts it in "(N skipped)" alongside config
+   skips and names nothing: SP3b's dry run printed "5 / 6 processed
+   (1 skipped)" for a failed airbus. Give failures a block of their own, in
+   the style of the source-health and empty-source blocks ("!" marker, no
+   ladder gutter). Each failed source is named, with the first line of its
+   error, and the block says its stored jobs were kept and nothing was
+   delisted. Split the Sources line so a failure is not counted as a skip.
+   Build the block from the pipeline's in-memory source_health list, not
+   from the store, so a --dry-run shows it too. The dry run is where this
+   was found.
+
+2. ONE PAGE, EVERY RUN. Warn when a source's last N successful runs in
+   source_health all returned the same number of rows, and that number is a
+   typical page size. Take the sizes from probe.TYPICAL_PAGE_SIZES, moved
+   somewhere both modules can import rather than duplicated. N is 5 unless
+   you find a reason to change it; say what you chose and why. The warning
+   names the source and the count, and says it may be reading only its
+   first page. Give it its own block, like (1).
+   The evidence: airbus, axis_comms, irc and path returned exactly 20 in all
+   27 runs to 2026-09-22 while their boards held 64 to ~2,940 (SP3b).
+   Weigh false positives honestly. A board that genuinely holds 20 postings
+   for five runs will trip it, and that costs one line in the summary. A
+   missed case cost months of postings. But a warning that fires on every
+   run for a healthy source teaches the owner to skip the block. So run the
+   rule against the real store (read-only) and report which of today's
+   sources would trip it, by name, before deciding whether anything needs
+   to quiet it. Do not add a config key to silence it without asking.
+   Read the store; never write to it outside a run.
+
+3. TOMBSTONE GUARD — OPTIONAL. Ask the owner at the start whether they still
+   want it, and skip it cleanly if not. At startup, warn once, naming the
+   organisation and the recorded reason, if any sources.yaml entry matches
+   an entry in excluded_sources.yaml by BOARD IDENTITY (SP1's matcher: host
+   plus board slug, never host alone; six sources share one Greenhouse
+   hostname, and a host match would warn on all of them). It WARNS. The
+   owner may have re-added something deliberately.
+
+Tests: each block from stubbed summaries and a temp store. Include a dry run
+with a failed source, a run of identical counts broken by one different run
+(no warning), a run of identical counts at a size that is not a page size (no
+warning), and fewer than N runs (no warning).
 
 DOCS — THE RUN SUMMARY. This is user-visible output, so README.md's "Reading
 the run summary" section has to show it. That section prints a real rendered
-summary block with illustrative counts; add the warning exactly as it will
-appear, and say where it lands relative to the funnel. Keep the counts in that
-block illustrative — a real store's numbers are personal, which is why they are
-fake there. Update the test count too.
+summary block with illustrative counts. Add each new block, and the changed
+Sources line, exactly as they will appear, and say where each lands relative
+to the funnel. Keep the counts in that block illustrative: a real store's
+numbers are personal, which is why they are fake there. Update the test
+count. docs/DECISIONS.md: why failures are counted apart from skips, and the
+one-page rule with its N and the store's verdict on it.
 
-Print the warning through run.py's user-facing summary path, not through
-logging, so it appears for a normal run rather than only under -v.
-
-Branch sp7-tombstone-guard. Commit, do not push. Update this plan file.
+Branch sp7-source-warnings. Commit, do not push. Update this plan file.
 ```
 
 ### Your to-dos
 
-- [ ] Decide whether you want this at all. It is the smallest package here and
-      the easiest to skip.
+- [ ] Decide whether you want the tombstone guard (part 3). It is the smallest
+      part and the easiest to skip. Parts 1 and 2 are not optional.
+- [ ] When the session reports which sources the one-page rule would flag
+      today, say whether any of them is known to be a genuinely small board.
 
 ---
 

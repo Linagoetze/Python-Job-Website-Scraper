@@ -43,7 +43,6 @@ UA = "job-scraper/0.1 (+https://owner.example; contact=owner@example.org)"
 
 KOGNITY = "https://jobs.ashbyhq.com/kognity"
 STORYTEL = "https://jobs.storytel.com/jobs"
-BUSUU = "https://osv-chegg.wd5.myworkdayjobs.com/Busuu"
 PATH_PROBED = "https://path.wd1.myworkdayjobs.com/en-US/External"
 PATH_BOARD = "https://path.wd1.myworkdayjobs.com/External"
 NOVO = "https://careers.novonordisk.com/search"
@@ -76,10 +75,13 @@ class StubFetcher:
         rendered: dict[str, str] | None = None,
         robots: dict[str, str] | None = None,
         redirects: dict[str, tuple[str, tuple[str, ...]]] | None = None,
+        posted: dict[str, list[str]] | None = None,
     ) -> None:
         self.log = log
         self.static = static or {}
         self.rendered_pages = rendered or {}
+        # POSTed JSON by URL, one saved response per page in walk order.
+        self.posted = posted or {}
         self.redirects = redirects or {}
         robots = robots or {}
 
@@ -107,6 +109,15 @@ class StubFetcher:
         if url not in self.rendered_pages:
             raise RuntimeError(f"no rendered fixture for {url}")
         return self.rendered_pages[url]
+
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        offset, limit = int(payload.get("offset", 0)), int(payload.get("limit", 1))
+        self.log.append(f"POST {url} offset={offset}")
+        pages = self.posted.get(url)
+        if pages is None:
+            raise RuntimeError(f"404 Client Error: no POST fixture for {url}")
+        index = offset // limit
+        return json.loads(pages[index]) if index < len(pages) else {"jobPostings": []}
 
     def _serve(self, url: str) -> str:
         if url not in self.static:
@@ -194,11 +205,25 @@ def kognity(log: list[str]) -> StubFetcher:
     return StubFetcher(log, static={KOGNITY: fixture("kognity.html")})
 
 
-def path_workday(log: list[str]) -> StubFetcher:
+PATH_API = "https://path.wd1.myworkdayjobs.com/wday/cxs/path/External/jobs"
+PATH_WALK = ("path.json", "path.p1.json", "path.p2.json", "path.p3.json")
+
+
+def path_workday(log: list[str], posted: list[str] | None = None) -> StubFetcher:
+    """path's rendered listing, and its JSON walk for the reader.
+
+    The rendered page (2026-08-20) says "1 - 20 of 61 jobs"; the walk
+    (2026-09-23) holds 64. They were captured a month apart, so the probe's
+    comparison of the two reads 64 against 61 — more than stated, never short.
+    """
     return StubFetcher(
         log,
         static={PATH_PROBED: probe_fixture("shell.html")},
-        rendered={PATH_PROBED: fixture("path.html"), PATH_BOARD: fixture("path.html")},
+        rendered={
+            PATH_PROBED: fixture("path.rendered.html"),
+            PATH_BOARD: fixture("path.rendered.html"),
+        },
+        posted={PATH_API: [fixture(name) for name in PATH_WALK] if posted is None else posted},
     )
 
 
@@ -530,7 +555,7 @@ class TestFingerprint:
             assert [(b.platform.key, b.url) for b in boards] == [(key, url)]
 
     def test_a_workday_board_drops_the_locale(self) -> None:
-        html = fixture("path.html")
+        html = fixture("path.rendered.html")
         _, boards = probe.fingerprint(
             PATH_PROBED, None, [probe.scan_page(html, PATH_PROBED, "rendered")]
         )
@@ -653,19 +678,21 @@ class TestReaders:
         assert "20 row(s)" in report
         assert "title:      Program Officer" in report
 
-    def test_a_workday_reader_is_given_the_rendering_fetcher(
+    def test_a_workday_reader_walks_its_json_through_the_fetcher(
         self, curated_dir: Path, tmp_path: Path
     ) -> None:
-        fetcher = StubFetcher(
-            [],
-            static={BUSUU: probe_fixture("shell.html")},
-            rendered={BUSUU: fixture("busuu.html")},
-        )
-        result, report = run_probe(BUSUU, fetcher, curated_dir, tmp_path)
+        # SP3b: the reader POSTs through the probe's fetcher, page by page, and
+        # the listing is still rendered for the page's own evidence.
+        fetcher = path_workday([])
+        result, report = run_probe(PATH_PROBED, fetcher, curated_dir, tmp_path)
 
-        assert "workday on https://osv-chegg.wd5.myworkdayjobs.com/Busuu (dynamic)" in report
+        posts = [line for line in fetcher.log if line.startswith("POST ")]
+        assert posts == [f"POST {PATH_API} offset={n}" for n in (0, 20, 40, 60)]
+        assert f"workday on {PATH_BOARD} (dynamic)" in report
+        assert "64 row(s)" in report
         assert result.kind == probe.REUSE
         assert "strategy: dynamic" in report
+        assert "add --pages all" in report
 
     def test_a_reader_that_raises_is_reported_not_raised(
         self, curated_dir: Path, tmp_path: Path
@@ -690,7 +717,7 @@ class TestReaders:
 
     def test_a_suspicious_parse_is_flagged(self, curated_dir: Path, tmp_path: Path) -> None:
         _, report = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
-        assert "! 9 of 20 row(s) have no location" in report
+        assert "! 21 of 64 row(s) have no location" in report
 
     def test_workable_reads_through_post_json(
         self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -741,27 +768,75 @@ class TestReaders:
 
 
 class TestPagination:
-    def test_a_first_page_read_as_the_whole_board_is_short(
+    def test_a_walk_that_stops_short_of_its_total_is_caught(
         self, curated_dir: Path, tmp_path: Path
     ) -> None:
-        # path.html is a real capture: 61 postings, 20 on the page, and the
-        # workday reader reads the 20.
-        result, report = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
+        # Until SP3b this test fed path's rendered first page to a reader that
+        # read only that page, and expected SHORT (20 of 61). The reader now
+        # walks the JSON, so the same fixture reads whole. What must still hold
+        # is that a short read never passes: here the stub serves two of the
+        # walk's four pages, so the reader holds 40 of a stated 64 and fails.
+        fetcher = path_workday([], posted=[fixture("path.json"), fixture("path.p1.json")])
+        result, report = run_probe(PATH_PROBED, fetcher, curated_dir, tmp_path)
 
-        assert 'rendered page: "1 - 20 of 61 jobs"' in report
-        assert "SHORT — read 20 posting(s) but the listing says 61" in report
-        assert result.kind == probe.NEW_EXTRACTOR
-        assert "does not walk this listing" in result.line
+        assert "FAILED — ShortWalkError" in report
+        assert "holding 40 posting(s), but the listing says it has 64" in report
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "workday is recognised but its reader failed (ShortWalkError" in result.line
         assert "registry.py (in REGISTRY)" not in report
 
-    def test_a_whole_board_matches_its_total(self, curated_dir: Path, tmp_path: Path) -> None:
-        fetcher = StubFetcher(
-            [],
-            static={BUSUU: probe_fixture("shell.html")},
-            rendered={BUSUU: fixture("busuu.html")},
+    def test_a_walk_that_lost_its_total_is_checked_against_the_page(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # The probe's own check, behind the reader's: with no total in the
+        # response the reader cannot tell 40 from whole and accepts it, but the
+        # rendered page still says 61, and the probe says SHORT.
+        first = json.loads(fixture("path.json"))
+        del first["total"]
+        fetcher = path_workday([], posted=[json.dumps(first), fixture("path.p1.json")])
+        result, report = run_probe(PATH_PROBED, fetcher, curated_dir, tmp_path)
+
+        assert 'rendered page: "1 - 20 of 61 jobs"' in report
+        assert "SHORT — read 40 posting(s) but the listing says 61" in report
+        # Workday walks and checks a total itself, so this is its bug to fix,
+        # not a missing walking reader — the verdict before SP3b's review said
+        # "does not walk this listing", which was no longer true.
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "rung 5: workday walks this listing and checks a total itself" in result.line
+        assert "bug in workday.py" in result.line
+        assert "does not walk this listing" not in result.line
+        assert "registry.py (in REGISTRY)" not in report
+
+    def test_a_first_page_reader_is_told_it_needs_a_walk(self) -> None:
+        # The case the old path.html test covered, before Workday walked: a
+        # reader that reads only its listing page, whose page states more.
+        # No capture of such a board exists now, so decide() is driven
+        # directly with a teamtailor run and a stated total.
+        teamtailor = next(p for p in probe.PLATFORMS if p.key == "teamtailor")
+        assert not teamtailor.guarded
+        board = probe.Board(teamtailor, "https://jobs.contoso.example/jobs", None, "the page")
+        run = probe.ReaderRun(
+            board=board,
+            strategy="static",
+            rows=[{"title": f"Role {n}", "detail_url": f"https://x/{n}"} for n in range(20)],
+            total=probe.DeclaredTotal(61, "1 - 20 of 61 jobs"),
         )
-        _, report = run_probe(BUSUU, fetcher, curated_dir, tmp_path)
-        assert "6 row(s) against a stated 6: whole" in report
+        result = probe.decide([run], [], None)
+
+        assert result.kind == probe.NEW_EXTRACTOR
+        assert "read 20 posting(s) but the listing says 61" in result.line
+        assert "does not walk this listing" in result.line
+
+    def test_more_rows_than_the_page_states_is_whole(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # Not an exact match, and not meant to be one: path's rendered page
+        # (61, 2026-08-20) and its JSON walk (64, 2026-09-23) are a month
+        # apart, and a board that grew is not a short read. The exact case,
+        # rows equal to the stated total, is test_a_guarded_walk_is_read_to_its_end
+        # (novo_nordisk, 329 against 329), from one capture.
+        _, report = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
+        assert "64 row(s) against a stated 61: whole" in report
 
     def test_a_guarded_walk_is_read_to_its_end(self, curated_dir: Path, tmp_path: Path) -> None:
         fetcher = novo([])
