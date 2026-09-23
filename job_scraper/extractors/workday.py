@@ -123,9 +123,13 @@ def extract(
             headers={"Accept": "application/json"},
         )
         postings = (data.get("jobPostings") if isinstance(data, dict) else None) or []
-        # Taken from the first response only. Workday is reported to send the
-        # total with the first page and 0 with the rest, and a later 0 must
-        # not overwrite the number the walk is checked against.
+        # Taken from the first response only: it is the number the walk is
+        # held to. path's four pages all repeated it (SP3b); a later 0, which
+        # some Workday tenants are said to send but none here has, must not be
+        # able to replace it, or `reconcile` would pass any short walk. Later
+        # totals would add nothing: a board that shrinks mid-walk already
+        # fails the check, and one that grows only delays a new posting to the
+        # next run.
         if offset == 0:
             total = _declared_total(data)
             if total is not None and total >= _TOTAL_CAP:

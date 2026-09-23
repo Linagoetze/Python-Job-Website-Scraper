@@ -665,7 +665,8 @@ class _WorkdayBoard:
     """A fetcher whose `post_json` serves a board of *size* postings, 20 a page.
 
     *total* is what the first response states; *later_total* what every other
-    response states (Workday is reported to send 0 there). *broken* maps an
+    response states — by default the same, as path's real walk did; 0 is the
+    case some tenants are said to send. *broken* maps an
     offset to the number of postings that page actually returns.
     """
 
@@ -674,7 +675,7 @@ class _WorkdayBoard:
         size: int,
         *,
         total: int | None = None,
-        later_total: int | None = 0,
+        later_total: int | None | str = "same",
         broken: dict[int, int] | None = None,
     ) -> None:
         self.size, self.total, self.later_total = size, total, later_total
@@ -689,7 +690,7 @@ class _WorkdayBoard:
         self.asked.append((url, offset))
         count = self.broken.get(offset, max(0, min(limit, self.size - offset)))
         body: dict[str, Any] = {"jobPostings": _workday_postings(offset, count)}
-        stated = self.total if offset == 0 else self.later_total
+        stated = self.total if offset == 0 or self.later_total == "same" else self.later_total
         if stated is not None:
             body["total"] = stated
         return body
