@@ -1335,9 +1335,14 @@ Branch sp3b-workday-walk. One commit per step. Do not push.
 
 ### Your to-dos
 
-- [ ] **Before the session:** decide whether you are happy for the guard to
+- [x] ~~**Before the session:** decide whether you are happy for the guard to
       land first, which means any multi-page Workday source shows as failing
-      in the run summary until the walk is built. Its stored jobs are kept.
+      in the run summary until the walk is built. Its stored jobs are kept.~~
+      **Moot (2026-09-23):** the guard and the walk landed on the same branch,
+      so no run ever has the guard without the walk. Only airbus fails, and
+      that is the 2000 cap (SP3c), not a missing walk. The premise was also
+      wrong: a failed source is counted as "skipped" in the summary and named
+      only in the log (SP7, part 1).
 - [x] **During the session:** choose the route in step 2. The session will
       recommend one; the choice is about fragility, and it is yours.
       **Chosen 2026-09-23: (b), the JSON endpoint; `strategy: dynamic` kept.**
