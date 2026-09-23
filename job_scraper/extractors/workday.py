@@ -42,6 +42,14 @@ _PAGE_SIZE = 20
 # past any board here. A walk that reaches it with more to come fails loudly.
 _MAX_PAGES = 500
 
+# The most `total` ever says. Airbus's board answered exactly 2000 while its
+# single-valued facets (full/part time, worker type) summed to about 2,940
+# (SP3b, 2026-09-23); boards under the cap — axis_comms at 98, irc at 350 —
+# summed to their total exactly. At the cap the count is a floor, not a length,
+# so a walk checked against it would pass as whole while short. A board that
+# reaches it fails before the walk rather than after a hundred requests.
+_TOTAL_CAP = 2000
+
 _HOST = re.compile(r"(?P<tenant>[a-z0-9][a-z0-9-]*)\.wd\d+\.myworkdayjobs\.com", re.I)
 _LOCALE = re.compile(r"[a-z]{2}-[A-Z]{2}")
 _DEFAULT_LOCALE = "en-US"
@@ -70,9 +78,13 @@ def _endpoints(listing_url: str) -> tuple[str, str]:
     if len(rest) != 1:
         raise ValueError(f"{listing_url} is not /<board> or /<locale>/<board>")
     board = rest[0]
+    # The tenant id in the endpoint is the page's own `tenant: "osv_chegg"`,
+    # and a hostname cannot carry an underscore, so the host spells it
+    # `osv-chegg`. POSTing the host's spelling answered 422 (SP3b, busuu).
+    tenant = match.group("tenant").replace("-", "_")
     origin = f"{parts.scheme or 'https'}://{host}"
     return (
-        f"{origin}/wday/cxs/{match.group('tenant')}/{board}/jobs",
+        f"{origin}/wday/cxs/{tenant}/{board}/jobs",
         f"{origin}/{locale or _DEFAULT_LOCALE}/{board}",
     )
 
@@ -116,6 +128,13 @@ def extract(
         # not overwrite the number the walk is checked against.
         if offset == 0:
             total = _declared_total(data)
+            if total is not None and total >= _TOTAL_CAP:
+                raise pagination.ShortWalkError(
+                    f"{source_name}: {api_url} states {total} postings, which is the "
+                    "most Workday's endpoint ever reports; the board may hold more, and "
+                    "a walk checked against a capped count cannot tell whole from short. "
+                    "Refusing to read it until its listing is narrowed below the cap."
+                )
         if not postings:
             break
 

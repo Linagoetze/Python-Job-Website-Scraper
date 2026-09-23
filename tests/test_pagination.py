@@ -753,6 +753,24 @@ def test_workday_without_a_readable_total_says_it_could_not_check(
     assert "publishes no total" in caplog.text
 
 
+def test_workday_a_capped_total_fails_before_the_walk() -> None:
+    """Workday reports at most 2000; at that number the count is a floor.
+
+    Airbus stated 2000 with about 2,940 postings behind it. Walking to 2000 and
+    reconciling would pass as whole; refusing after one request is the only
+    honest answer, and the cheaper one for the site.
+    """
+    board = _WorkdayBoard(2937, total=2000)
+    with pytest.raises(ShortWalkError, match="states 2000 postings"):
+        workday.extract(_WORKDAY_URL, board, "tenant")
+    assert [offset for _, offset in board.asked] == [0]
+
+
+def test_workday_a_total_just_under_the_cap_is_walked() -> None:
+    board = _WorkdayBoard(1999, total=1999)
+    assert len(workday.extract(_WORKDAY_URL, board, "tenant")) == 1999
+
+
 def test_workday_runaway_walk_stops_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(workday, "_MAX_PAGES", 3)
     board = _WorkdayBoard(1000, total=None, later_total=None)
@@ -765,7 +783,10 @@ def test_workday_runaway_walk_stops_and_says_so(monkeypatch: pytest.MonkeyPatch)
     [
         (
             "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
-            "https://osv-chegg.wd5.myworkdayjobs.com/wday/cxs/osv-chegg/Busuu/jobs",
+            # The tenant id has an underscore that the hostname cannot carry:
+            # the page's own config says `tenant: "osv_chegg"`, and the host's
+            # spelling answered 422.
+            "https://osv-chegg.wd5.myworkdayjobs.com/wday/cxs/osv_chegg/Busuu/jobs",
             "https://osv-chegg.wd5.myworkdayjobs.com/en-US/Busuu",
         ),
         (
