@@ -780,8 +780,10 @@ session — see `CLAUDE.md`.
   read as whole — the failure this whole package exists to stop. So a first
   response stating 2000 or more raises after one request. Consequence: airbus
   fails every run until its listing is narrowed below the cap or read another
-  way; its stored jobs are kept and it is named in the run summary. Before
-  SP3b it silently returned 20 of ~2,940.
+  way; its stored jobs are kept. It is named only in the run's WARNING log
+  line: the run summary counts a source whose extractor raised as "skipped",
+  together with config skips, and does not name it (seen in the SP3b dry run,
+  2026-09-23). Before SP3b it silently returned 20 of ~2,940.
 - **Every Workday source was being read at one page, and the store said so**
   (SP3b). `source_health` held exactly 20 rows for airbus (once 19),
   axis_comms, irc and path in all 27 runs to 2026-09-22; busuu (5-7) and slack

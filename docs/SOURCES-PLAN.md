@@ -1349,8 +1349,9 @@ Added 2026-09-23, from SP3b's result. Workday's endpoint never reports a
 `total` above 2000. airbus reports exactly 2000, while the facet counts in
 the same response add up to about 2,940, so a walk checked against the total
 would call a short read whole. SP3b made the reader refuse a board at the cap,
-after one request, so airbus now fails on every run. Its stored jobs are kept,
-and the run summary names it each time. Before SP3b it silently returned 20.
+after one request, so airbus now fails on every run. Its stored jobs are kept.
+The failure is named in the run's WARNING log line; the summary itself only
+counts it among "skipped" sources. Before SP3b it silently returned 20.
 
 **The owner's decision (2026-09-23): narrow airbus to one country, the
 owner's chosen country.** The country and its `locationCountry` facet id are
