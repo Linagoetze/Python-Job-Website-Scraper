@@ -82,7 +82,8 @@ the ordering below.
   that generates one line of code has to be maintained forever to save a paste.
   Config over code cuts both ways.
 - **No new filter layer.** Nothing here touches the five-layer ladder. The
-  tombstone guard in SP7 is a source-level startup warning, not a sixth pass.
+  three warnings in SP7 (failed, one-page, tombstoned) are source-level
+  warnings in the run's output, not a sixth pass.
 
 ## Status
 
@@ -99,9 +100,9 @@ the ordering below.
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
-| 7 | Tombstone guard at startup (optional) | 1 hr | Sonnet 5 | none | not started | `sp7-tombstone-guard` |
+| 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
 
-**Roughly 21.5 hours** for SP0–SP4 (SP2b, SP3b and SP3c included) and SP7, plus SP5 and SP6 as recurring
+**Roughly 23 hours** for SP0–SP4 (SP2b, SP3b and SP3c included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here.
@@ -119,8 +120,10 @@ airbus fails loudly on every run until it lands. It is independent of SP4,
 and it goes before SP5 only if SP5 adds a Workday board past the cap.
 **SP4 before SP5** if any new
 company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
-do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline and
-SP7 is optional throughout.
+do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline.
+SP7 needs only SP1 and SP3b, and sooner is better: until it lands, a source
+whose reader fails reads as "skipped" in the run summary. Its tombstone guard
+is the one optional part.
 
 ### Model recommendations
 
@@ -133,6 +136,10 @@ route choice and the dedupe-key edge are why it is not a Sonnet package. SP3c fo
 SP3b but is a Sonnet package: its route and config shape are decided in its
 prompt, its detail URLs are untouched by construction, and its one open
 judgement — what proves a facet was applied — is written as a stop-and-ask.
+SP7 now carries `think` rather than no cue, for the one-page warning SP3b's
+findings added to it:
+choosing its threshold means weighing a warning that cries wolf against one
+that stays silent for months, measured on the real store.
 `Sonnet 5` for SP0b, SP3c, SP4, SP5, SP6
 and SP7: capture, diagnose, fix, pin — mechanical work with a strong test net
 under it, which is exactly the split the refactor settled on across its
@@ -153,7 +160,7 @@ The surfaces, and what invalidates each:
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
-| `README.md` — "Reading the run summary" | SP7 | A startup warning is user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
+| `README.md` — "Reading the run summary" | SP7 | Three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
 | `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
@@ -1319,7 +1326,10 @@ Branch sp3b-workday-walk. One commit per step. Do not push.
   diagnostic render of busuu, one POST each to airbus, axis_comms and irc
   (the owner asked for that diagnosis), and the captures (four POSTs for
   path; one failed and one successful POST for busuu). No test touches the
-  network.
+  network. **The capture POSTs carried no contact details**, and the capture
+  checked no robots.txt: `capture_fixtures.py` runs outside `polite_fetching`
+  (robots.txt had been checked by hand for both hosts). SP4's step 0 fixes
+  the script.
 - **Docs:** README test count, the `strategy` row, the POST capture note;
   nine entries in `docs/DECISIONS.md`.
 
@@ -1459,6 +1469,11 @@ change and no registry.py change.
 5. CAPTURE — ASK FIRST. A captured airbus walk would publish the country
    anyway: every posting's location names it, and the listing URL in
    FIXTURE_CASES carries its id. So put the choice to the owner:
+   Before either, know this: until SP4's step 0 lands, capture_fixtures.py
+   runs outside http.polite_fetching, so a capture sends no contact details,
+   checks no robots.txt and waits no turn at the host (SP3b's captures went
+   out that way). If SP4 has not landed, tell the owner so as part of the
+   choice.
    a. capture it (scripts/capture_fixtures.py --pages all airbus, once the
       owner has pasted the url), pin its golden, and compare its detail URLs
       with the stored airbus rows for the same postings: they must be
@@ -1536,6 +1551,30 @@ Method, and it is not negotiable — WP8g and CU2 both learned it the hard way:
 CAPTURE FIRST, THEN READ THE EXTRACTOR. Reasoning about a page layout identifies
 it correctly and gets the data wrong.
 
+STEP 0, BEFORE ANY CAPTURE: MAKE THE CAPTURE A POLITE GUEST. Its own commit.
+scripts/capture_fixtures.py runs outside http.polite_fetching, by a recorded
+decision (docs/DECISIONS.md, "Politeness is run-scoped"), so every capture so
+far, SP3b's included, went out as "no contact configured", consulted no
+robots.txt and paid no per-host spacing. That entry's reasoning (a test or a
+one-off fetch should pay nothing) holds for tests. It does not hold for a tool
+whose whole job is live requests to other people's sites, and this package
+makes five of them. Run each capture inside polite_fetching with the
+User-Agent from rules.json (http.user_agent_from_rules) and the source's own
+ignore_robots exemptions, built the way pipeline.py builds them: reuse that
+code, do not copy it. Rendered fetches then carry the same User-Agent
+(_render_once already reads it from the block). A robots.txt refusal is a
+failed capture, reported like any other. Test it with the network faked, as
+the other capture tests are. Amend the DECISIONS entry rather than
+contradicting it silently.
+
+WORKABLE FIRST NEEDS THE FETCHER'S POST. workable.py calls http.post_json
+itself, so capture_fixtures.py records nothing for it ("extractor made no
+request"). Move it onto the fetcher's post_json first, as SP3b did for
+workday.py (docs/DECISIONS.md, "A fetcher carries post_json"), refusing a
+fetcher that cannot POST in the same way; then capture it. The probe's test
+test_workable_reads_through_post_json stubs http.post_json at the module and
+will need the probe stub's post_json instead. Say so when you change it.
+
 FIRST, RESOLVE THE NAMES. These five are READER names. capture_fixtures.py
 takes SOURCE names from sources.yaml, and for these five no source is named
 after its reader — `capture_fixtures.py lever` fails. Read
@@ -1577,7 +1616,8 @@ worth not repeating.
       and not alongside a scheduled scrape.
 - [ ] Confirm `rules.json` still has your contact details filled in — WP10 put
       them in the User-Agent, and a capture run is exactly when an administrator
-      might want to reach you.
+      might want to reach you. They reach a capture only once step 0 has
+      landed; before it, captures sent no contact details at all.
 - [ ] Expect this one to need a second session. That is the plan working, not
       slipping.
 
@@ -1698,47 +1738,111 @@ later instalment.
 
 ---
 
-## SP7 — Tombstone guard at startup (optional)
+## SP7 — Source warnings: failed, one-page, tombstoned
 
-Today nothing in the code reads `excluded_sources`. The tombstone is enforced by
-a session remembering to look, which is a rule of the kind CU3 replaced with an
-honest note precisely because nobody keeps them.
+Three warnings about *sources* rather than jobs, all printed in `run.py`'s
+user-facing output. Two were added on 2026-09-23 from SP3b, and neither of
+those is optional. The third, the tombstone guard, is the original SP7 and
+stays optional.
+
+**1. A failed source is not named in the run summary.** SP3b's dry run
+showed it. airbus's reader raised, and the summary said
+`5 / 6 processed (1 skipped)`. The source was named only in a WARNING log
+line above the summary. A source whose reader raises is counted with config
+skips (no extractor, unknown strategy, robots.txt refused), so a failure
+that isn't watched for in the log reads as routine. The summary already has
+a block for sources that shrank (WP10) and one for sources that returned
+nothing (CU2). A source that failed outright is the loudest case and has
+neither.
+
+**2. A source that returns exactly one page, run after run.** In
+`source_health`, airbus, axis_comms, irc and path returned exactly 20 rows,
+Workday's page size, in all 27 runs up to 2026-09-22. Their boards held
+between 64 and about 2,940 postings. Nothing warned. The WP10 health check
+compares a run with the one before it, so a source that is short *by the
+same amount every time* never shrinks and never trips it. That signature
+was in the store for months, and a check for it would have found SP3b's bug.
+
+**3. The tombstone guard (optional).** Nothing in the code reads
+`excluded_sources`. The tombstone is enforced by a session remembering to
+look, which is a rule of the kind CU3 replaced with an honest note, precisely
+because nobody keeps them.
 
 ```
-Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP7 only. SP1 must be
-merged.
+think
 
-At startup, run.py should warn — once, naming the organisation and the recorded
-reason — if any sources.yaml entry matches an entry in excluded_sources.yaml by
-BOARD IDENTITY (SP1's matcher, host plus board slug — never host alone; six
-sources share one Greenhouse hostname and a host match would warn on all of
-them).
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP7
+only. SP1 and SP3b must be merged.
 
-It WARNS. It does not skip the source and it does not exit. The owner may have
-re-added something deliberately, and this project does not silently drop a
-source (see the delisting guard in WP1 and the zero-row check in CU2 for the
-same principle applied to data).
+Three warnings about sources, printed through run.py's user-facing summary
+path, not through logging, so they appear for a normal run rather than only
+under -v. None of them is a filter layer: do not touch the five-layer ladder
+or the filtering modules. None of them skips a source or exits: this project
+does not silently drop a source (see the delisting guard in WP1 and the
+zero-row check in CU2 for the same principle applied to data). One commit
+per warning.
 
-This is a source-level startup check, not a filter layer. Do not touch the
-five-layer ladder, and do not add anything to the filtering modules.
+1. FAILED SOURCES. A source whose extractor raises is named today only in a
+   WARNING log line. The summary counts it in "(N skipped)" alongside config
+   skips and names nothing: SP3b's dry run printed "5 / 6 processed
+   (1 skipped)" for a failed airbus. Give failures a block of their own, in
+   the style of the source-health and empty-source blocks ("!" marker, no
+   ladder gutter). Each failed source is named, with the first line of its
+   error, and the block says its stored jobs were kept and nothing was
+   delisted. Split the Sources line so a failure is not counted as a skip.
+   Build the block from the pipeline's in-memory source_health list, not
+   from the store, so a --dry-run shows it too. The dry run is where this
+   was found.
+
+2. ONE PAGE, EVERY RUN. Warn when a source's last N successful runs in
+   source_health all returned the same number of rows, and that number is a
+   typical page size. Take the sizes from probe.TYPICAL_PAGE_SIZES, moved
+   somewhere both modules can import rather than duplicated. N is 5 unless
+   you find a reason to change it; say what you chose and why. The warning
+   names the source and the count, and says it may be reading only its
+   first page. Give it its own block, like (1).
+   The evidence: airbus, axis_comms, irc and path returned exactly 20 in all
+   27 runs to 2026-09-22 while their boards held 64 to ~2,940 (SP3b).
+   Weigh false positives honestly. A board that genuinely holds 20 postings
+   for five runs will trip it, and that costs one line in the summary. A
+   missed case cost months of postings. But a warning that fires on every
+   run for a healthy source teaches the owner to skip the block. So run the
+   rule against the real store (read-only) and report which of today's
+   sources would trip it, by name, before deciding whether anything needs
+   to quiet it. Do not add a config key to silence it without asking.
+   Read the store; never write to it outside a run.
+
+3. TOMBSTONE GUARD — OPTIONAL. Ask the owner at the start whether they still
+   want it, and skip it cleanly if not. At startup, warn once, naming the
+   organisation and the recorded reason, if any sources.yaml entry matches
+   an entry in excluded_sources.yaml by BOARD IDENTITY (SP1's matcher: host
+   plus board slug, never host alone; six sources share one Greenhouse
+   hostname, and a host match would warn on all of them). It WARNS. The
+   owner may have re-added something deliberately.
+
+Tests: each block from stubbed summaries and a temp store. Include a dry run
+with a failed source, a run of identical counts broken by one different run
+(no warning), a run of identical counts at a size that is not a page size (no
+warning), and fewer than N runs (no warning).
 
 DOCS — THE RUN SUMMARY. This is user-visible output, so README.md's "Reading
 the run summary" section has to show it. That section prints a real rendered
-summary block with illustrative counts; add the warning exactly as it will
-appear, and say where it lands relative to the funnel. Keep the counts in that
-block illustrative — a real store's numbers are personal, which is why they are
-fake there. Update the test count too.
+summary block with illustrative counts. Add each new block, and the changed
+Sources line, exactly as they will appear, and say where each lands relative
+to the funnel. Keep the counts in that block illustrative: a real store's
+numbers are personal, which is why they are fake there. Update the test
+count. docs/DECISIONS.md: why failures are counted apart from skips, and the
+one-page rule with its N and the store's verdict on it.
 
-Print the warning through run.py's user-facing summary path, not through
-logging, so it appears for a normal run rather than only under -v.
-
-Branch sp7-tombstone-guard. Commit, do not push. Update this plan file.
+Branch sp7-source-warnings. Commit, do not push. Update this plan file.
 ```
 
 ### Your to-dos
 
-- [ ] Decide whether you want this at all. It is the smallest package here and
-      the easiest to skip.
+- [ ] Decide whether you want the tombstone guard (part 3). It is the smallest
+      part and the easiest to skip. Parts 1 and 2 are not optional.
+- [ ] When the session reports which sources the one-page rule would flag
+      today, say whether any of them is known to be a genuinely small board.
 
 ---
 
