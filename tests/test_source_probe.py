@@ -798,10 +798,43 @@ class TestPagination:
 
         assert 'rendered page: "1 - 20 of 61 jobs"' in report
         assert "SHORT — read 40 posting(s) but the listing says 61" in report
-        assert result.kind == probe.NEW_EXTRACTOR
+        # Workday walks and checks a total itself, so this is its bug to fix,
+        # not a missing walking reader — the verdict before SP3b's review said
+        # "does not walk this listing", which was no longer true.
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "rung 5: workday walks this listing and checks a total itself" in result.line
+        assert "bug in workday.py" in result.line
+        assert "does not walk this listing" not in result.line
         assert "registry.py (in REGISTRY)" not in report
 
-    def test_a_whole_board_matches_its_total(self, curated_dir: Path, tmp_path: Path) -> None:
+    def test_a_first_page_reader_is_told_it_needs_a_walk(self) -> None:
+        # The case the old path.html test covered, before Workday walked: a
+        # reader that reads only its listing page, whose page states more.
+        # No capture of such a board exists now, so decide() is driven
+        # directly with a teamtailor run and a stated total.
+        teamtailor = next(p for p in probe.PLATFORMS if p.key == "teamtailor")
+        assert not teamtailor.guarded
+        board = probe.Board(teamtailor, "https://jobs.contoso.example/jobs", None, "the page")
+        run = probe.ReaderRun(
+            board=board,
+            strategy="static",
+            rows=[{"title": f"Role {n}", "detail_url": f"https://x/{n}"} for n in range(20)],
+            total=probe.DeclaredTotal(61, "1 - 20 of 61 jobs"),
+        )
+        result = probe.decide([run], [], None)
+
+        assert result.kind == probe.NEW_EXTRACTOR
+        assert "read 20 posting(s) but the listing says 61" in result.line
+        assert "does not walk this listing" in result.line
+
+    def test_more_rows_than_the_page_states_is_whole(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # Not an exact match, and not meant to be one: path's rendered page
+        # (61, 2026-08-20) and its JSON walk (64, 2026-09-23) are a month
+        # apart, and a board that grew is not a short read. The exact case,
+        # rows equal to the stated total, is test_a_guarded_walk_is_read_to_its_end
+        # (novo_nordisk, 329 against 329), from one capture.
         _, report = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
         assert "64 row(s) against a stated 61: whole" in report
 

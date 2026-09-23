@@ -793,8 +793,19 @@ session — see `CLAUDE.md`.
 - **A replaced rendered page is kept for the probe, under a name the capture
   does not own** (SP3b). A JSON capture removes its HTML sibling as stale, but
   the probe's tests need a real rendered Workday listing (its shell,
-  fingerprint and stated total). They live on as `path.rendered.html` and
-  `busuu.rendered.html`, which `capture_fixtures._page_of` does not read as
-  that source's fixture. They are a month older than the JSON walks, which is
-  why the probe tests pair path's two (61 stated, 64 walked: more, never short)
-  and not busuu's (6 then, 5 now).
+  fingerprint and stated total). path's lives on as `path.rendered.html`,
+  which `capture_fixtures._page_of` does not read as that source's fixture.
+  It is a month older than the JSON walk, which is why the probe's "whole"
+  test reads 64 against a stated 61 (more, never short) rather than an exact
+  match; the exact case is novo_nordisk's, from one capture. busuu's rendered
+  page was kept too, then removed in review once no test read it (6 then,
+  5 now, so it could not be paired with its walk).
+- **A short read from a guarded reader is that reader's bug, not a missing
+  walk** (SP3b review). The probe's verdict for a read shorter than the
+  page's stated total said "the existing reader does not walk this listing,
+  so it needs a walking reader" — true when it was written, because every
+  reader it could fire for read one page. Marking Workday guarded made it
+  false: a reader that walks and checks a total itself, yet reads short, got
+  past its own check. That is `not feasible — rung 5`, a bug in that reader,
+  matching the SP3 rule that a broken generic reader is fixed, not joined by
+  a second module. `needs a new extractor` stays for an unguarded reader.
