@@ -27,6 +27,7 @@ from job_scraper.extractors import (
     smartrecruiters,
     successfactors_html,
     unops,
+    workday,
 )
 from job_scraper.extractors.pagination import ShortWalkError
 from tests.fixture_cases import FIXTURES_DIR, parse_fixture
@@ -438,6 +439,8 @@ def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
         ("coloplast", successfactors_html._declared_total, 331),
         ("niras", niras._declared_total, 2),
         ("unops", unops._declared_total, 74),
+        ("busuu", workday._declared_total, 6),
+        ("path", workday._declared_total, 61),
     ],
 )
 def test_the_saved_page_still_states_its_total(name: str, reader: Any, expected: int) -> None:
@@ -640,3 +643,57 @@ def test_jpal_tolerates_a_pager_that_over_claims_by_a_page() -> None:
     )
 
     assert len(jpal.extract(_LISTING_URL, fetch)) == 36
+
+
+# --- Workday: the board states its length ---------------------------------
+
+_WORKDAY_URL = "https://tenant.wd1.myworkdayjobs.com/en-US/Board"
+
+
+def _workday_page(jobs: int, *, found: str | None, out_of: str | None) -> str:
+    cards = "".join(
+        f'<li><h3><a data-automation-id="jobTitle" href="/en-US/Board/job/Role-{i}_R{i}">'
+        f"Role {i}</a></h3>"
+        f'<ul data-automation-id="subtitle"><li>Geneva</li><li>R{i}</li></ul></li>'
+        for i in range(jobs)
+    )
+    found_p = f'<p data-automation-id="jobFoundText">{found}</p>' if found else ""
+    out_of_p = f'<p data-automation-id="jobOutOfText">{out_of}</p>' if out_of else ""
+    return f"<html><body>{found_p}<ul>{cards}</ul>{out_of_p}</body></html>"
+
+
+def test_workday_first_page_of_a_longer_board_raises() -> None:
+    """SP3b: the bug itself. A board of 45 read as its first 20 must fail."""
+    page = _workday_page(20, found="45 JOBS FOUND", out_of="1 - 20 of 45 jobs")
+    with pytest.raises(ShortWalkError, match="says it has 45"):
+        workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")
+
+
+def test_workday_whole_board_on_one_page_is_fine() -> None:
+    page = _workday_page(6, found="6 JOBS FOUND", out_of="1 - 6 of 6 jobs")
+    assert len(workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")) == 6
+
+
+def test_workday_reads_the_range_when_the_found_text_is_missing() -> None:
+    page = _workday_page(20, found=None, out_of="1 - 20 of 45 jobs")
+    with pytest.raises(ShortWalkError, match="says it has 45"):
+        workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")
+
+
+def test_workday_reads_a_total_in_another_language() -> None:
+    """The ids are Workday's; the words around the number are the tenant's."""
+    page = _workday_page(20, found="1.234 STELLEN GEFUNDEN", out_of="1 - 20 von 1.234 Stellen")
+    from bs4 import BeautifulSoup
+
+    assert workday._declared_total(BeautifulSoup(page, "lxml")) == 1234
+
+
+def test_workday_without_a_readable_total_says_it_could_not_check(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No total is not an error, but it is not silence either."""
+    page = _workday_page(6, found=None, out_of=None)
+    with caplog.at_level(logging.WARNING):
+        jobs = workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")
+    assert len(jobs) == 6
+    assert "publishes no total" in caplog.text

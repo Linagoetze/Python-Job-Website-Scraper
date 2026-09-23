@@ -9,6 +9,11 @@ Workday renders job cards as:
         <li>Req ID</li>
       </ul>
     </li>
+
+The page states how many postings the board holds, twice: "61 JOBS FOUND" in
+`jobFoundText` and "1 - 20 of 61 jobs" in `jobOutOfText`. The read is checked
+against that number before it returns (see `pagination.py`), because a board
+longer than one page read as its first page is a silently short list.
 """
 
 from __future__ import annotations
@@ -21,8 +26,50 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
+from job_scraper.extractors import pagination
+
 _REQ_ID = re.compile(r"^[A-Z0-9]+-?\d+$")  # e.g. R5135, JR-1234
 _SELECTOR = '[data-automation-id="jobTitle"]'
+
+# The two places a Workday listing states its length. Read by automation id
+# rather than by wording, so a board served in another language still has a
+# total: the id is Workday's, the words around the number are the tenant's.
+# "61 JOBS FOUND" holds one number; "1 - 20 of 61 jobs" holds three, the last
+# of which is the total. The page-text pattern is the fallback for a skin that
+# drops the ids but keeps the English range.
+_FOUND_ID = "jobFoundText"
+_OUT_OF_ID = "jobOutOfText"
+_NUMBER = re.compile(r"\d[\d,.\u00a0\u202f]*")
+_RANGE_PATTERN = re.compile(r"[\d,]+\s*[-–]\s*[\d,]+\s+of\s+([\d,]+)\s+jobs?", re.I)
+
+
+def _as_int(text: str) -> int:
+    return int(re.sub(r"\D", "", text))
+
+
+def _declared_total(soup: Any) -> int | None:
+    """How many postings this board says it has, or None if it does not say.
+
+    Prefers "N JOBS FOUND", then the last number of the "1 - 20 of N" range,
+    then the English range anywhere in the page text. Deliberately returns None
+    rather than guessing when an element holds an unexpected count of numbers:
+    a wrong total is worse than none, because none is logged and a wrong one
+    either fails a healthy source or passes a short one.
+    """
+    found = soup.find(attrs={"data-automation-id": _FOUND_ID})
+    if found is not None:
+        numbers = _NUMBER.findall(found.get_text(" ", strip=True))
+        if len(numbers) == 1:
+            return _as_int(numbers[0])
+    out_of = soup.find(attrs={"data-automation-id": _OUT_OF_ID})
+    if out_of is not None:
+        numbers = _NUMBER.findall(out_of.get_text(" ", strip=True))
+        if len(numbers) == 3:
+            return _as_int(numbers[2])
+    match = _RANGE_PATTERN.search(soup.get_text(" ", strip=True))
+    if match:
+        return _as_int(match.group(1))
+    return None
 
 
 def extract(
@@ -93,4 +140,9 @@ def extract(
                 "raw_snippet": raw_snippet,
             }
         )
+
+    # The board said how long it is; either every posting is here or the
+    # source fails. This reader reads one rendered page, so any board longer
+    # than a page fails here until the reader walks the whole listing.
+    pagination.reconcile(source_name, listing_url, collected=len(out), total=_declared_total(soup))
     return out
