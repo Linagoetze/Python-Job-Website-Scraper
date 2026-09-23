@@ -317,7 +317,11 @@ PLATFORMS: tuple[Platform, ...] = (
             f"https://{m.group('tenant')}.{m.group('dc')}.myworkdayjobs.com/{m.group('slug')}"
         ),
         strategy="dynamic",
-        walk="reads the first rendered page only, so a board longer than one page reads short",
+        walk=(
+            "walks the board's JSON endpoint to its stated total and fails a short walk "
+            "(pagination.py); a board stating 2000, Workday's cap on that count, fails unread"
+        ),
+        guarded=True,
         not_slugs=frozenset({"wday", "assets"}),
     ),
     Platform(
