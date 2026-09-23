@@ -751,3 +751,48 @@ session — see `CLAUDE.md`.
   to choose the fetcher for detail pages at Layers 2 and 5, and a Workday
   detail page is client-rendered. The reader now ignores the rendering for the
   listing; the setting is still doing its other job.
+- **A fetcher carries `post_json`, and a reader that POSTs uses the one it is
+  handed** (SP3b). The WP8g rule — an extractor uses the callable it is given,
+  or the capture script records nothing — extended to POST the way `renders`
+  extended it to rendering: `http.fetch_text` and `http.fetch_rendered` carry
+  `http.post_json` as `.post_json`, the capture script's recording fetcher and
+  `recorded_pages_fetch` carry a recording and a replaying one, and the probe's
+  wrappers carry its fetcher's. `workday.py` **refuses** a fetcher without one
+  rather than falling back to `http.post_json`: a fallback would let a test or
+  a capture reach the network by a route it did not choose. A POSTed page is
+  saved as the JSON it decoded to, in the same positional sequence as GETs.
+  `workable.py` still calls `http.post_json` itself and is still invisible to
+  the capture; moving it onto the fetcher is SP4's to do when it captures it.
+- **The Workday endpoint's tenant is the host's with `-` read as `_`** (SP3b).
+  busuu's POST to `/wday/cxs/osv-chegg/Busuu/jobs` answered 422. One
+  diagnostic render (owner-approved) logged the page's own call:
+  `/wday/cxs/osv_chegg/Busuu/jobs`, same body, 200 — and the page's config says
+  `tenant: "osv_chegg"`. A hostname cannot carry an underscore. No other
+  source's host has a hyphen. If a tenant ever breaks the rule, the endpoint
+  answers 4xx and the source fails loudly; reading the tenant off the page
+  instead would cost a request per run to guard a case not yet seen.
+- **Workday's `total` is capped at 2000, and a board at the cap is refused,
+  not walked** (SP3b, 2026-09-23). Airbus answered `total: 2000`; in the same
+  response its single-valued facets summed to about 2,940 (full/part time
+  2,937, worker type 2,947). For axis_comms (98) and irc (350) the same kind of
+  facet summed to the total exactly, so below the cap the number is honest. At
+  the cap it is a floor, and a walk reconciled against it would report a short
+  read as whole — the failure this whole package exists to stop. So a first
+  response stating 2000 or more raises after one request. Consequence: airbus
+  fails every run until its listing is narrowed below the cap or read another
+  way; its stored jobs are kept and it is named in the run summary. Before
+  SP3b it silently returned 20 of ~2,940.
+- **Every Workday source was being read at one page, and the store said so**
+  (SP3b). `source_health` held exactly 20 rows for airbus (once 19),
+  axis_comms, irc and path in all 27 runs to 2026-09-22; busuu (5-7) and slack
+  (7-16) moved with their boards. A constant row count equal to a platform's
+  page size is the signature of this bug, and a query worth running before
+  trusting any reader that has no total to check.
+- **A replaced rendered page is kept for the probe, under a name the capture
+  does not own** (SP3b). A JSON capture removes its HTML sibling as stale, but
+  the probe's tests need a real rendered Workday listing (its shell,
+  fingerprint and stated total). They live on as `path.rendered.html` and
+  `busuu.rendered.html`, which `capture_fixtures._page_of` does not read as
+  that source's fixture. They are a month older than the JSON walks, which is
+  why the probe tests pair path's two (61 stated, 64 walked: more, never short)
+  and not busuu's (6 then, 5 now).

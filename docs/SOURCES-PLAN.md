@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b and SP3 are done** (as of 2026-09-17); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3 and SP3b are done** (as of 2026-09-23); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -94,7 +94,7 @@ the ordering below.
 | 2 | Recover `skipped_sources` from the transcript archive | 3 hr | Opus 5 | `think` | done | `sp2-recover-skipped` |
 | 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
-| 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | not started | `sp3b-workday-walk` |
+| 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
@@ -1253,16 +1253,83 @@ result, with before/after row counts for path and busuu.
 Branch sp3b-workday-walk. One commit per step. Do not push.
 ```
 
+### Result — done 2026-09-23, branch `sp3b-workday-walk`
+
+- **Route (b), the owner's choice.** `workday.py` now POSTs
+  `/wday/cxs/<tenant>/<board>/jobs` twenty at a time, takes `total` from the
+  first response, stops at the total or on an empty or short page, and calls
+  `pagination.reconcile` however it ended. Route (a) was ruled out with its
+  one request: a render of `/en-US/External?page=2` came back as page 1 and
+  put `?page=2` on every job link. robots.txt on
+  `path.wd1.myworkdayjobs.com` (`Allow: /External/`, `Disallow:
+  /refreshFacet/` under `*`) has no line for either route, so both were
+  allowed; each tenant's own file is checked by `post_json` at run time.
+  `registry.py` is unchanged.
+- **Detail URLs are unchanged.** `https://<host>/<locale>/<board>` +
+  `externalPath`, the locale from the listing or `en-US`. Checked four ways:
+  all 72 stored rows of the six sources have that exact shape; on the same
+  day, path's rendered first page and the JSON matched 20 of 20 and busuu's
+  5 of 5 in every field; every posting the old saved pages and the new
+  captures both hold is byte-identical (path 7 of 7, busuu 3 of 3 — the rest
+  were taken down between captures); and the 5 stored path jobs still listed
+  come back under the same key. **Locations: no difference anywhere**,
+  including the empty ones and the "N Locations" placeholders.
+- **Before and after, from the saved pages:** path **20 → 64** (the old
+  capture said "1 - 20 of 61"; the new one is the whole four-POST walk of 64),
+  busuu **6 → 5** (the board shrank; same-moment comparison identical). Live,
+  from one POST each: axis_comms 20 → 98, irc 20 → 350. `source_health` had
+  pinned all four of airbus, axis_comms, irc and path at exactly 20 in every
+  one of 27 runs.
+- **Two things only the captures showed**, fixed in their own commit:
+  (1) the tenant in the endpoint is `osv_chegg` where the host says
+  `osv-chegg` — busuu answered 422 until one owner-approved diagnostic render
+  logged the page's own call; (2) Workday caps `total` at 2000. **airbus**
+  states 2000 with about 2,940 postings behind it (by its facet counts), so a
+  walk would reconcile a short read as whole. A board at the cap now fails
+  after one request. **airbus therefore fails every run until the owner
+  decides how to narrow it** — before this package it returned 20 of ~2,940
+  in silence.
+- **Guard first, as asked**: the first commit read the page's total and made
+  path's single page raise; six path-backed tests were left red on that
+  commit, not hidden, until the walk and its capture replaced them.
+- **Capture path for POSTs**: `capture_fixtures.py` records a POST made
+  through the fetcher's `post_json`, and `recorded_pages_fetch` replays it,
+  with three tests of their own. The fetchers now carry `post_json` as a
+  capability, and the reader refuses a fetcher without it. `workable.py`
+  still bypasses the recorder (SP4). The replaced rendered pages survive as
+  `path.rendered.html` / `busuu.rendered.html` for the probe's tests.
+- **Probe**: Workday's walk is described as the JSON walk and marked guarded.
+  `test_a_first_page_read_as_the_whole_board_is_short` was replaced, not
+  edited to pass: with the walk, its fixtures read whole (64 against 61).
+  Two tests keep its point — a stub serving 2 of 4 pages makes the reader
+  fail (40 of 64), and a response without its total is caught by the probe's
+  own check against the rendered page (SHORT, 40 of 61).
+- **`strategy: dynamic` stays** on all six (owner's decision): it still picks
+  the detail-page fetcher at Layers 2 and 5. No `sources.yaml` change.
+- **29 new tests (917 to 946).** Live traffic: the two route requests, the
+  diagnostic render of busuu, one POST each to airbus, axis_comms and irc
+  (the owner asked for that diagnosis), and the captures (four POSTs for
+  path; one failed and one successful POST for busuu). No test touches the
+  network.
+- **Docs:** README test count, the `strategy` row, the POST capture note;
+  nine entries in `docs/DECISIONS.md`.
+
 ### Your to-dos
 
 - [ ] **Before the session:** decide whether you are happy for the guard to
       land first, which means any multi-page Workday source shows as failing
       in the run summary until the walk is built. Its stored jobs are kept.
-- [ ] **During the session:** choose the route in step 2. The session will
+- [x] **During the session:** choose the route in step 2. The session will
       recommend one; the choice is about fragility, and it is yours.
+      **Chosen 2026-09-23: (b), the JSON endpoint; `strategy: dynamic` kept.**
 - [ ] If the detail URLs cannot be kept identical, the session stops. Then the
       decision is whether to migrate stored keys, which is a bigger package.
-- [ ] Apply any `sources.yaml` change the session prints.
+- [x] Apply any `sources.yaml` change the session prints. **None printed.**
+- [ ] **Decide what to do about airbus.** Its board is past Workday's
+      2000-posting cap on `total`, so the reader refuses it and it fails every
+      run (stored jobs kept). Options are in the SP3b session's closing
+      message; the likely shape is narrowing it with a facet (country or
+      location) so each walk is under the cap.
 - [ ] Run it at a civilised hour: it makes live requests to six employers'
       Workday tenants, and `rules.json` should carry your contact details.
 
