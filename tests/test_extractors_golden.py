@@ -37,10 +37,10 @@ from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 _GOLDEN: dict[str, dict[str, Any]] = {
     "busuu": {
         # SP3b (2026-09-23): re-captured as the board's JSON walk (one POST;
-        # the board holds 5). The page this replaced was the rendered listing,
-        # now `busuu.rendered.html` for the probe's tests. Captured the same
-        # moment, the rendered page and this JSON gave the same 5 postings
-        # with identical titles, locations and detail URLs.
+        # the board holds 5). The page this replaced was the rendered listing
+        # (6 postings on 2026-08-07). Captured the same moment, the rendered
+        # page and this JSON gave the same 5 postings with identical titles,
+        # locations and detail URLs.
         "count": 5,
         "first_job": {
             "source_name": "busuu",

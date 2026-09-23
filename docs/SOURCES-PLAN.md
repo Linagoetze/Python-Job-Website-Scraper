@@ -1312,8 +1312,18 @@ Branch sp3b-workday-walk. One commit per step. Do not push.
   through the fetcher's `post_json`, and `recorded_pages_fetch` replays it,
   with three tests of their own. The fetchers now carry `post_json` as a
   capability, and the reader refuses a fetcher without it. `workable.py`
-  still bypasses the recorder (SP4). The replaced rendered pages survive as
-  `path.rendered.html` / `busuu.rendered.html` for the probe's tests.
+  still bypasses the recorder (SP4). path's replaced rendered page survives
+  as `path.rendered.html` for the probe's tests; busuu's was kept at first and
+  removed in review, once no test read it.
+- **Review fixes.** The probe's verdict for a short read assumed a reader
+  that reads one page, and told a guarded one it "needs a walking reader";
+  for a guarded reader it is now `not feasible — rung 5`, a bug in that
+  reader. The dropped check on the old wording is back for an unguarded
+  reader, in a direct `decide()` test. The path "whole" test is renamed for
+  what it checks (more rows than stated), with the exact case pointed at
+  novo_nordisk's. `tests/fixtures/probe/README.md` names the fixtures that
+  exist. Test count unchanged at 946 (one added, one secret-scan case gone
+  with the removed page).
 - **Probe**: Workday's walk is described as the JSON walk and marked guarded.
   `test_a_first_page_read_as_the_whole_board_is_short` was replaced, not
   edited to pass: with the walk, its fixtures read whole (64 against 61).

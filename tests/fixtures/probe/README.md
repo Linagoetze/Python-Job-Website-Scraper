@@ -7,6 +7,9 @@ employers are invented (Contoso, Fabrikam, Litware) and nothing here was
 fetched from a live site.
 
 Everything else the probe tests read is a real capture one directory up
-(`kognity.html`, `storytel.html`, `busuu.html`, `path.html`,
+(`kognity.html`, `storytel.html`, `path.rendered.html` with `path*.json`,
 `novo_nordisk*.html`, `dsv.html`, `givewell.json`), made by
-`scripts/capture_fixtures.py`. The probe itself never writes here.
+`scripts/capture_fixtures.py`. `path.rendered.html` is path's rendered listing
+from before SP3b moved Workday to its JSON walk, kept for the probe's page
+rungs under a name the capture script does not overwrite. The probe itself
+never writes here.
