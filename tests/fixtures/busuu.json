@@ -1,0 +1,148 @@
+{
+ "total": 5,
+ "jobPostings": [
+  {
+   "title": "Senior B2B Customer Marketing Manager",
+   "externalPath": "/job/London---Busuu/Senior-B2B-Customer-Marketing-Manager_R5387-1",
+   "locationsText": "London - Busuu",
+   "postedOn": "Posted 19 Days Ago",
+   "bulletFields": [
+    "London - Busuu",
+    "United Kingdom",
+    "R5387"
+   ]
+  },
+  {
+   "title": "Social Media Manager",
+   "externalPath": "/job/London---Busuu/Social-Media-Manager_R5392-3",
+   "locationsText": "2 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "London - Busuu",
+    "United Kingdom; Spain",
+    "R5392"
+   ]
+  },
+  {
+   "title": "Senior Machine Learning / AI Engineer",
+   "externalPath": "/job/Madrid---Busuu/Senior-Machine-Learning---AI-Engineer_R5379-1",
+   "locationsText": "Madrid - Busuu",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "Madrid - Busuu",
+    "Spain",
+    "R5379"
+   ]
+  },
+  {
+   "title": "Sales Development Representative - Italy",
+   "externalPath": "/job/London---Busuu/Sales-Development-Representative---Italy_R5311",
+   "locationsText": "2 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "London - Busuu",
+    "United Kingdom; Spain",
+    "R5311"
+   ]
+  },
+  {
+   "title": "Senior Business Development Manager - France",
+   "externalPath": "/job/London---Busuu/Senior-Business-Development-Manager---France_R5307-1",
+   "locationsText": "2 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "London - Busuu",
+    "United Kingdom; Spain",
+    "R5307"
+   ]
+  }
+ ],
+ "facets": [
+  {
+   "facetParameter": "jobFamily",
+   "descriptor": "Job Family",
+   "values": [
+    {
+     "descriptor": "Marketing",
+     "id": "9978488507b2105947d196ddc8ce143f",
+     "count": 2
+    },
+    {
+     "descriptor": "B2B",
+     "id": "3deded2fc9511001f7b6de035dfc0000",
+     "count": 1
+    },
+    {
+     "descriptor": "Sales",
+     "id": "9978488507b2105947d1780b098e142b",
+     "count": 1
+    },
+    {
+     "descriptor": "Analytics",
+     "id": "9978488507b2105947d1a2b47c2e1447",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "facetParameter": "workerSubType",
+   "descriptor": "Job Type",
+   "values": [
+    {
+     "descriptor": "Regular",
+     "id": "40716bc4f8e41058a44fe38fbda60355",
+     "count": 5
+    }
+   ]
+  },
+  {
+   "facetParameter": "timeType",
+   "descriptor": "Time Type",
+   "values": [
+    {
+     "descriptor": "Full time",
+     "id": "4788536c9b3a1011a81b3db0708c200c",
+     "count": 5
+    }
+   ]
+  },
+  {
+   "facetParameter": "locationMainGroup",
+   "values": [
+    {
+     "facetParameter": "locationCountry",
+     "descriptor": "Country",
+     "values": [
+      {
+       "descriptor": "Spain",
+       "id": "bd34c524a6a04ae6915f5d96fa086199",
+       "count": 4
+      },
+      {
+       "descriptor": "United Kingdom",
+       "id": "29247e57dbaf46fb855b224e03170bc7",
+       "count": 4
+      }
+     ]
+    },
+    {
+     "facetParameter": "primaryLocation",
+     "descriptor": "Primary Location",
+     "values": [
+      {
+       "descriptor": "London - Busuu",
+       "id": "579b9016b2fd0100b85af3b9adad0000",
+       "count": 4
+      },
+      {
+       "descriptor": "Madrid - Busuu",
+       "id": "579b9016b2fd0100b85aeb3f76250000",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "userAuthenticated": false
+}

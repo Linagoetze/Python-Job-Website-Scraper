@@ -210,7 +210,10 @@ def path_workday(log: list[str]) -> StubFetcher:
     return StubFetcher(
         log,
         static={PATH_PROBED: probe_fixture("shell.html")},
-        rendered={PATH_PROBED: fixture("path.html"), PATH_BOARD: fixture("path.html")},
+        rendered={
+            PATH_PROBED: fixture("path.rendered.html"),
+            PATH_BOARD: fixture("path.rendered.html"),
+        },
     )
 
 
@@ -542,7 +545,7 @@ class TestFingerprint:
             assert [(b.platform.key, b.url) for b in boards] == [(key, url)]
 
     def test_a_workday_board_drops_the_locale(self) -> None:
-        html = fixture("path.html")
+        html = fixture("path.rendered.html")
         _, boards = probe.fingerprint(
             PATH_PROBED, None, [probe.scan_page(html, PATH_PROBED, "rendered")]
         )
@@ -671,7 +674,7 @@ class TestReaders:
         fetcher = StubFetcher(
             [],
             static={BUSUU: probe_fixture("shell.html")},
-            rendered={BUSUU: fixture("busuu.html")},
+            rendered={BUSUU: fixture("busuu.rendered.html")},
         )
         result, report = run_probe(BUSUU, fetcher, curated_dir, tmp_path)
 
@@ -770,7 +773,7 @@ class TestPagination:
         fetcher = StubFetcher(
             [],
             static={BUSUU: probe_fixture("shell.html")},
-            rendered={BUSUU: fixture("busuu.html")},
+            rendered={BUSUU: fixture("busuu.rendered.html")},
         )
         _, report = run_probe(BUSUU, fetcher, curated_dir, tmp_path)
         assert "6 row(s) against a stated 6: whole" in report

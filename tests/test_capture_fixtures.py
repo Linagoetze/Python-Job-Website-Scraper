@@ -5,6 +5,7 @@ Nothing here touches the network. The fixtures on disk are the input.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ import pytest
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, capture_fixtures, parse_fixture
 
 capture_one = capture_fixtures.capture_one
+recorded_pages_fetch = capture_fixtures.recorded_pages_fetch
 sanitise_html = capture_fixtures.sanitise_html
 
 # --- the sanitiser ----------------------------------------------------------
@@ -275,12 +277,88 @@ def test_capture_falls_back_to_the_listing_url_without_a_registry_entry(
 def test_capture_keeps_the_rendering_mark_through_the_wrapper(
     capture_env: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Workday adds a selector wait only if it can tell the fetcher renders JS.
+    """SuccessFactors adds a selector wait only if it can tell the fetcher renders JS.
 
     The capture script hands it a wrapper, so the mark has to survive wrapping
-    or dynamic pages get captured before their job cards exist.
+    or dynamic pages get captured before their job links exist. (Workday was
+    the example here until SP3b moved it off the rendered page.)
     """
-    fake = _FakeFetcher((FIXTURES_DIR / "busuu.html").read_text(encoding="utf-8"), renders=True)
+    fake = _FakeFetcher((FIXTURES_DIR / "iss.html").read_text(encoding="utf-8"), renders=True)
+    monkeypatch.setattr(capture_fixtures, "fetch_rendered", fake)
+
+    ok, message = capture_one(
+        {"name": "iss", "url": "https://jobs.issworld.com/search/", "strategy": "dynamic"}
+    )
+
+    assert ok, message
+    assert fake.kwargs[0].get("wait_for_selector") == 'a[href*="/job/"]'
+
+
+def _workday_json(offset: int, count: int, total: int) -> dict[str, Any]:
+    return {
+        "total": total if offset == 0 else 0,
+        "jobPostings": [
+            {
+                "title": f"Role {n}",
+                "externalPath": f"/job/Lund/Role-{n}_R{n}",
+                "locationsText": "Lund",
+            }
+            for n in range(offset, offset + count)
+        ],
+    }
+
+
+def test_capture_records_a_walk_made_by_post(
+    capture_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SP3b: Workday walks its board by POST, and every POST must land on disk.
+
+    The fetcher's `post_json` is recorded like a GET, so the fixture holds the
+    whole walk and replays it — rather than a hand-written JSON file, or
+    nothing at all, which is what `workable.py`'s direct `http.post_json` gets.
+    """
+    fake = _FakeFetcher("<html>the listing, never asked for</html>", renders=True)
+    posted: list[tuple[str, int]] = []
+
+    def fake_post(url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        posted.append((url, payload["offset"]))
+        return _workday_json(payload["offset"], min(20, 45 - payload["offset"]), 45)
+
+    fake.post_json = fake_post  # type: ignore[attr-defined]
+    monkeypatch.setattr(capture_fixtures, "fetch_rendered", fake)
+
+    ok, message = capture_one(
+        {
+            "name": "busuu",
+            "url": "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
+            "strategy": "dynamic",
+        },
+        pages=0,
+    )
+
+    assert ok, message
+    api = "https://osv-chegg.wd5.myworkdayjobs.com/wday/cxs/osv_chegg/Busuu/jobs"
+    assert posted == [(api, 0), (api, 20), (api, 40)]
+    assert fake.urls == []
+    saved = [capture_env / name for name in ("busuu.json", "busuu.p1.json", "busuu.p2.json")]
+    assert all(path.exists() for path in saved)
+    assert json.loads(saved[1].read_text(encoding="utf-8"))["jobPostings"][0]["title"] == "Role 20"
+    assert "45 jobs" in message
+    assert f"from {api}" in message
+
+
+def test_capture_stops_a_post_walk_after_one_page_by_default(
+    capture_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Politeness applies to POSTs too: without --pages, one request."""
+    fake = _FakeFetcher("", renders=True)
+    posted: list[int] = []
+
+    def fake_post(url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        posted.append(payload["offset"])
+        return _workday_json(payload["offset"], 20, 45)
+
+    fake.post_json = fake_post  # type: ignore[attr-defined]
     monkeypatch.setattr(capture_fixtures, "fetch_rendered", fake)
 
     ok, message = capture_one(
@@ -292,7 +370,16 @@ def test_capture_keeps_the_rendering_mark_through_the_wrapper(
     )
 
     assert ok, message
-    assert fake.kwargs[0].get("wait_for_selector") == '[data-automation-id="jobTitle"]'
+    assert posted == [0]
+    # One page of a 45-posting board is a short walk, and the check says so.
+    assert "UNPARSEABLE" in message and "says it has 45" in message
+
+
+def test_replay_serves_posts_and_gets_from_one_queue() -> None:
+    fetch = recorded_pages_fetch(["<html>a</html>", '{"total": 1}'])
+    assert fetch("https://x.example/") == "<html>a</html>"
+    assert fetch.post_json("https://x.example/api", {}) == {"total": 1}  # type: ignore[attr-defined]
+    assert fetch.post_json("https://x.example/api", {}) == {}  # type: ignore[attr-defined]
 
 
 # --- fixtures still parse ---------------------------------------------------

@@ -78,7 +78,7 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="storytel"),
     ),
     "busuu": (
-        "busuu.html",
+        "busuu.json",
         "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
         lambda url, fetch: workday.extract(url, fetch, source_name="busuu"),
     ),
@@ -193,7 +193,7 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: niras.extract(url, fetch, source_name="niras"),
     ),
     "path": (
-        "path.html",
+        "path.json",
         "https://path.wd1.myworkdayjobs.com/en-US/External",
         lambda url, fetch: workday.extract(url, fetch, source_name="path"),
     ),

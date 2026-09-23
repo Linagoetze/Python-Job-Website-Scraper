@@ -36,22 +36,27 @@ from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 # extractor setting the field only when it genuinely knows the employer.
 _GOLDEN: dict[str, dict[str, Any]] = {
     "busuu": {
-        "count": 6,
+        # SP3b (2026-09-23): re-captured as the board's JSON walk (one POST;
+        # the board holds 5). The page this replaced was the rendered listing,
+        # now `busuu.rendered.html` for the probe's tests. Captured the same
+        # moment, the rendered page and this JSON gave the same 5 postings
+        # with identical titles, locations and detail URLs.
+        "count": 5,
         "first_job": {
             "source_name": "busuu",
-            "title": "Senior Machine Learning / AI Engineer",
+            "title": "Senior B2B Customer Marketing Manager",
             "department": "",
-            "location": "Madrid - Busuu",
+            "location": "London - Busuu",
             "listing_url": "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
             "detail_url": (
-                "https://osv-chegg.wd5.myworkdayjobs.com/en-US/Busuu/job/Madrid---Busuu/"
-                "Senior-Machine-Learning---AI-Engineer_R5379-1"
+                "https://osv-chegg.wd5.myworkdayjobs.com/en-US/Busuu/job/London---Busuu/"
+                "Senior-B2B-Customer-Marketing-Manager_R5387-1"
             ),
             "apply_url": (
-                "https://osv-chegg.wd5.myworkdayjobs.com/en-US/Busuu/job/Madrid---Busuu/"
-                "Senior-Machine-Learning---AI-Engineer_R5379-1"
+                "https://osv-chegg.wd5.myworkdayjobs.com/en-US/Busuu/job/London---Busuu/"
+                "Senior-B2B-Customer-Marketing-Manager_R5387-1"
             ),
-            "raw_snippet": "Senior Machine Learning / AI Engineer Madrid - Busuu",
+            "raw_snippet": "Senior B2B Customer Marketing Manager London - Busuu",
         },
     },
     "dsv": {
@@ -478,31 +483,36 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "path": {
-        # Not a bug: workday.py's location selectors both work here (the busuu
-        # golden above pins the same code succeeding). 9 of these 20 rows carry
-        # an empty location because their Workday subtitle list holds only the
-        # req ID with no location line at all — confirmed against the raw HTML,
-        # not assumed.
-        "count": 20,
+        # SP3b (2026-09-23): 20 -> 64, and the move is the bug fixed, not a
+        # site change. The count was 20 because workday.py read the first
+        # rendered page of a board that said "1 - 20 of 61 jobs", and this
+        # golden pinned the short read as correct. The reader now walks the
+        # board's JSON endpoint to its stated total, and this fixture holds
+        # that whole walk (path.json + path.p1-p3.json, four POSTs); recapture
+        # with `--pages all`. Every detail_url for a posting the old capture
+        # also held is byte-identical, as the dedupe key requires.
+        #
+        # Still not a bug: 21 of these 64 rows carry an empty location, because
+        # Workday gives those postings no location line at all — the rendered
+        # card shows only the req ID. On the same day, all 20 postings on the
+        # rendered first page matched this JSON's location, empties included.
+        "count": 64,
         "first_job": {
             "source_name": "path",
-            "title": "Consultant – Planning and Finance Management, Technical Support Unit",
+            "title": "Global Procurement Officer, Asia",
             "department": "",
-            "location": "India, New Delhi Country Program Office",
+            "location": "Vietnam, Hanoi Regional Program Office",
             "listing_url": "https://path.wd1.myworkdayjobs.com/en-US/External",
             "detail_url": (
                 "https://path.wd1.myworkdayjobs.com/en-US/External/job/"
-                "India-New-Delhi-Country-Program-Office/"
-                "Consultant---Planning-and-Finance-Management--Technical-Support-Unit_JR2742"
+                "Vietnam-Hanoi-Regional-Program-Office/Global-Procurement-Officer--Asia_JR2771"
             ),
             "apply_url": (
                 "https://path.wd1.myworkdayjobs.com/en-US/External/job/"
-                "India-New-Delhi-Country-Program-Office/"
-                "Consultant---Planning-and-Finance-Management--Technical-Support-Unit_JR2742"
+                "Vietnam-Hanoi-Regional-Program-Office/Global-Procurement-Officer--Asia_JR2771"
             ),
             "raw_snippet": (
-                "Consultant – Planning and Finance Management, Technical Support Unit "
-                "India, New Delhi Country Program Office"
+                "Global Procurement Officer, Asia Vietnam, Hanoi Regional Program Office"
             ),
         },
     },
