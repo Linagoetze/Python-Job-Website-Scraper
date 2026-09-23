@@ -707,3 +707,47 @@ session — see `CLAUDE.md`.
   forbids scraping during a session; it does not forbid writing a ten-line
   shell by hand, which is the only way to test "no postings anywhere" without
   a live site.
+
+- **Workday is read through its own JSON endpoint, not the rendered page**
+  (SP3b, owner's choice 2026-09-23). The rendered listing shows 20 postings
+  and pages by JavaScript: its pager is `<button type="button">` with no
+  `href`, and a live render of `/en-US/External?page=2` came back as page 1
+  ("1 - 20 of 64 jobs", page 1 current) with `?page=2` appended to every job
+  link — so a URL parameter is not a route, and trying it would also have
+  changed every stored key. The page's own
+  `POST /wday/cxs/<tenant>/<board>/jobs` (`{"limit": 20, "offset": N,
+  "searchText": "", "appliedFacets": {}}`) returns `total` and, per posting,
+  `title`, `externalPath` and `locationsText`; on 2026-09-23 all 20 postings
+  on path's first page matched the rendered page exactly in title, location
+  (both empty ones, and the "N Locations" placeholders, included) and detail
+  URL. Chosen over clicking the pager because a `fetch(url) -> str` fetcher
+  cannot click, and over the rendered page because the rendered page calls
+  this same endpoint and adds Workday's markup on top as a second thing to
+  break. It is an undocumented API — rung 3 of the CU2 ladder — accepted
+  because it is the one the board's own front end depends on. It is also the
+  lighter guest: four small POSTs for 64 postings, against a browser render
+  that loads the whole app and makes the same POST itself.
+- **robots.txt allows both Workday routes, and each tenant is checked at run
+  time** (SP3b). `path.wd1.myworkdayjobs.com/robots.txt` on 2026-09-23 was
+  `User-agent: *` / `Allow: /External/` / `Disallow: /refreshFacet/`, which
+  covers neither `/en-US/External` nor `/wday/cxs/…`, so `RobotsPolicy.explain`
+  found no deciding line and allowed both. Each tenant is its own host with its
+  own file; the other five were not fetched in the investigation, and do not
+  need to be — `http.post_json` checks robots.txt before every POST inside a
+  run, and a refusal fails that source rather than emptying it.
+- **A Workday detail URL is `https://<host>/<locale>/<board>` + `externalPath`,
+  with the locale taken from the listing URL, or `en-US` when it has none**
+  (SP3b). This is the dedupe-key rule, not a formatting choice:
+  `dedupe_key_for_job` keys a stored job on its full `detail_url`, so a URL
+  built one character differently makes every stored Workday job look new and
+  delists the old rows two runs later. Four of the six sources (busuu, slack,
+  airbus, axis_comms) have no locale in `sources.yaml`, yet the rendered page
+  linked every posting under `/en-US/` — Chromium's default — and all 72 stored
+  rows for the six sources have exactly the form `<host>/en-US/<board>/job/…`,
+  with no query and no fragment (checked read-only against the store). Any
+  change to this construction needs the same check first.
+- **`strategy: dynamic` stays on the Workday sources although the listing no
+  longer renders** (SP3b, owner's decision). `pipeline.py` also uses `strategy`
+  to choose the fetcher for detail pages at Layers 2 and 5, and a Workday
+  detail page is client-rendered. The reader now ignores the rendering for the
+  listing; the setting is still doing its other job.
