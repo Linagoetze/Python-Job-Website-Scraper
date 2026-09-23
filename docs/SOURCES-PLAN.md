@@ -95,12 +95,13 @@ the ordering below.
 | 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
 | 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
+| 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | not started | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Tombstone guard at startup (optional) | 1 hr | Sonnet 5 | none | not started | `sp7-tombstone-guard` |
 
-**Roughly 20 hours** for SP0–SP4 (SP2b and SP3b included) and SP7, plus SP5 and SP6 as recurring
+**Roughly 21.5 hours** for SP0–SP4 (SP2b, SP3b and SP3c included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here.
@@ -113,7 +114,10 @@ cheap and independent after SP1. **SP2b before SP5**: SP5 re-checks candidates
 and turns some of them into sources, and until SP2b lands neither answer can be
 recorded. SP3 before SP5. **SP3b as soon as SP3 is merged**: it fixes data
 loss in six live sources, and it must land before SP5 adds any Workday
-employer. It is independent of SP4. **SP4 before SP5** if any new
+employer. It is independent of SP4. **SP3c as soon as SP3b is merged**:
+airbus fails loudly on every run until it lands. It is independent of SP4,
+and it goes before SP5 only if SP5 adds a Workday board past the cap.
+**SP4 before SP5** if any new
 company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
 do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline and
 SP7 is optional throughout.
@@ -125,7 +129,11 @@ SP7 is optional throughout.
 judgement ladder that has to know when to stop, and — for SP3b — a choice
 between two fragile routes where a changed detail URL would silently
 rewrite review history). SP3b looks like SP4's capture-and-fix work, but the
-route choice and the dedupe-key edge are why it is not a Sonnet package. `Sonnet 5` for SP0b, SP4, SP5, SP6
+route choice and the dedupe-key edge are why it is not a Sonnet package. SP3c follows
+SP3b but is a Sonnet package: its route and config shape are decided in its
+prompt, its detail URLs are untouched by construction, and its one open
+judgement — what proves a facet was applied — is written as a stop-and-ask.
+`Sonnet 5` for SP0b, SP3c, SP4, SP5, SP6
 and SP7: capture, diagnose, fix, pin — mechanical work with a strong test net
 under it, which is exactly the split the refactor settled on across its
 twenty-six packages. Effort cues are the repo's usual `think` / `think hard`.
@@ -146,9 +154,10 @@ The surfaces, and what invalidates each:
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7 | A startup warning is user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
+| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
+| `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
 | `README.md` — Layout table | SP1 | The `data/curated/` row lists what lives there. |
 | `job_scraper/config/sources.example.yaml` | SP3 | Its header explains how to add a source. That advice becomes "run `probe` first". |
 | `CLAUDE.md` | SP0b, SP2b | Startup reads, the stale architecture block, the Definition of done. |
@@ -1286,8 +1295,8 @@ Branch sp3b-workday-walk. One commit per step. Do not push.
   logged the page's own call; (2) Workday caps `total` at 2000. **airbus**
   states 2000 with about 2,940 postings behind it (by its facet counts), so a
   walk would reconcile a short read as whole. A board at the cap now fails
-  after one request. **airbus therefore fails every run until the owner
-  decides how to narrow it** — before this package it returned 20 of ~2,940
+  after one request. **airbus therefore fails every run until SP3c narrows
+  it** — before this package it returned 20 of ~2,940
   in silence.
 - **Guard first, as asked**: the first commit read the page's total and made
   path's single page raise; six path-backed tests were left red on that
@@ -1325,13 +1334,171 @@ Branch sp3b-workday-walk. One commit per step. Do not push.
 - [ ] If the detail URLs cannot be kept identical, the session stops. Then the
       decision is whether to migrate stored keys, which is a bigger package.
 - [x] Apply any `sources.yaml` change the session prints. **None printed.**
-- [ ] **Decide what to do about airbus.** Its board is past Workday's
+- [x] **Decide what to do about airbus.** Its board is past Workday's
       2000-posting cap on `total`, so the reader refuses it and it fails every
-      run (stored jobs kept). Options are in the SP3b session's closing
-      message; the likely shape is narrowing it with a facet (country or
-      location) so each walk is under the cap.
+      run (stored jobs kept). **Decided 2026-09-23: narrow it to the owner's
+      chosen country with a facet. Planned as SP3c, below.**
 - [ ] Run it at a civilised hour: it makes live requests to six employers'
       Workday tenants, and `rules.json` should carry your contact details.
+
+---
+
+## SP3c — Narrow airbus below Workday's cap
+
+Added 2026-09-23, from SP3b's result. Workday's endpoint never reports a
+`total` above 2000. airbus reports exactly 2000, while the facet counts in
+the same response add up to about 2,940, so a walk checked against the total
+would call a short read whole. SP3b made the reader refuse a board at the cap,
+after one request, so airbus now fails on every run. Its stored jobs are kept,
+and the run summary names it each time. Before SP3b it silently returned 20.
+
+**The owner's decision (2026-09-23): narrow airbus to one country, the
+owner's chosen country.** The country and its `locationCountry` facet id are
+deliberately not in this file. It is public, and which country the owner
+wants to work in belongs with `rules.json` and `sources.yaml`, not here. The
+owner gives both to the session when it starts. On 2026-09-23 that country's
+count was far under the cap: one POST per run. Reading all ~2,940 by
+splitting the walk per country was rejected. It would be about 150 POSTs per
+run to one employer, almost all for postings the location filter drops.
+
+**Where the narrowing lives: the source's `url`, as Workday's own filter
+query.** Workday's listing puts a filter in its query string
+(`?locationCountry=<id>`), so the configured URL becomes
+`https://ag.wd3.myworkdayjobs.com/Airbus?locationCountry=<country-id>`, and the
+reader translates the query into `appliedFacets`. The URL lives only in the
+private `sources.yaml`. This was chosen
+over a registry argument or a new `sources.yaml` key for three reasons. It
+needs no pipeline or `registry.py` change: the pipeline hands an extractor
+only the URL. It is config rather than code. And a person can open the URL
+and see the same list the reader reads. SP3b's reader refuses a query today,
+precisely because silently dropping one would read a different board. This
+package replaces that refusal with a faithful translation.
+
+**The edge: a filter that is silently ignored.** If Workday ignores a facet
+it doesn't recognise, the walk reads the whole board. For airbus that
+surfaces as the cap refusal. For a smaller board it would read more than was
+configured, not less, but it would still not be the board the owner chose.
+So the reader has to prove the filter was applied, from the response it
+already has. Step 1 finds out whether that's possible.
+
+**The dedupe key is not at risk, but must stay that way.** Detail URLs are
+built from `externalPath`, so the query cannot reach them unless someone adds
+it. SP3b found that the rendered page appends its query to every job link
+(`?page=2` did). Stored airbus keys have no query, and they must keep having
+none.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP3c
+only. SP3b must be merged first.
+
+airbus fails every run: its Workday board states total 2000, Workday's cap on
+that count, and extractors/workday.py refuses a capped total rather than walk
+it (SP3b; docs/DECISIONS.md). The owner's decision, 2026-09-23: narrow airbus
+to one country, the owner's chosen country, so its walk is under the cap.
+
+THE COUNTRY IS PRIVATE. The owner will give you its name, its
+locationCountry facet id and the count it had on 2026-09-23 when the session
+starts. Neither the name nor the id may appear in any tracked file or commit
+message: not this plan, not DECISIONS.md, not a test, not a fixture name,
+not a docstring. Write "the owner's chosen country" and <country-id>. The
+only place they are written is sources.yaml, and the owner does that.
+
+The narrowing lives in the source's url, as the filter query Workday's own
+listing uses:
+    https://ag.wd3.myworkdayjobs.com/Airbus?locationCountry=<country-id>
+The reader translates that query into the POST's appliedFacets. No pipeline
+change and no registry.py change.
+
+1. VERIFY FIRST, with at most two live requests through http.py's polite
+   fetchers. Check each host's robots.txt with RobotsPolicy.explain first and
+   quote the rule, as SP3b did.
+   a. Render that URL once. Does the listing state the country's count, and do
+      its job links carry the query? (SP3b found ?page=2 appended to every
+      href.)
+   b. POST the endpoint once with
+      {"limit": 20, "offset": 0, "searchText": "",
+       "appliedFacets": {"locationCountry": ["<country-id>"]}}.
+      Report its total, whether that matches the facet count, and what in
+      THAT response could prove on every run, with no extra request, that
+      the facet was applied rather than silently ignored (for example the
+      applied value's own count among the response's facets, or the facet
+      parameter being present at all). If nothing in it proves that, STOP
+      and put it to the owner.
+
+2. BUILD, behind the same extract() signature.
+   - workday._endpoints stops refusing a query and translates it. Each key
+     is a facet parameter; a repeated key is a list of ids. Refuse anything
+     it cannot translate faithfully, and say what.
+   - Fail the source when the response does not show the filter applied, by
+     whatever 1b found. An ignored facet reads a different board from the
+     one configured.
+   - Detail URLs stay <host>/<locale>/<board> + externalPath. The listing's
+     query must never reach them: dedupe_key_for_job keys stored jobs on
+     detail_url (SP3b). listing_url is the configured URL as given.
+   - Keep the cap refusal. A narrowed board still at 2000 fails.
+   - Keep the tenant rule (host hyphen -> endpoint underscore).
+
+3. THE PROBE. A capped refusal now reads as "a bug in workday.py" at rung 5,
+   which is wrong. Raise a ShortWalkError subclass that carries the stated
+   total and the endpoint as fields, not in message text (see the
+   RobotsDisallowed entry in DECISIONS.md for why). Have the probe say the
+   board is past Workday's cap and must be narrowed with a facet query,
+   naming this package. A probe of a URL with a facet query keeps the query
+   in the board it reads and in the sources.yaml block it prints.
+
+4. PRINT the sources.yaml change for airbus. Do not edit sources.yaml.
+   Before printing, read the store (read-only) for airbus rows whose status
+   is 'new' or 'seen' and that are outside the chosen country. Narrowing means those rows
+   are no longer sighted and are delisted two runs later. On 2026-09-23 all
+   17 stored airbus rows were 'rejected' or 'delisted', so none would flip.
+   Check again and report the number, whatever it is.
+
+5. CAPTURE — ASK FIRST. A captured airbus walk would publish the country
+   anyway: every posting's location names it, and the listing URL in
+   FIXTURE_CASES carries its id. So put the choice to the owner:
+   a. capture it (scripts/capture_fixtures.py --pages all airbus, once the
+      owner has pasted the url), pin its golden, and compare its detail URLs
+      with the stored airbus rows for the same postings: they must be
+      identical, and if they are not, STOP; or
+   b. no airbus fixture. Test the translation with stubs whose facet id and
+      locations are invented, and check the detail-URL rule against the store
+      in chat only. The reader already has real captures through path and
+      busuu.
+   Tests for the translation must not use the real id either way.
+
+Tests: the query-to-facets translation, each refusal, the filter-not-applied
+failure, the capped refusal's subclass and the probe's wording. Build them
+from stubs and the saved capture. No test may touch the network. The two
+requests in step 1 and the capture in step 5 are the only live traffic.
+
+DOCS. README: test and fixture counts, and one sentence in the sources.yaml
+section saying a Workday url may carry the listing's own filter query, and
+why airbus has one (narrowed below the cap; the country is not named).
+docs/DECISIONS.md: the query-as-config choice, what proves a facet was
+applied, and that the country stays out of tracked files. This plan file:
+the result, with airbus's row count before (refused) and after, and no
+country.
+
+Branch sp3c-workday-facets. One commit per step. Do not push.
+```
+
+### Your to-dos
+
+- [ ] **At the start of the session:** give it the country, its
+      `locationCountry` facet id and the 2026-09-23 count. They are in the
+      SP3b session's closing message, and nowhere in the repository.
+- [ ] **During the session, after step 4:** paste the printed `url` into
+      `sources.yaml`.
+- [ ] **Step 5:** decide whether airbus gets a fixture. A fixture publishes
+      the country through its postings' locations.
+- [ ] If step 1 finds nothing in the response that proves the filter was
+      applied, the session stops. The choice is then between an extra request
+      per run to check it, or accepting an unverified filter. That choice is
+      yours.
+- [ ] After merging, check the next run's summary: airbus should report the
+      country's count instead of failing.
 
 ---
 
