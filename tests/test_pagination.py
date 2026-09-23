@@ -439,8 +439,6 @@ def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
         ("coloplast", successfactors_html._declared_total, 331),
         ("niras", niras._declared_total, 2),
         ("unops", unops._declared_total, 74),
-        ("busuu", workday._declared_total, 6),
-        ("path", workday._declared_total, 61),
     ],
 )
 def test_the_saved_page_still_states_its_total(name: str, reader: Any, expected: int) -> None:
@@ -645,55 +643,179 @@ def test_jpal_tolerates_a_pager_that_over_claims_by_a_page() -> None:
     assert len(jpal.extract(_LISTING_URL, fetch)) == 36
 
 
-# --- Workday: the board states its length ---------------------------------
+# --- Workday: a walk of the board's JSON endpoint (SP3b) ----------------
 
-_WORKDAY_URL = "https://tenant.wd1.myworkdayjobs.com/en-US/Board"
+_WORKDAY_URL = "https://tenant.wd1.myworkdayjobs.com/Board"
+_WORKDAY_API = "https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/Board/jobs"
 
 
-def _workday_page(jobs: int, *, found: str | None, out_of: str | None) -> str:
-    cards = "".join(
-        f'<li><h3><a data-automation-id="jobTitle" href="/en-US/Board/job/Role-{i}_R{i}">'
-        f"Role {i}</a></h3>"
-        f'<ul data-automation-id="subtitle"><li>Geneva</li><li>R{i}</li></ul></li>'
-        for i in range(jobs)
+def _workday_postings(start: int, count: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "title": f"Role {n}",
+            "externalPath": f"/job/Geneva/Role-{n}_R{n}",
+            "locationsText": "Geneva",
+            "bulletFields": [f"R{n}"],
+        }
+        for n in range(start, start + count)
+    ]
+
+
+class _WorkdayBoard:
+    """A fetcher whose `post_json` serves a board of *size* postings, 20 a page.
+
+    *total* is what the first response states; *later_total* what every other
+    response states (Workday is reported to send 0 there). *broken* maps an
+    offset to the number of postings that page actually returns.
+    """
+
+    def __init__(
+        self,
+        size: int,
+        *,
+        total: int | None = None,
+        later_total: int | None = 0,
+        broken: dict[int, int] | None = None,
+    ) -> None:
+        self.size, self.total, self.later_total = size, total, later_total
+        self.broken = broken or {}
+        self.asked: list[tuple[str, int]] = []
+
+    def __call__(self, url: str, *args: Any, **kwargs: Any) -> str:
+        raise AssertionError("the Workday reader must not GET anything")
+
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        offset, limit = payload["offset"], payload["limit"]
+        self.asked.append((url, offset))
+        count = self.broken.get(offset, max(0, min(limit, self.size - offset)))
+        body: dict[str, Any] = {"jobPostings": _workday_postings(offset, count)}
+        stated = self.total if offset == 0 else self.later_total
+        if stated is not None:
+            body["total"] = stated
+        return body
+
+
+def test_workday_walks_every_page_to_the_stated_total() -> None:
+    board = _WorkdayBoard(45, total=45)
+    jobs = workday.extract(_WORKDAY_URL, board, "tenant")
+
+    assert len(jobs) == 45
+    assert board.asked == [(_WORKDAY_API, 0), (_WORKDAY_API, 20), (_WORKDAY_API, 40)]
+    assert jobs[44]["detail_url"] == (
+        "https://tenant.wd1.myworkdayjobs.com/en-US/Board/job/Geneva/Role-44_R44"
     )
-    found_p = f'<p data-automation-id="jobFoundText">{found}</p>' if found else ""
-    out_of_p = f'<p data-automation-id="jobOutOfText">{out_of}</p>' if out_of else ""
-    return f"<html><body>{found_p}<ul>{cards}</ul>{out_of_p}</body></html>"
 
 
-def test_workday_first_page_of_a_longer_board_raises() -> None:
-    """SP3b: the bug itself. A board of 45 read as its first 20 must fail."""
-    page = _workday_page(20, found="45 JOBS FOUND", out_of="1 - 20 of 45 jobs")
-    with pytest.raises(ShortWalkError, match="says it has 45"):
-        workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")
+def test_workday_stops_at_the_total_without_asking_for_an_empty_page() -> None:
+    board = _WorkdayBoard(40, total=40)
+    assert len(workday.extract(_WORKDAY_URL, board, "tenant")) == 40
+    assert [offset for _, offset in board.asked] == [0, 20]
 
 
-def test_workday_whole_board_on_one_page_is_fine() -> None:
-    page = _workday_page(6, found="6 JOBS FOUND", out_of="1 - 6 of 6 jobs")
-    assert len(workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")) == 6
+def test_workday_a_later_zero_total_does_not_replace_the_first() -> None:
+    """The first response's total is the one the walk is held to."""
+    board = _WorkdayBoard(45, total=46, later_total=0)
+    with pytest.raises(ShortWalkError, match="says it has 46"):
+        workday.extract(_WORKDAY_URL, board, "tenant")
 
 
-def test_workday_reads_the_range_when_the_found_text_is_missing() -> None:
-    page = _workday_page(20, found=None, out_of="1 - 20 of 45 jobs")
-    with pytest.raises(ShortWalkError, match="says it has 45"):
-        workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")
+def test_workday_empty_page_before_the_total_raises() -> None:
+    board = _WorkdayBoard(61, total=61, broken={20: 0})
+    with pytest.raises(ShortWalkError, match="holding 20 posting.*says it has 61"):
+        workday.extract(_WORKDAY_URL, board, "tenant")
 
 
-def test_workday_reads_a_total_in_another_language() -> None:
-    """The ids are Workday's; the words around the number are the tenant's."""
-    page = _workday_page(20, found="1.234 STELLEN GEFUNDEN", out_of="1 - 20 von 1.234 Stellen")
-    from bs4 import BeautifulSoup
+def test_workday_half_answered_page_does_not_pass_as_the_last_one() -> None:
+    board = _WorkdayBoard(61, total=61, broken={20: 7})
+    with pytest.raises(ShortWalkError, match="holding 27 posting.*says it has 61"):
+        workday.extract(_WORKDAY_URL, board, "tenant")
 
-    assert workday._declared_total(BeautifulSoup(page, "lxml")) == 1234
+
+def test_workday_a_zero_total_beside_postings_does_not_end_the_walk() -> None:
+    """0 is not a total when the same response holds postings; the pages decide."""
+    board = _WorkdayBoard(45, total=0)
+    assert len(workday.extract(_WORKDAY_URL, board, "tenant")) == 45
+
+
+def test_workday_empty_board_is_not_a_failure() -> None:
+    board = _WorkdayBoard(0, total=0)
+    assert workday.extract(_WORKDAY_URL, board, "tenant") == []
 
 
 def test_workday_without_a_readable_total_says_it_could_not_check(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """No total is not an error, but it is not silence either."""
-    page = _workday_page(6, found=None, out_of=None)
+    board = _WorkdayBoard(26, total=None, later_total=None)
     with caplog.at_level(logging.WARNING):
-        jobs = workday.extract(_WORKDAY_URL, lambda url, *a, **k: page, "tenant")
-    assert len(jobs) == 6
+        jobs = workday.extract(_WORKDAY_URL, board, "tenant")
+    assert len(jobs) == 26
     assert "publishes no total" in caplog.text
+
+
+def test_workday_runaway_walk_stops_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(workday, "_MAX_PAGES", 3)
+    board = _WorkdayBoard(1000, total=None, later_total=None)
+    with pytest.raises(ShortWalkError, match="3-page limit holding 60"):
+        workday.extract(_WORKDAY_URL, board, "tenant")
+
+
+@pytest.mark.parametrize(
+    ("listing", "api", "prefix"),
+    [
+        (
+            "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
+            "https://osv-chegg.wd5.myworkdayjobs.com/wday/cxs/osv-chegg/Busuu/jobs",
+            "https://osv-chegg.wd5.myworkdayjobs.com/en-US/Busuu",
+        ),
+        (
+            "https://path.wd1.myworkdayjobs.com/en-US/External",
+            "https://path.wd1.myworkdayjobs.com/wday/cxs/path/External/jobs",
+            "https://path.wd1.myworkdayjobs.com/en-US/External",
+        ),
+        (
+            "https://tenant.wd3.myworkdayjobs.com/de-DE/Karriere/",
+            "https://tenant.wd3.myworkdayjobs.com/wday/cxs/tenant/Karriere/jobs",
+            "https://tenant.wd3.myworkdayjobs.com/de-DE/Karriere",
+        ),
+    ],
+)
+def test_workday_detail_urls_keep_the_shape_the_rendered_page_linked(
+    listing: str, api: str, prefix: str
+) -> None:
+    """Stored jobs are keyed on detail_url, so this shape is a contract.
+
+    With no locale in the listing URL the rendered page still linked under
+    /en-US/, and every stored Workday row has that form (SP3b, DECISIONS.md).
+    """
+    assert workday._endpoints(listing) == (api, prefix)
+
+
+@pytest.mark.parametrize(
+    "listing",
+    [
+        "https://tenant.wd1.myworkdayjobs.com/en-US/Board?locations=abc",
+        "https://tenant.wd1.myworkdayjobs.com/en-US/Board/details/x",
+        "https://tenant.wd1.myworkdayjobs.com/",
+        "https://careers.example.org/Board",
+    ],
+)
+def test_workday_refuses_a_listing_it_cannot_map_exactly(listing: str) -> None:
+    board = _WorkdayBoard(5, total=5)
+    with pytest.raises(ValueError):
+        workday.extract(listing, board, "tenant")
+    assert board.asked == []
+
+
+def test_workday_refuses_a_fetcher_that_cannot_post() -> None:
+    """Refused, not bypassed: falling back to http.post_json would reach the
+    network from a test, or from a capture that would then record nothing."""
+    with pytest.raises(TypeError, match="no post_json"):
+        workday.extract(_WORKDAY_URL, lambda url, *a, **k: "", "tenant")
+
+
+def test_the_pipelines_fetchers_can_post() -> None:
+    from job_scraper import http
+
+    assert http.fetch_text.post_json is http.post_json  # type: ignore[attr-defined]
+    assert http.fetch_rendered.post_json is http.post_json  # type: ignore[attr-defined]

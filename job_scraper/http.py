@@ -980,6 +980,14 @@ def fetch_rendered(
 # wrappers copy the mark.
 fetch_rendered.renders = True  # type: ignore[attr-defined]
 
+# The same idea for POST (SP3b). Workday's reader walks a JSON endpoint by POST
+# but must still use the fetcher it is handed, or the fixture capture script
+# records nothing and the probe's stub cannot serve it. So both fetchers carry
+# `post_json`, a wrapper that records or replays carries its own, and a reader
+# that needs one refuses a fetcher without it rather than reaching past it.
+fetch_text.post_json = post_json  # type: ignore[attr-defined]
+fetch_rendered.post_json = post_json  # type: ignore[attr-defined]
+
 
 def is_rendering_fetcher(fetch: Callable[..., str]) -> bool:
     """True if *fetch* renders JavaScript, through any number of wrappers."""

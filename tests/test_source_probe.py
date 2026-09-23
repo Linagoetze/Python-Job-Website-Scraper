@@ -76,10 +76,13 @@ class StubFetcher:
         rendered: dict[str, str] | None = None,
         robots: dict[str, str] | None = None,
         redirects: dict[str, tuple[str, tuple[str, ...]]] | None = None,
+        posted: dict[str, list[str]] | None = None,
     ) -> None:
         self.log = log
         self.static = static or {}
         self.rendered_pages = rendered or {}
+        # POSTed JSON by URL, one saved response per page in walk order.
+        self.posted = posted or {}
         self.redirects = redirects or {}
         robots = robots or {}
 
@@ -107,6 +110,15 @@ class StubFetcher:
         if url not in self.rendered_pages:
             raise RuntimeError(f"no rendered fixture for {url}")
         return self.rendered_pages[url]
+
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        offset, limit = int(payload.get("offset", 0)), int(payload.get("limit", 1))
+        self.log.append(f"POST {url} offset={offset}")
+        pages = self.posted.get(url)
+        if pages is None:
+            raise RuntimeError(f"404 Client Error: no POST fixture for {url}")
+        index = offset // limit
+        return json.loads(pages[index]) if index < len(pages) else {"jobPostings": []}
 
     def _serve(self, url: str) -> str:
         if url not in self.static:

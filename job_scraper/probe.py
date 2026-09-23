@@ -113,6 +113,8 @@ class ProbeFetcher(Protocol):
 
     def rendered(self, url: str, **kwargs: Any) -> str: ...
 
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any: ...
+
 
 class LiveFetcher:
     """`http.py`'s fetchers, as the pipeline uses them. Built by `live_fetcher`."""
@@ -138,6 +140,11 @@ class LiveFetcher:
         from job_scraper import http
 
         return http.fetch_rendered(url, **kwargs)
+
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        from job_scraper import http
+
+        return http.post_json(url, payload, **kwargs)
 
 
 @contextmanager
@@ -723,9 +730,11 @@ def _rendering(fetcher: ProbeFetcher) -> Fetch:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return fetcher.rendered(url, **kwargs)
 
-    # The mark workday.py and successfactors_html.py look for before adding a
-    # selector wait; see http.is_rendering_fetcher.
+    # The mark successfactors_html.py looks for before adding a selector
+    # wait; see http.is_rendering_fetcher.
     fetch.renders = True  # type: ignore[attr-defined]
+    # workday.py POSTs through the fetcher it is handed (see http.py).
+    fetch.post_json = fetcher.post_json  # type: ignore[attr-defined]
     return fetch
 
 
@@ -733,6 +742,7 @@ def _static(fetcher: ProbeFetcher) -> Fetch:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
         return fetcher.text(url)
 
+    fetch.post_json = fetcher.post_json  # type: ignore[attr-defined]
     return fetch
 
 
