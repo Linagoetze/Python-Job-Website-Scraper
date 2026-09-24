@@ -466,7 +466,9 @@ def test_capture_records_a_walk_made_by_post(
 
     The fetcher's `post_json` is recorded like a GET, so the fixture holds the
     whole walk and replays it — rather than a hand-written JSON file, or
-    nothing at all, which is what `workable.py`'s direct `http.post_json` gets.
+    nothing at all, which is what a reader calling `http.post_json` directly
+    would get. `workable.py` used to be that reader; SP4 moved it onto the
+    fetcher's `post_json` too, the same way workday.py already was.
     """
     fake = _FakeFetcher("<html>the listing, never asked for</html>", renders=True)
     posted: list[tuple[str, int]] = []

@@ -775,8 +775,22 @@ session — see `CLAUDE.md`.
   rather than falling back to `http.post_json`: a fallback would let a test or
   a capture reach the network by a route it did not choose. A POSTed page is
   saved as the JSON it decoded to, in the same positional sequence as GETs.
-  `workable.py` still calls `http.post_json` itself and is still invisible to
-  the capture; moving it onto the fetcher is SP4's to do when it captures it.
+  **`workable.py` moved onto the fetcher in SP4**, ahead of its own capture:
+  it called `http.post_json` itself, which meant the capture script recorded
+  nothing for it ("extractor made no request") and the probe's
+  `test_workable_reads_through_post_json` stubbed `http.post_json` at the
+  module instead of going through its own fetcher — the one seam SP3's
+  `_rendering`/`_static` wrappers already carried
+  (`fetch.post_json = fetcher.post_json`) but that reader never used. It now
+  refuses a fetcher with no `post_json`, exactly as `workday.py` does, and the
+  probe test was rewritten to post through `StubFetcher.post_json`
+  (`posted={api: [...]}`, the same shape the Workday tests already use)
+  rather than monkeypatching the module. One knock-on: the refusal test that
+  used to say a POST reader is "outside the fetcher" — `workable.py`'s old
+  direct call was the only such case in the codebase — no longer has a real
+  example, so `TestReaderRefusedByRobots` covers the same claim (the probe
+  reads a refusal's URL from the exception's own field, not from tracking the
+  fetcher) generically: `RefusingFetcher` now refuses a POST as well as a GET.
 - **The Workday endpoint's tenant is the host's with `-` read as `_`** (SP3b).
   busuu's POST to `/wday/cxs/osv-chegg/Busuu/jobs` answered 422. One
   diagnostic render (owner-approved) logged the page's own call:
