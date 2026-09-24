@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b and SP3c are done** (as of 2026-09-24); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c and SP4 are done** (as of 2026-09-24); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -97,7 +97,7 @@ the ordering below.
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
 | 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
-| 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
+| 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
@@ -1692,16 +1692,98 @@ the ones that turned out to be correct, because "checked and fine" is a result
 worth not repeating.
 ```
 
+### Result — done 2026-09-24, branch `sp4-fixtures-ats`
+
+- **Step 0 landed first, its own commit.** `scripts/capture_fixtures.py
+  main()` now opens one `http.polite_fetching` block around its whole batch,
+  built exactly as `pipeline.run_pipeline` builds its own —
+  `http.user_agent_from_rules(load_rules())` and
+  `pipeline._robots_overrides(load_sources())`, reused rather than copied.
+  Every capture in this package went out with the owner's contact details,
+  consulted robots.txt and paid per-host spacing; none was refused. A robots
+  refusal surfaces as `RobotsDisallowed` from inside the extractor and is
+  caught by `capture_one`'s existing catch-all, same as any other exception —
+  nothing new was needed there. Tested against a real `localhost` server
+  (`tests/test_capture_fixtures.py`, the same pattern `test_politeness.py`
+  uses): the User-Agent a capture sends, a robots.txt refusal reported as a
+  failed capture rather than a crash, and a source's own `ignore_robots`
+  exempting it. Amended in `docs/DECISIONS.md`'s "Politeness is run-scoped"
+  entry rather than contradicting it silently.
+- **`workable.py` moved onto the fetcher's `post_json`**, ahead of its own
+  capture, its own commit. It called `http.post_json` directly, which is why
+  the capture script recorded nothing for it and the probe's
+  `test_workable_reads_through_post_json` had to stub `http.post_json` at the
+  module — the one reader not using the seam SP3b built for `workday.py`. It
+  now refuses a fetcher with no `post_json`, the same as `workday.py`, and the
+  probe test posts through `StubFetcher.post_json` instead. The companion
+  refusal test that relied on `workable.py` being the one reader outside the
+  fetcher no longer had a real example, so it was rewritten as the general
+  case (`RefusingFetcher` can now refuse a POST as well as a GET). Documented
+  in `docs/DECISIONS.md`'s "A fetcher carries `post_json`" entry.
+- **Names resolved**: `breezy` → `new_incentives`, `lever` → `wave`,
+  `personio` → `outdooractive`, `smartrecruiters` → `oecd`, `workable` →
+  `nutrition_international` and `simprints` (two sources, one reader).
+- **Five captures, one real bug in a reader, one in the capture tooling
+  itself — both found by the same capture, and neither is a site problem:**
+  - **`new_incentives` (breezy)**: captured clean, 5 jobs. Compared
+    field-by-field against the raw JSON — title, location, department,
+    detail_url all correct. No bug.
+  - **`wave` (lever)**: captured clean, 8 jobs. `categories.department` is
+    correctly preferred over `categories.team` where both are present. No bug.
+  - **`outdooractive` (personio)**: captured to **0 jobs**, wrongly. Two bugs,
+    both found by comparing the captured fixture against the page and neither
+    in the reader's field mapping:
+    1. `capture_fixtures.sanitise_html` ran every non-JSON response through
+       an HTML parser (BeautifulSoup + `lxml`). Personio's feed is XML, and
+       that parser rewrites `<![CDATA[` as an HTML comment and closes tags it
+       does not recognise — real damage, not a cosmetic difference: it broke
+       `ET.fromstring` on the whole feed. Fixed by teaching
+       `_guess_extension` to recognise the XML declaration and skip
+       sanitisation for it, the same way it already skips JSON; the fixture
+       is now `outdooractive.xml`, saved byte-for-byte.
+    2. `personio.py` caught that same `ET.ParseError` and returned `[]` — an
+       empty list indistinguishable from "no vacancies", exactly the failure
+       CLAUDE.md's priority 2 rules out. It now raises `ValueError`. Neither
+       bug is specific to this employer: any malformed feed hit both, and
+       `test_personio_fails_loudly_on_a_malformed_feed` pins the second one
+       with a synthetic feed, needing no fixture.
+    Against the raw (unsanitised) feed, all 22 postings matched the reader's
+    field mapping exactly — title, location, department, detail_url.
+  - **`oecd` (smartrecruiters)**: captured clean, 14 jobs, `totalFound`
+    matching `len(content)` exactly so the pagination guard never fires here.
+    `relativeUri` is null on every posting on this board, so every
+    `detail_url` exercises the `org_slug`/`job_id` fallback branch rather
+    than the relative-path one. No bug.
+  - **`nutrition_international` and `simprints` (workable)**: captured clean
+    through the fetcher's `post_json`, 10 and 9 jobs. `simprints`' first
+    posting has no city, and the extractor's
+    `", ".join(x for x in [city, country] if x)` drops the empty part rather
+    than leaving a stray comma. No bug.
+- **Golden coverage**: all six sources added to `FIXTURE_CASES`
+  (`tests/fixture_cases.py`) and pinned in `_GOLDEN`
+  (`tests/test_extractors_golden.py`); `test_every_fixture_has_a_golden`
+  enforces that a captured fixture cannot slip in unpinned. Two more tests
+  pin the bugs themselves: `test_personio_fails_loudly_on_a_malformed_feed`
+  and `test_workable_refuses_a_fetcher_that_cannot_post` (mirroring
+  `workday`'s refusal test in `tests/test_pagination.py`). One more,
+  `test_capture_does_not_sanitise_xml`, pins the capture-script fix with a
+  synthetic CDATA feed.
+- **36 new tests** (974 to 1010): the politeness integration tests, the
+  `_guess_extension`/sanitiser fix, the workable refusal-test rewrite, the six
+  new golden entries, and the two bug-pinning tests above.
+- **Docs**: README's "Tests" section (test count, "eight of the twenty-six
+  extractors are uncovered", the new XML sanitiser note and the capture
+  politeness note), `docs/DECISIONS.md` ("Politeness is run-scoped" and "A
+  fetcher carries `post_json`", both amended rather than superseded), and
+  this file.
+
 ### Your to-dos
 
-- [ ] This package fetches five live career sites. Run it at a civilised hour
-      and not alongside a scheduled scrape.
-- [ ] Confirm `rules.json` still has your contact details filled in — WP10 put
-      them in the User-Agent, and a capture run is exactly when an administrator
-      might want to reach you. They reach a capture only once step 0 has
-      landed; before it, captures sent no contact details at all.
-- [ ] Expect this one to need a second session. That is the plan working, not
-      slipping.
+- [x] This package fetched five live career sites, at a civilised hour, not
+      alongside a scheduled scrape.
+- [x] `rules.json`'s contact details were filled in and reached every capture
+      via `polite_fetching` — confirmed by the User-Agent each capture sent.
+- [x] Needed one session, not two.
 
 ---
 
