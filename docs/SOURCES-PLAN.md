@@ -1620,6 +1620,18 @@ four SuccessFactors sources and three of the four were broken. CU2 captured
 three more and found one. The estimate below assumes roughly three of these five
 have something wrong with them.
 
+**That estimate ran high against what SP4 actually found (2026-09-24).** One
+reader bug in five (`personio.py`'s silent `except ET.ParseError: return []`),
+not three. The other bug SP4 found — the capture script itself running a
+non-JSON response through an HTML parser and corrupting an XML feed — was
+tooling, not a reader, and is now fixed for every future capture, XML or not.
+Not a reason to relax "capture first, then read the extractor" for SP6: it is
+exactly what surfaced both bugs, and a session that skipped the capture on the
+assumption of a clean reader would have shipped `outdooractive` at zero jobs.
+But size SP6's own estimate off three-of-five as a ceiling, not a baseline —
+one-of-N, plus whatever the tooling itself still hides, is the number this
+package actually measured.
+
 ```
 think
 
@@ -1871,7 +1883,11 @@ per company: verdict, extractor reused, rows captured.
 
 `asana`, `coefficient`, `jobsinlund`, `mammut`, `norrsken`, `oatly`, `sida`,
 `undp`. Same method as SP4, lower stakes: each serves one source, so a bug is
-contained rather than inherited.
+contained rather than inherited. On the bug rate SP4 actually measured (one
+reader bug in five, not the three-of-five the same section estimated going
+in — see SP4's note above its own prompt), do not expect every instalment to
+turn one up; "checked and fine" is still a result worth recording, not a sign
+the capture was skippable.
 
 **This is ongoing maintenance, not a package with an end date.** Two or three
 per session, in whatever order suits. The refactor plan makes the same point
