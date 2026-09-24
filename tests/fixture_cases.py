@@ -77,6 +77,13 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://jobs.storytel.com/jobs",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="storytel"),
     ),
+    "airbus": (
+        "airbus.json",
+        # Narrowed below Workday's 2000 cap to the owner's chosen country by the
+        # listing's own facet query (SP3c); the reader sends it as appliedFacets.
+        "https://ag.wd3.myworkdayjobs.com/Airbus?locationCountry=49ab063f422741e2aef271de00efeac8",
+        lambda url, fetch: workday.extract(url, fetch, source_name="airbus"),
+    ),
     "busuu": (
         "busuu.json",
         "https://osv-chegg.wd5.myworkdayjobs.com/Busuu",
