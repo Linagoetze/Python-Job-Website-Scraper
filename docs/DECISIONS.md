@@ -411,11 +411,25 @@ session — see `CLAUDE.md`.
 
 - **Politeness is run-scoped, like the [WP9](REFACTOR-PLAN.md#wp9--playwright-reuse-and-http-caching) resources** ([WP10](REFACTOR-PLAN.md#wp10--politeness-and-observability)). `polite_fetching`
   installs the User-Agent, the throttle and the robots policy for the length of
-  `run_pipeline` only. Outside it — tests, the fixture capture script, a one-off
-  `fetch_text` — nothing applies, so no test pays a second per request and none
-  of them reaches for robots.txt over the network. The pipeline is the only
-  thing in this project that fetches at volume, which is what makes that scope
-  the right one.
+  `run_pipeline` only. Outside it — tests, a one-off `fetch_text` — nothing
+  applies, so no test pays a second per request and none of them reaches for
+  robots.txt over the network. The pipeline is the only thing in this project
+  that fetches at volume, which is what makes that scope the right one.
+  **Amended in SP4 (2026-09-24): the fixture capture script is the one
+  exception.** Every capture so far, SP3b's and SP3c's included, went out as
+  `DEFAULT_USER_AGENT` ("no contact configured"), consulted no robots.txt and
+  paid no per-host spacing — fine for a one-off fetch, not for a tool whose
+  whole job is live requests to other people's sites, several a session.
+  `scripts/capture_fixtures.py main()` now opens one `polite_fetching` block
+  around its whole batch, built exactly as `run_pipeline` builds its own:
+  `http.user_agent_from_rules(load_rules())` and `pipeline._robots_overrides
+  (load_sources())`, reused rather than copied. A robots.txt refusal surfaces
+  as `RobotsDisallowed` from inside the extractor and is reported as a failed
+  capture by `capture_one`'s existing catch-all, same as any other exception —
+  nothing new was needed there. `capture_one` itself stays as it was: its
+  module-level `fetch_text` / `fetch_rendered` names are what the rest of this
+  project's tests monkeypatch, and wrapping only the outer batch keeps that
+  seam intact.
 
 - **An empty page only ends a walk when something says how long the walk is**
   ([WP11](REFACTOR-PLAN.md#wp11--j-pal-pagination-and-silent-short-walks)). `extractors/pagination.py` holds the policy: an extractor that can
