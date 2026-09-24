@@ -59,6 +59,21 @@ _MAX_PAGES = 500
 # reaches it fails before the walk rather than after a hundred requests.
 _TOTAL_CAP = 2000
 
+
+class CappedTotalError(pagination.ShortWalkError):
+    """The board states Workday's capped `total`, so no walk of it can be checked.
+
+    The stated total and the endpoint are fields, not only words in the message:
+    the probe tells the owner to narrow the board from them, and a reworded
+    message must not be able to break that (the `RobotsDisallowed.url` rule).
+    """
+
+    def __init__(self, message: str, *, total: int, endpoint: str) -> None:
+        super().__init__(message)
+        self.total = total
+        self.endpoint = endpoint
+
+
 _HOST = re.compile(r"(?P<tenant>[a-z0-9][a-z0-9-]*)\.wd\d+\.myworkdayjobs\.com", re.I)
 _LOCALE = re.compile(r"[a-z]{2}-[A-Z]{2}")
 _DEFAULT_LOCALE = "en-US"
@@ -237,11 +252,13 @@ def extract(
         if offset == 0:
             total = _declared_total(data)
             if total is not None and total >= _TOTAL_CAP:
-                raise pagination.ShortWalkError(
+                raise CappedTotalError(
                     f"{source_name}: {api_url} states {total} postings, which is the "
                     "most Workday's endpoint ever reports; the board may hold more, and "
                     "a walk checked against a capped count cannot tell whole from short. "
-                    "Refusing to read it until its listing is narrowed below the cap."
+                    "Refusing to read it until its listing is narrowed below the cap.",
+                    total=total,
+                    endpoint=api_url,
                 )
             # After the cap check, not before: at the cap `total` is a floor,
             # and comparing a facet count with it would blame the filter.
