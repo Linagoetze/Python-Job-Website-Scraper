@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3 and SP3b are done** (as of 2026-09-23); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b and SP3c are done** (as of 2026-09-24); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -96,7 +96,7 @@ the ordering below.
 | 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
 | 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
-| 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | not started | `sp3c-workday-facets` |
+| 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
@@ -1515,19 +1515,74 @@ country.
 Branch sp3c-workday-facets. One commit per step. Do not push.
 ```
 
+### Result — done 2026-09-24, branch `sp3c-workday-facets`
+
+- **airbus: refused → 16 rows.** Before, the board stated 2000 and the reader
+  failed the source after one POST (and before SP3b it returned 20 of about
+  2,940 without a word). Narrowed to the owner's chosen country, it states 16,
+  which is the count SP3b's unfiltered response gave that country the day
+  before. The owner pasted the url into `sources.yaml` during the session.
+- **Step 1, two live requests.** robots.txt on `ag.wd3.myworkdayjobs.com`:
+  `User-agent: *` / `Allow: /Airbus/` / `Disallow: /Airbus_Specific/` /
+  `Disallow: /refreshFacet/`. `RobotsPolicy.explain` found no deciding line
+  for the filtered listing or for `/wday/cxs/ag/Airbus/jobs`, so it allowed
+  both. (The file itself was fetched twice, once per script run.)
+  (a) The render said "16 JOBS FOUND" / "1 - 16 of 16 jobs", and all 16 job
+  hrefs carried the filter query. (b) The POST with the facet applied gave
+  `total` 16, matching.
+- **What proves the facet was applied: its own count equals `total`.**
+  Workday's facets are disjunctive. `locationCountry` (nested under
+  `locationMainGroup`) kept whole-board counts for all 37 countries (2,898),
+  with the chosen one at 16, while every other facet narrowed to sum to
+  exactly 16. An ignored filter would return the board's `total`, which is
+  not the country's count. No extra request is needed, so the session did not
+  stop. Details are in `docs/DECISIONS.md`.
+- **Built.** `workday._endpoints` translates the query into `appliedFacets`
+  and refuses what it cannot translate. `_check_applied` fails the source on
+  the first response when the filter is not shown applied. The cap refusal
+  runs first, so a narrowed board at 2000 still fails, and the tenant rule is
+  unchanged. Detail URLs carry no query.
+- **Probe.** The cap is `workday.CappedTotalError` (a `ShortWalkError`,
+  carrying `.total` and `.endpoint`). The verdict now says the board is past
+  Workday's cap and must be narrowed with a facet query (SP3c), and no longer
+  calls it a bug in `workday.py`. A Workday URL probed with a query keeps it in
+  the board and in the printed `sources.yaml` block.
+- **Store (read-only).** 17 airbus rows: 16 `rejected`, 1 `delisted`, none
+  `new` or `seen`. **0 rows** will be delisted by the narrowing.
+- **Capture: option (a), the owner's choice**, made knowing it publishes the
+  country (its postings' locations, and the id in `FIXTURE_CASES` and the
+  golden). One POST, with no contact details, no robots.txt check and no
+  throttle, because SP4's step 0 has not landed (robots.txt had been checked
+  by hand the same day). 16 postings. None of their detail URLs has a query,
+  and the one posting also in the store has a byte-identical key there.
+  Translation tests use invented ids only.
+- **26 new tests (946 to 972):** 16 on the translation, the refusals, the
+  filter-not-applied failures, several ids, and the cap on a narrowed board;
+  5 on the probe (the verdict, reading fields and not words, the subclass,
+  the query kept, a linked board taking no query); and 5 from the airbus
+  fixture joining the parametrised fixture tests. No test touches the
+  network.
+- **Live traffic, all of it:** robots.txt (twice), one render, one POST
+  (step 1), and one capture POST (step 5).
+- **Docs:** README (test count; the `url` row now says a Workday url may carry
+  the listing's filter query, and why airbus has one); four entries in
+  `docs/DECISIONS.md`. Run by Opus 5.5, not the Sonnet recommended.
+
 ### Your to-dos
 
-- [ ] **At the start of the session:** give it the country, its
+- [x] **At the start of the session:** give it the country, its
       `locationCountry` facet id and the 2026-09-23 count. They are in the
       SP3b session's closing message, and nowhere in the repository.
-- [ ] **During the session, after step 4:** paste the printed `url` into
-      `sources.yaml`.
-- [ ] **Step 5:** decide whether airbus gets a fixture. A fixture publishes
-      the country through its postings' locations.
-- [ ] If step 1 finds nothing in the response that proves the filter was
-      applied, the session stops. The choice is then between an extra request
-      per run to check it, or accepting an unverified filter. That choice is
-      yours.
+      **Done 2026-09-24:** the owner named the country; the id and the count
+      were taken from the SP3b response saved in the session transcript.
+- [x] **During the session, after step 4:** paste the printed `url` into
+      `sources.yaml`. **Done.**
+- [x] **Step 5:** decide whether airbus gets a fixture. A fixture publishes
+      the country through its postings' locations. **Chosen: (a), captured.**
+- [x] ~~If step 1 finds nothing in the response that proves the filter was
+      applied, the session stops.~~ **Moot:** the applied id's own count
+      proves it, so neither an extra request per run nor an unverified
+      filter was needed.
 - [ ] After merging, check the next run's summary: airbus should report the
       country's count instead of failing.
 

@@ -405,7 +405,7 @@ sources:
 | Field | Meaning |
 | --- | --- |
 | `name` | Identifier for the source. **Must match a key in `job_scraper/extractors/registry.py`** — a source with no registered extractor is skipped with a log line. |
-| `url` | The career page or job board to fetch. |
+| `url` | The career page or job board to fetch. A Workday `url` may carry the listing's own filter query, as the listing shows it once a filter is ticked (`?locationCountry=<id>`). The reader sends it to Workday as that filter and fails the source if the response does not show it applied. airbus has one because its unfiltered board is past the 2,000 postings Workday will count, which the reader refuses; its filter narrows it to one country, well below that. |
 | `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page. |
 
 The example ships nine entries chosen to exercise a different extractor each, so
@@ -892,7 +892,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-946 tests, about fifteen seconds, no network access required. Extractors are
+972 tests, about fifteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
