@@ -952,9 +952,14 @@ def test_workday_an_ignored_filter_fails_the_source() -> None:
     """Workday answered with the whole board: a different board from the one
     configured, even though it is under the cap and would walk cleanly."""
     board = _FacetedBoard(16, whole=900, ignores=True)
-    with pytest.raises(ValueError, match="states 900 postings.*gives the filter's own value"):
+    with pytest.raises(
+        workday.FacetNotAppliedError, match="states 900 postings.*gives the filter's own value"
+    ) as caught:
         workday.extract(_FACETED_URL, board, "tenant")
     assert [offset for _, offset in board.asked] == [0]
+    # Fields, not only words: the probe builds its verdict from these.
+    assert caught.value.endpoint == _WORKDAY_API
+    assert caught.value.facets == {"locationCountry": [_FACET_ID]}
 
 
 def test_workday_a_facet_missing_from_the_response_fails_the_source() -> None:

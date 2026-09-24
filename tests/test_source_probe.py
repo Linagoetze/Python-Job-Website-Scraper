@@ -1029,6 +1029,47 @@ class TestWorkdayCapAndFacets:
         assert result.run is not None
         assert not any("?" in str(r["detail_url"]) for r in result.run.rows)
 
+    def test_an_unapplied_filter_is_sent_back_to_the_query_not_blamed(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # path's real response has no value under the invented id, which is
+        # what a mistyped id looks like: the reader refuses, rightly.
+        probed = f"{PATH_PROBED}?locationCountry={self.FACET_ID}"
+        board = f"{PATH_BOARD}?locationCountry={self.FACET_ID}"
+        rendered = fixture("path.rendered.html")
+        fetcher = StubFetcher(
+            [],
+            static={probed: probe_fixture("shell.html")},
+            rendered={probed: rendered, board: rendered},
+            posted={PATH_API: [fixture(n) for n in PATH_WALK]},
+        )
+        result, report = run_probe(probed, fetcher, curated_dir, tmp_path)
+
+        assert "FAILED — FacetNotAppliedError" in report
+        assert result.kind == probe.NOT_FEASIBLE
+        assert result.run is not None
+        assert result.run.unapplied == (PATH_API, ["locationCountry"])
+        assert f"{PATH_API} did not show the url's filter (locationCountry) applied" in (
+            result.line
+        )
+        assert "SP3c" in result.line
+        assert "bug in workday.py" not in result.line
+        assert "registry.py (in REGISTRY)" not in report
+
+    def test_an_unapplied_filter_is_read_from_fields_not_words(
+        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def reworded(url: str, fetch: Any, source_name: str) -> Any:
+            raise workday.FacetNotAppliedError(
+                "no", endpoint="https://x.wd1.myworkdayjobs.com/api", facets={"jobFamily": ["1"]}
+            )
+
+        monkeypatch.setattr(workday, "extract", reworded)
+        result, _ = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
+
+        assert "https://x.wd1.myworkdayjobs.com/api did not show" in result.line
+        assert "(jobFamily)" in result.line
+
     def test_a_board_merely_linked_from_the_page_takes_no_query(self) -> None:
         # Only the URL the owner typed says which filter they meant.
         page = '<a href="https://contoso.wd3.myworkdayjobs.com/en-US/Careers?jobFamily=1">'

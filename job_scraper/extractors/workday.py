@@ -74,6 +74,21 @@ class CappedTotalError(pagination.ShortWalkError):
         self.endpoint = endpoint
 
 
+class FacetNotAppliedError(ValueError):
+    """The first response does not show the listing's filter query applied.
+
+    A different board from the one configured, so the source fails. The
+    endpoint and the filter are fields for the same reason as
+    `CappedTotalError`'s: the probe tells the owner to check the query from
+    them, and must not blame this reader, which is right to refuse.
+    """
+
+    def __init__(self, message: str, *, endpoint: str, facets: dict[str, list[str]]) -> None:
+        super().__init__(message)
+        self.endpoint = endpoint
+        self.facets = facets
+
+
 _HOST = re.compile(r"(?P<tenant>[a-z0-9][a-z0-9-]*)\.wd\d+\.myworkdayjobs\.com", re.I)
 _LOCALE = re.compile(r"[a-z]{2}-[A-Z]{2}")
 _DEFAULT_LOCALE = "en-US"
@@ -173,33 +188,41 @@ def _check_applied(
     if not facets:
         return
     if total is None:
-        raise ValueError(
+        raise FacetNotAppliedError(
             f"{source_name}: {api_url} states no total, so nothing shows that the "
-            f"filter {facets} was applied; refusing a board that may not be the one configured"
+            f"filter {facets} was applied; refusing a board that may not be the one configured",
+            endpoint=api_url,
+            facets=facets,
         )
     listed = _facet_lists(data.get("facets") if isinstance(data, dict) else None)
     for parameter, ids in facets.items():
         if parameter not in listed:
-            raise ValueError(
+            raise FacetNotAppliedError(
                 f"{source_name}: {api_url} lists no {parameter!r} facet, so nothing shows "
                 "that filter was applied; Workday may have ignored it and read the whole "
-                "board. Check the name against the listing's own filter query."
+                "board. Check the name against the listing's own filter query.",
+                endpoint=api_url,
+                facets=facets,
             )
         counts = {str(v.get("id")): v.get("count") for v in listed[parameter] if "id" in v}
         missing = [i for i in ids if not isinstance(counts.get(i), int)]
         if missing:
-            raise ValueError(
+            raise FacetNotAppliedError(
                 f"{source_name}: {api_url} has no {parameter!r} value counted under id "
                 f"{', '.join(missing)}: a mistyped id, or one with no postings today. "
-                "Either way nothing shows the filter was applied."
+                "Either way nothing shows the filter was applied.",
+                endpoint=api_url,
+                facets=facets,
             )
         applied = sum(int(counts[i]) for i in ids)
         shown = applied == total if len(ids) == 1 else applied >= total
         if not shown:
-            raise ValueError(
+            raise FacetNotAppliedError(
                 f"{source_name}: {api_url} states {total} postings, but its {parameter!r} "
                 f"facet gives the filter's own value(s) {applied}. Workday did not apply "
-                "the filter as configured, so this is a different board; refusing it."
+                "the filter as configured, so this is a different board; refusing it.",
+                endpoint=api_url,
+                facets=facets,
             )
 
 

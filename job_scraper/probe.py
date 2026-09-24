@@ -720,6 +720,9 @@ class ReaderRun:
     # Set when the board states Workday's capped total: (total, endpoint). The
     # reader is right to refuse it, so the verdict must not blame it either.
     capped: tuple[int, str] | None = None
+    # Set when the board's filter query was not shown applied: (endpoint, the
+    # filter's parameters). Also the reader being right, not broken.
+    unapplied: tuple[str, list[str]] | None = None
 
     @property
     def ok(self) -> bool:
@@ -866,6 +869,9 @@ def run_reader(
         # Read from the exception's fields, never its wording (see above).
         run.error = f"{type(exc).__name__}: {exc}"
         run.capped = (exc.total, exc.endpoint)
+    except workday.FacetNotAppliedError as exc:
+        run.error = f"{type(exc).__name__}: {exc}"
+        run.unapplied = (exc.endpoint, sorted(exc.facets))
     except Exception as exc:  # noqa: BLE001 — every failure is part of the report
         run.error = f"{type(exc).__name__}: {exc}"
     return run
@@ -1376,6 +1382,20 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
             "cap with the listing's own facet query in its url (tick a filter on the "
             "listing and copy the query, e.g. ?locationCountry=<id>), then probe that url "
             "— SP3c in docs/SOURCES-PLAN.md.",
+            run,
+        )
+    unapplied = [r for r in runs if r.unapplied is not None]
+    if unapplied:
+        run = unapplied[0]
+        endpoint, parameters = run.unapplied or ("", [])
+        return ProbeResult(
+            NOT_FEASIBLE,
+            f"{NOT_FEASIBLE} as it stands — rung 5: {endpoint} did not show the url's "
+            f"filter ({', '.join(parameters)}) applied, so what came back is not the board "
+            "the url names. workday.py is right to refuse it. Check the query against the "
+            "one Workday's listing shows once the filter is ticked: a mistyped id, or a "
+            "value with no postings today, fails the same way — SP3c in "
+            "docs/SOURCES-PLAN.md.",
             run,
         )
     failed = [r for r in runs if r.error is not None]
