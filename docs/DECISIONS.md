@@ -874,7 +874,10 @@ session — see `CLAUDE.md`.
   since the reader is right to refuse. A Workday URL probed with a query keeps
   it in the board read and in the `sources.yaml` block printed
   (`Platform.keeps_query`). This applies only to the URL typed: a board merely
-  linked from a page is read without one.
+  linked from a page is read without one. A filter the response does not show
+  applied is handled the same way (SP3c review): `workday.FacetNotAppliedError`,
+  still a `ValueError`, carrying `.endpoint` and `.facets`. The probe tells the
+  owner to check the url's query, not that the reader is broken.
 - **The owner's chosen country stays out of tracked prose, but not out of the
   fixture** (SP3c). Which country the owner wants to work in belongs with
   `rules.json` and `sources.yaml`. So no plan, decisions entry, docstring,
