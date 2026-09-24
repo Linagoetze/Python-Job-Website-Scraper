@@ -810,13 +810,12 @@ def test_workday_detail_urls_keep_the_shape_the_rendered_page_linked(
     With no locale in the listing URL the rendered page still linked under
     /en-US/, and every stored Workday row has that form (SP3b, DECISIONS.md).
     """
-    assert workday._endpoints(listing) == (api, prefix)
+    assert workday._endpoints(listing) == (api, prefix, {})
 
 
 @pytest.mark.parametrize(
     "listing",
     [
-        "https://tenant.wd1.myworkdayjobs.com/en-US/Board?locations=abc",
         "https://tenant.wd1.myworkdayjobs.com/en-US/Board/details/x",
         "https://tenant.wd1.myworkdayjobs.com/",
         "https://careers.example.org/Board",
@@ -827,6 +826,188 @@ def test_workday_refuses_a_listing_it_cannot_map_exactly(listing: str) -> None:
     with pytest.raises(ValueError):
         workday.extract(listing, board, "tenant")
     assert board.asked == []
+
+
+# --- Workday: the listing's own filter query (SP3c) ---------------------
+#
+# Invented ids and places throughout: the real board is narrowed to a country
+# that stays out of tracked files (docs/DECISIONS.md, SP3c).
+
+_FACET_ID = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
+_OTHER_ID = "ffeeddccbbaa99887766554433221100"
+_FACETED_URL = f"{_WORKDAY_URL}?locationCountry={_FACET_ID}"
+
+
+class _FacetedBoard(_WorkdayBoard):
+    """A board of *whole* postings, *size* of them in the invented country.
+
+    The response is shaped like the real one: `locationCountry` nested under
+    `locationMainGroup`, and — Workday's facets being disjunctive — the applied
+    parameter's own list keeping whole-board counts. *ignores* makes Workday
+    drop the filter and serve the whole board; *facets* replaces the facet
+    list outright.
+    """
+
+    def __init__(
+        self,
+        size: int,
+        whole: int = 900,
+        *,
+        ignores: bool = False,
+        facets: list[dict[str, Any]] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self.filtered = size
+        self.ignores = ignores
+        self.payloads: list[dict[str, Any]] = []
+        self.facets = facets
+        super().__init__(whole if ignores else size, total=whole if ignores else size, **kwargs)
+        self.whole = whole
+
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        self.payloads.append(payload)
+        body = super().post_json(url, payload, **kwargs)
+        country = {
+            "facetParameter": "locationCountry",
+            "descriptor": "Country",
+            "values": [
+                {"descriptor": "Ruritania", "id": _FACET_ID, "count": self.filtered},
+                {"descriptor": "Elbonia", "id": _OTHER_ID, "count": self.whole - self.filtered},
+            ],
+        }
+        body["facets"] = (
+            self.facets
+            if self.facets is not None
+            else [
+                {"facetParameter": "timeType", "values": [{"id": "x", "count": body.get("total")}]},
+                {"facetParameter": "locationMainGroup", "values": [country]},
+            ]
+        )
+        return body
+
+
+def test_workday_translates_the_listing_query_into_applied_facets() -> None:
+    """Each key a facet parameter, a repeated key a list of ids, the rest untouched."""
+    listing = (
+        "https://tenant.wd1.myworkdayjobs.com/de-DE/Board"
+        f"?locationCountry={_FACET_ID}&jobFamilyGroup=abc&locationCountry={_OTHER_ID}"
+    )
+    assert workday._endpoints(listing) == (
+        "https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/Board/jobs",
+        "https://tenant.wd1.myworkdayjobs.com/de-DE/Board",
+        {"locationCountry": [_FACET_ID, _OTHER_ID], "jobFamilyGroup": ["abc"]},
+    )
+
+
+def test_workday_a_repeated_id_is_sent_once() -> None:
+    listing = f"{_FACETED_URL}&locationCountry={_FACET_ID}"
+    assert workday._endpoints(listing)[2] == {"locationCountry": [_FACET_ID]}
+
+
+def test_workday_keeps_the_tenant_rule_with_a_query() -> None:
+    api, _, _ = workday._endpoints(f"https://osv-chegg.wd5.myworkdayjobs.com/Busuu?a={_FACET_ID}")
+    assert api == "https://osv-chegg.wd5.myworkdayjobs.com/wday/cxs/osv_chegg/Busuu/jobs"
+
+
+def test_workday_walks_a_filtered_board_with_its_facets_on_every_page() -> None:
+    board = _FacetedBoard(45)
+    jobs = workday.extract(_FACETED_URL, board, "tenant")
+
+    assert len(jobs) == 45
+    assert [p["offset"] for p in board.payloads] == [0, 20, 40]
+    assert all(p["appliedFacets"] == {"locationCountry": [_FACET_ID]} for p in board.payloads)
+
+
+def test_workday_the_query_never_reaches_a_detail_url() -> None:
+    """Stored jobs are keyed on detail_url; the rendered page's hrefs carry the
+    query, so a key built from them would never match a stored one again."""
+    jobs = workday.extract(_FACETED_URL, _FacetedBoard(3), "tenant")
+
+    assert [j["detail_url"] for j in jobs] == [
+        f"https://tenant.wd1.myworkdayjobs.com/en-US/Board/job/Geneva/Role-{n}_R{n}"
+        for n in range(3)
+    ]
+    assert all(j["apply_url"] == j["detail_url"] for j in jobs)
+    assert {j["listing_url"] for j in jobs} == {_FACETED_URL}
+
+
+@pytest.mark.parametrize(
+    ("query", "complaint"),
+    [
+        ("locationCountry", "not key=value pairs"),
+        (f"locationCountry={_FACET_ID}&&a=b", "not key=value pairs"),
+        ("locationCountry=", "empty facet name or id"),
+        (f"={_FACET_ID}", "empty facet name or id"),
+        ("locationCountry=%20", "empty facet name or id"),
+    ],
+)
+def test_workday_refuses_a_query_it_cannot_translate(query: str, complaint: str) -> None:
+    board = _FacetedBoard(5)
+    with pytest.raises(ValueError, match=complaint):
+        workday.extract(f"{_WORKDAY_URL}?{query}", board, "tenant")
+    assert board.asked == []
+
+
+def test_workday_an_ignored_filter_fails_the_source() -> None:
+    """Workday answered with the whole board: a different board from the one
+    configured, even though it is under the cap and would walk cleanly."""
+    board = _FacetedBoard(16, whole=900, ignores=True)
+    with pytest.raises(
+        workday.FacetNotAppliedError, match="states 900 postings.*gives the filter's own value"
+    ) as caught:
+        workday.extract(_FACETED_URL, board, "tenant")
+    assert [offset for _, offset in board.asked] == [0]
+    # Fields, not only words: the probe builds its verdict from these.
+    assert caught.value.endpoint == _WORKDAY_API
+    assert caught.value.facets == {"locationCountry": [_FACET_ID]}
+
+
+def test_workday_a_facet_missing_from_the_response_fails_the_source() -> None:
+    board = _FacetedBoard(16, facets=[{"facetParameter": "timeType", "values": []}])
+    with pytest.raises(ValueError, match="lists no 'locationCountry' facet"):
+        workday.extract(_FACETED_URL, board, "tenant")
+
+
+def test_workday_an_id_missing_from_its_facet_fails_the_source() -> None:
+    """A mistyped id, or a country with nothing posted: either way unproven."""
+    board = _FacetedBoard(16)
+    with pytest.raises(ValueError, match="no 'locationCountry' value counted under id deadbeef"):
+        workday.extract(f"{_WORKDAY_URL}?locationCountry=deadbeef", board, "tenant")
+
+
+def test_workday_a_filtered_board_without_a_total_fails_the_source() -> None:
+    board = _FacetedBoard(16)
+    board.total = None
+    with pytest.raises(ValueError, match="states no total"):
+        workday.extract(_FACETED_URL, board, "tenant")
+
+
+def test_workday_several_ids_need_only_reach_the_total() -> None:
+    """A posting listed in two of the chosen countries counts under both."""
+    both = f"{_FACETED_URL}&locationCountry={_OTHER_ID}"
+    board = _FacetedBoard(30, whole=50)
+    board.size = board.total = 45  # 30 + 20 counted, 45 distinct postings
+    assert len(workday.extract(both, board, "tenant")) == 45
+
+    short = _FacetedBoard(30, whole=50)
+    short.size = short.total = 51
+    with pytest.raises(ValueError, match="gives the filter's own value"):
+        workday.extract(both, short, "tenant")
+
+
+def test_workday_an_unfiltered_board_needs_no_facets_in_its_response() -> None:
+    """SP3b's boards: no query, nothing to prove, the response's facets unread."""
+    board = _FacetedBoard(5, facets=[])
+    assert len(workday.extract(_WORKDAY_URL, board, "tenant")) == 5
+    assert board.payloads[0]["appliedFacets"] == {}
+
+
+def test_workday_a_narrowed_board_still_at_the_cap_fails() -> None:
+    board = _FacetedBoard(2400, whole=2900)
+    board.total = 2000
+    with pytest.raises(ShortWalkError, match="states 2000 postings"):
+        workday.extract(_FACETED_URL, board, "tenant")
+    assert [offset for _, offset in board.asked] == [0]
 
 
 def test_workday_refuses_a_fetcher_that_cannot_post() -> None:

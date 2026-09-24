@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3 and SP3b are done** (as of 2026-09-23); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b and SP3c are done** (as of 2026-09-24); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -96,7 +96,7 @@ the ordering below.
 | 2b | Candidate re-checks and activation | 1.5 hr | Opus 5 | `think` | done | `sp2b-candidate-lifecycle` |
 | 3 | `sources probe` — the feasibility ladder as a command | 2.5 hr | Opus 5 | `think hard` | done | `sp3-source-probe` |
 | 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
-| 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | not started | `sp3c-workday-facets` |
+| 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | not started | `sp4-fixtures-ats` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
@@ -161,7 +161,7 @@ The surfaces, and what invalidates each:
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7 | Three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, fixture count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. |
+| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
@@ -1515,19 +1515,85 @@ country.
 Branch sp3c-workday-facets. One commit per step. Do not push.
 ```
 
+### Result — done 2026-09-24, branch `sp3c-workday-facets`
+
+- **airbus: refused → 16 rows.** Before, the board stated 2000 and the reader
+  failed the source after one POST (and before SP3b it returned 20 of about
+  2,940 without a word). Narrowed to the owner's chosen country, it states 16,
+  which is the count SP3b's unfiltered response gave that country the day
+  before. The owner pasted the url into `sources.yaml` during the session.
+- **Step 1, two live requests.** robots.txt on `ag.wd3.myworkdayjobs.com`:
+  `User-agent: *` / `Allow: /Airbus/` / `Disallow: /Airbus_Specific/` /
+  `Disallow: /refreshFacet/`. `RobotsPolicy.explain` found no deciding line
+  for the filtered listing or for `/wday/cxs/ag/Airbus/jobs`, so it allowed
+  both. (The file itself was fetched twice, once per script run.)
+  (a) The render said "16 JOBS FOUND" / "1 - 16 of 16 jobs", and all 16 job
+  hrefs carried the filter query. (b) The POST with the facet applied gave
+  `total` 16, matching.
+- **What proves the facet was applied: its own count equals `total`.**
+  Workday's facets are disjunctive. `locationCountry` (nested under
+  `locationMainGroup`) kept whole-board counts for all 37 countries (2,898),
+  with the chosen one at 16, while every other facet narrowed to sum to
+  exactly 16. An ignored filter would return the board's `total`, which is
+  not the country's count. No extra request is needed, so the session did not
+  stop. Details are in `docs/DECISIONS.md`.
+- **Built.** `workday._endpoints` translates the query into `appliedFacets`
+  and refuses what it cannot translate. `_check_applied` fails the source on
+  the first response when the filter is not shown applied. The cap refusal
+  runs first, so a narrowed board at 2000 still fails, and the tenant rule is
+  unchanged. Detail URLs carry no query.
+- **Probe.** The cap is `workday.CappedTotalError` (a `ShortWalkError`,
+  carrying `.total` and `.endpoint`). The verdict now says the board is past
+  Workday's cap and must be narrowed with a facet query (SP3c), and no longer
+  calls it a bug in `workday.py`. A Workday URL probed with a query keeps it in
+  the board and in the printed `sources.yaml` block. After review, the same
+  treatment went to a filter the response does not show applied:
+  `workday.FacetNotAppliedError` (still a `ValueError`, carrying `.endpoint`
+  and `.facets`), which the probe sends back to the url's query rather than
+  calling it a bug in `workday.py`.
+- **Store (read-only).** 17 airbus rows: 16 `rejected`, 1 `delisted`, none
+  `new` or `seen`. **0 rows** will be delisted by the narrowing.
+- **Capture: option (a), the owner's choice**, made knowing it publishes the
+  country (its postings' locations, and the id in `FIXTURE_CASES` and the
+  golden). One POST, with no contact details, no robots.txt check and no
+  throttle, because SP4's step 0 has not landed (robots.txt had been checked
+  by hand the same day). 16 postings. None of their detail URLs has a query,
+  and the one posting also in the store has a byte-identical key there.
+  Translation tests use invented ids only.
+- **28 new tests (946 to 974):** 16 on the translation, the refusals, the
+  filter-not-applied failures, several ids, and the cap on a narrowed board;
+  7 on the probe (both verdicts, each read from fields and not words, the
+  subclass, the query kept, a linked board taking no query); and 5 from the
+  airbus fixture joining the parametrised fixture tests. No test touches the
+  network.
+- **Live traffic, all of it:** robots.txt (twice), one render, one POST
+  (step 1), and one capture POST (step 5).
+- **Docs:** README (test count; the `url` row now says a Workday url may carry
+  the listing's filter query, and why airbus has one); four entries in
+  `docs/DECISIONS.md`. The README has no fixture count to move; the later
+  prompts that asked for one were corrected in review. Run by Opus 5.5, not
+  the Sonnet recommended.
+- **Plan amendments made in review:** SP4 (its captures' politeness now names
+  SP3c's; no fixture count), SP5 (a capped or unapplied Workday board is
+  narrowed or its query checked, not recorded as a blocker), SP6 (no fixture
+  count), SP7 (airbus no longer fails, so stub the failure; 16 is a "typical
+  page size" and airbus now reads 16).
+
 ### Your to-dos
 
-- [ ] **At the start of the session:** give it the country, its
+- [x] **At the start of the session:** give it the country, its
       `locationCountry` facet id and the 2026-09-23 count. They are in the
       SP3b session's closing message, and nowhere in the repository.
-- [ ] **During the session, after step 4:** paste the printed `url` into
-      `sources.yaml`.
-- [ ] **Step 5:** decide whether airbus gets a fixture. A fixture publishes
-      the country through its postings' locations.
-- [ ] If step 1 finds nothing in the response that proves the filter was
-      applied, the session stops. The choice is then between an extra request
-      per run to check it, or accepting an unverified filter. That choice is
-      yours.
+      **Done 2026-09-24:** the owner named the country; the id and the count
+      were taken from the SP3b response saved in the session transcript.
+- [x] **During the session, after step 4:** paste the printed `url` into
+      `sources.yaml`. **Done.**
+- [x] **Step 5:** decide whether airbus gets a fixture. A fixture publishes
+      the country through its postings' locations. **Chosen: (a), captured.**
+- [x] ~~If step 1 finds nothing in the response that proves the filter was
+      applied, the session stops.~~ **Moot:** the applied id's own count
+      proves it, so neither an extra request per run nor an unverified
+      filter was needed.
 - [ ] After merging, check the next run's summary: airbus should report the
       country's count instead of failing.
 
@@ -1569,7 +1635,7 @@ it correctly and gets the data wrong.
 STEP 0, BEFORE ANY CAPTURE: MAKE THE CAPTURE A POLITE GUEST. Its own commit.
 scripts/capture_fixtures.py runs outside http.polite_fetching, by a recorded
 decision (docs/DECISIONS.md, "Politeness is run-scoped"), so every capture so
-far, SP3b's included, went out as "no contact configured", consulted no
+far, SP3b's and SP3c's included, went out as "no contact configured", consulted no
 robots.txt and paid no per-host spacing. That entry's reasoning (a test or a
 one-off fetch should pay nothing) holds for tests. It does not hold for a tool
 whose whole job is live requests to other people's sites, and this package
@@ -1615,7 +1681,8 @@ test, and raise it as its own package rather than half-doing it.
 Do not capture the other eight readers here. That is SP6.
 
 DOCS. README.md's Tests section says "thirteen of the twenty-six extractors are
-uncovered" and gives a test count and a fixture count. All three move here.
+uncovered" and gives a test count. Both move here. (It gives no fixture count;
+SP3c found that out. Do not add one.)
 That sentence is the headline number for this whole exercise, so update it on
 every instalment rather than at the end.
 
@@ -1683,12 +1750,20 @@ For each, in order, and stop at the first rung that fails:
      `candidate add` or `exclude` on an existing candidate: both refuse, and
      neither refusal is a reason to edit the file by hand.
    A re-check is dated with the day the probe actually ran.
+   EXCEPT a Workday board past the cap: the probe says "not feasible as it
+   stands" because it states 2000, Workday's cap on its count (SP3c). That is
+   not a blocker. Ask the owner which filter to narrow it by, tick it on the
+   listing, and probe the URL with the listing's own query
+   (`?locationCountry=<id>`); if it is then under the cap, carry on at step 3.
+   If the filter itself is private, as airbus's country is, keep it out of
+   tracked prose (docs/DECISIONS.md, SP3c). The same goes for "did not show
+   the url's filter applied": check the query, do not record a blocker.
 
 Then run the pipeline against the new sources only and confirm the postings that
 come back look like real postings, not like a plausible-looking parse of the
 wrong element.
 
-DOCS. Update the test and fixture counts in README.md. Do NOT add the company
+DOCS. Update the test count in README.md (it has no fixture count). Do NOT add the company
 names to any tracked file — see "Publishing this file".
 
 Branch sp5-add-sources. Commit, do not push. Update this plan file with one line
@@ -1736,8 +1811,8 @@ the page, then pin the golden. Do not reason about the layout before capturing.
 Resolve reader names to source names via registry.py before capturing — seven of
 these eight share a name with their source, but `coefficient` does not.
 
-DOCS. Update README.md's uncovered-reader sentence, test count and fixture
-count on EVERY instalment — the number is the point of the exercise, and a
+DOCS. Update README.md's uncovered-reader sentence and test count (it has no
+fixture count) on EVERY instalment — the number is the point of the exercise, and a
 sentence that is right only at the end is wrong for most of the time it is read.
 
 Branch sp6-fixtures-rest. Commit, do not push. Update the SP6 table in this plan
@@ -1807,7 +1882,8 @@ per warning.
    delisted. Split the Sources line so a failure is not counted as a skip.
    Build the block from the pipeline's in-memory source_health list, not
    from the store, so a --dry-run shows it too. The dry run is where this
-   was found.
+   was found. airbus stopped failing with SP3c, so reproduce a failure with
+   a stubbed extractor in the tests, not by waiting for a live one.
 
 2. ONE PAGE, EVERY RUN. Warn when a source's last N successful runs in
    source_health all returned the same number of rows, and that number is a
@@ -1825,6 +1901,15 @@ per warning.
    rule against the real store (read-only) and report which of today's
    sources would trip it, by name, before deciding whether anything needs
    to quiet it. Do not add a config key to silence it without asking.
+   A KNOWN FALSE POSITIVE, from SP3c: probe.TYPICAL_PAGE_SIZES includes 16,
+   and airbus, narrowed below Workday's cap, reads 16 postings — whole, and
+   checked against the total its board states. A narrowed board that stays
+   at 16 for N runs trips the rule as written. Report whether it does in
+   the real store. Consider not warning for a source whose reader walks and
+   checks a stated total itself (the probe's `guarded` platforms, Workday
+   among them): for those a constant count means a constant board, not one
+   page. Put that exemption to the owner rather than adding it quietly, and
+   test it both ways.
    Read the store; never write to it outside a run.
 
 3. TOMBSTONE GUARD — OPTIONAL. Ask the owner at the start whether they still

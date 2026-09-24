@@ -32,7 +32,7 @@ import yaml
 
 from job_scraper import curated, probe
 from job_scraper import http as http_mod
-from job_scraper.extractors import workable
+from job_scraper.extractors import workable, workday
 from job_scraper.http import FetchedPage
 from job_scraper.robots import RobotsDisallowed, RobotsPolicy
 from job_scraper.tools import sources as sources_cli
@@ -928,6 +928,154 @@ class TestPagination:
 
 
 # --- rung 7: the verdict ---------------------------------------------------
+
+
+class TestWorkdayCapAndFacets:
+    """SP3c: a capped board is told to narrow itself, and a narrowed one stays narrowed.
+
+    The facet id is invented; the real one stays out of tracked files.
+    """
+
+    FACET_ID = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
+
+    def capped_path(self) -> StubFetcher:
+        first = json.loads(fixture("path.json"))
+        first["total"] = 2000
+        return path_workday([], posted=[json.dumps(first)])
+
+    def test_a_capped_board_is_told_to_narrow_not_blamed(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        fetcher = self.capped_path()
+        result, report = run_probe(PATH_PROBED, fetcher, curated_dir, tmp_path)
+
+        assert "FAILED — CappedTotalError" in report
+        assert result.kind == probe.NOT_FEASIBLE
+        assert result.run is not None and result.run.capped == (2000, PATH_API)
+        assert f"{PATH_API} states 2000 postings, Workday's cap" in result.line
+        assert "past the cap" in result.line
+        assert "facet query" in result.line
+        assert "SP3c" in result.line
+        assert "bug in workday.py" not in result.line
+        assert "registry.py (in REGISTRY)" not in report
+        # One request, then the refusal: the walk never starts.
+        assert [line for line in fetcher.log if line.startswith("POST ")] == [
+            f"POST {PATH_API} offset=0"
+        ]
+
+    def test_the_cap_is_read_from_the_exceptions_fields_not_its_words(
+        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The RobotsDisallowed rule: a reworded message must not change the verdict.
+        def reworded(url: str, fetch: Any, source_name: str) -> Any:
+            raise workday.CappedTotalError(
+                "too many", total=2000, endpoint="https://x.wd1.myworkdayjobs.com/api"
+            )
+
+        monkeypatch.setattr(workday, "extract", reworded)
+        result, _ = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
+
+        assert "https://x.wd1.myworkdayjobs.com/api states 2000 postings" in result.line
+        assert "past the cap" in result.line
+
+    def test_the_capped_refusal_is_a_short_walk_with_fields(self) -> None:
+        from job_scraper.extractors.pagination import ShortWalkError
+
+        exc = workday.CappedTotalError("m", total=2000, endpoint="https://e")
+        assert isinstance(exc, ShortWalkError)
+        assert (exc.total, exc.endpoint) == (2000, "https://e")
+
+    def test_a_facet_query_stays_in_the_board_and_the_paste_block(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        probed = f"{PATH_PROBED}?locationCountry={self.FACET_ID}"
+        board = f"{PATH_BOARD}?locationCountry={self.FACET_ID}"
+        first = json.loads(fixture("path.json"))
+        first["facets"] = [
+            {
+                "facetParameter": "locationMainGroup",
+                "values": [
+                    {
+                        "facetParameter": "locationCountry",
+                        "values": [{"descriptor": "Ruritania", "id": self.FACET_ID, "count": 64}],
+                    }
+                ],
+            }
+        ]
+        payloads: list[dict[str, Any]] = []
+
+        class Recording(StubFetcher):
+            def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+                payloads.append(payload)
+                return super().post_json(url, payload, **kwargs)
+
+        rendered = fixture("path.rendered.html")
+        fetcher = Recording(
+            [],
+            static={probed: probe_fixture("shell.html")},
+            rendered={probed: rendered, board: rendered},
+            posted={PATH_API: [json.dumps(first)] + [fixture(n) for n in PATH_WALK[1:]]},
+        )
+        result, report = run_probe(probed, fetcher, curated_dir, tmp_path)
+
+        assert result.kind == probe.REUSE
+        assert f"board: {board}  (Workday" in report
+        assert f"workday on {board} (dynamic)" in report
+        assert f"url: {board}" in report
+        assert {str(p["appliedFacets"]) for p in payloads} == {
+            str({"locationCountry": [self.FACET_ID]})
+        }
+        # The detail URLs still carry no query.
+        assert result.run is not None
+        assert not any("?" in str(r["detail_url"]) for r in result.run.rows)
+
+    def test_an_unapplied_filter_is_sent_back_to_the_query_not_blamed(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # path's real response has no value under the invented id, which is
+        # what a mistyped id looks like: the reader refuses, rightly.
+        probed = f"{PATH_PROBED}?locationCountry={self.FACET_ID}"
+        board = f"{PATH_BOARD}?locationCountry={self.FACET_ID}"
+        rendered = fixture("path.rendered.html")
+        fetcher = StubFetcher(
+            [],
+            static={probed: probe_fixture("shell.html")},
+            rendered={probed: rendered, board: rendered},
+            posted={PATH_API: [fixture(n) for n in PATH_WALK]},
+        )
+        result, report = run_probe(probed, fetcher, curated_dir, tmp_path)
+
+        assert "FAILED — FacetNotAppliedError" in report
+        assert result.kind == probe.NOT_FEASIBLE
+        assert result.run is not None
+        assert result.run.unapplied == (PATH_API, ["locationCountry"])
+        assert f"{PATH_API} did not show the url's filter (locationCountry) applied" in (
+            result.line
+        )
+        assert "SP3c" in result.line
+        assert "bug in workday.py" not in result.line
+        assert "registry.py (in REGISTRY)" not in report
+
+    def test_an_unapplied_filter_is_read_from_fields_not_words(
+        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def reworded(url: str, fetch: Any, source_name: str) -> Any:
+            raise workday.FacetNotAppliedError(
+                "no", endpoint="https://x.wd1.myworkdayjobs.com/api", facets={"jobFamily": ["1"]}
+            )
+
+        monkeypatch.setattr(workday, "extract", reworded)
+        result, _ = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
+
+        assert "https://x.wd1.myworkdayjobs.com/api did not show" in result.line
+        assert "(jobFamily)" in result.line
+
+    def test_a_board_merely_linked_from_the_page_takes_no_query(self) -> None:
+        # Only the URL the owner typed says which filter they meant.
+        page = '<a href="https://contoso.wd3.myworkdayjobs.com/en-US/Careers?jobFamily=1">'
+        scan = probe.scan_page(page, CONTOSO, "static")
+        _, boards = probe.fingerprint(CONTOSO, None, [scan])
+        assert [b.url for b in boards] == ["https://contoso.wd3.myworkdayjobs.com/Careers"]
 
 
 class TestVerdict:

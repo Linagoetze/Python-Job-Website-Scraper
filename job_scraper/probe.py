@@ -184,6 +184,10 @@ class Platform:
     not_slugs: frozenset[str] = frozenset()
     # Platforms served from the employer's own host: the page is the board.
     page_is_board: bool = False
+    # The board's filter query is part of the board (SP3c: a Workday url may
+    # carry the listing's own facet query), so a board read off the URL probed
+    # keeps it — in what the reader reads and in the block the probe prints.
+    keeps_query: bool = False
     # Printed beside an EU board (a pattern's `eu` group matched) whose reader
     # only calls the non-EU API, so the failure that follows is explained.
     eu_note: str = ""
@@ -319,10 +323,12 @@ PLATFORMS: tuple[Platform, ...] = (
         strategy="dynamic",
         walk=(
             "walks the board's JSON endpoint to its stated total and fails a short walk "
-            "(pagination.py); a board stating 2000, Workday's cap on that count, fails unread"
+            "(pagination.py); a board stating 2000, Workday's cap on that count, fails unread "
+            "until its url carries the listing's own facet query"
         ),
         guarded=True,
         not_slugs=frozenset({"wday", "assets"}),
+        keeps_query=True,
     ),
     Platform(
         key="breezy",
@@ -647,6 +653,8 @@ def fingerprint(
                     if slug.casefold() in platform.not_slugs:
                         continue
                     url = platform.board_url(match)
+                    if platform.keeps_query and label == "the URL probed":
+                        url = _with_query(url, text)
                     try:
                         identity = board_identity(url)
                     except ValueError:
@@ -671,6 +679,14 @@ def fingerprint(
         if extra > 0:
             seen[platform.key].append(f"{extra} more board(s) not read")
     return seen, boards
+
+
+def _with_query(board_url: str, probed: str) -> str:
+    """*board_url* with the probed URL's query, when that URL is this very board."""
+    query = urlsplit(probed).query
+    if not query or board_identity(probed) != board_identity(board_url):
+        return board_url
+    return f"{board_url}?{query}"
 
 
 def _page_board_url(platform: Platform, final_url: str) -> str:
@@ -701,6 +717,12 @@ class ReaderRun:
     # Set when robots.txt refused a request the reader made: the URL it asked
     # for. The reader did nothing wrong, so the verdict must not blame it.
     refused_url: str | None = None
+    # Set when the board states Workday's capped total: (total, endpoint). The
+    # reader is right to refuse it, so the verdict must not blame it either.
+    capped: tuple[int, str] | None = None
+    # Set when the board's filter query was not shown applied: (endpoint, the
+    # filter's parameters). Also the reader being right, not broken.
+    unapplied: tuple[str, list[str]] | None = None
 
     @property
     def ok(self) -> bool:
@@ -843,6 +865,13 @@ def run_reader(
         # (workable.py POSTs through http.post_json, not through `fetch`).
         run.error = f"{type(exc).__name__}: {exc}"
         run.refused_url = exc.url or "(URL not reported)"
+    except workday.CappedTotalError as exc:
+        # Read from the exception's fields, never its wording (see above).
+        run.error = f"{type(exc).__name__}: {exc}"
+        run.capped = (exc.total, exc.endpoint)
+    except workday.FacetNotAppliedError as exc:
+        run.error = f"{type(exc).__name__}: {exc}"
+        run.unapplied = (exc.endpoint, sorted(exc.facets))
     except Exception as exc:  # noqa: BLE001 — every failure is part of the report
         run.error = f"{type(exc).__name__}: {exc}"
     return run
@@ -1339,6 +1368,34 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
             f"{NOT_FEASIBLE} — rung 2: robots.txt forbids {run.refused_url}, which the "
             f"{run.board.platform.key} reader asked for while reading {run.board.url}. "
             + IGNORE_ROBOTS_NOTE,
+            run,
+        )
+    capped = [r for r in runs if r.capped is not None]
+    if capped:
+        run = capped[0]
+        total, endpoint = run.capped or (0, "")
+        return ProbeResult(
+            NOT_FEASIBLE,
+            f"{NOT_FEASIBLE} as it stands — rung 5: {endpoint} states {total} postings, "
+            "Workday's cap on that count, so the board is past the cap and a walk could "
+            "not be checked. workday.py is right to refuse it. Narrow the board below the "
+            "cap with the listing's own facet query in its url (tick a filter on the "
+            "listing and copy the query, e.g. ?locationCountry=<id>), then probe that url "
+            "— SP3c in docs/SOURCES-PLAN.md.",
+            run,
+        )
+    unapplied = [r for r in runs if r.unapplied is not None]
+    if unapplied:
+        run = unapplied[0]
+        endpoint, parameters = run.unapplied or ("", [])
+        return ProbeResult(
+            NOT_FEASIBLE,
+            f"{NOT_FEASIBLE} as it stands — rung 5: {endpoint} did not show the url's "
+            f"filter ({', '.join(parameters)}) applied, so what came back is not the board "
+            "the url names. workday.py is right to refuse it. Check the query against the "
+            "one Workday's listing shows once the filter is ticked: a mistyped id, or a "
+            "value with no postings today, fails the same way — SP3c in "
+            "docs/SOURCES-PLAN.md.",
             run,
         )
     failed = [r for r in runs if r.error is not None]

@@ -809,3 +809,83 @@ session — see `CLAUDE.md`.
   past its own check. That is `not feasible — rung 5`, a bug in that reader,
   matching the SP3 rule that a broken generic reader is fixed, not joined by
   a second module. `needs a new extractor` stays for an unguarded reader.
+- **A Workday facet proves itself applied: the chosen value's own count equals
+  `total`** (SP3c, 2026-09-24, from one render and one POST). Workday's facets
+  are disjunctive. The applied parameter's own list keeps the whole board's
+  counts, so that another value can be added to it, while every other facet
+  narrows to the filtered set. In airbus's response filtered to the owner's
+  chosen country, `total` was 16 (the count SP3b's unfiltered response gave
+  that country the day before); `locationCountry`, nested under
+  `locationMainGroup`, still listed all 37 countries summing to 2,898 with
+  the chosen one at 16; and every other facet (posting date, job category,
+  job family, company, job type, full/part time) summed to exactly 16, where
+  the unfiltered board's did to about 2,940. So an applied filter shows up as
+  "the applied id is in its parameter's list and its count is `total`". An
+  ignored one cannot pass that check: the board's `total` would come back
+  instead, and it is not the country's count. The check needs no extra request,
+  because it reads the first page's response. With several ids under one
+  parameter, a posting listed under two of them counts in both, so the sum can
+  only bound `total` from above. The rendered listing agreed ("16 JOBS
+  FOUND", "1 - 16 of 16 jobs") and put the query on all 16 job hrefs, as
+  `?page=2` did in SP3b. That is why a detail URL is never taken from a
+  rendered href. robots.txt on `ag.wd3.myworkdayjobs.com` was `User-agent: *`
+  / `Allow: /Airbus/` / `Disallow: /Airbus_Specific/` / `Disallow:
+  /refreshFacet/`. `RobotsPolicy.explain` found no deciding line for
+  `/Airbus?locationCountry=…` or `/wday/cxs/ag/Airbus/jobs`, so it allowed
+  both.
+- **A Workday board is narrowed by its listing's own filter query, in its
+  `url`** (SP3c, owner's decision 2026-09-23). The query is the one Workday's
+  listing shows once a filter is ticked (`?locationCountry=<country-id>`). The
+  reader translates it into the POST's `appliedFacets`: each key is a facet
+  parameter, and a repeated key is a list of ids. It was chosen over a registry
+  argument or a new `sources.yaml` key because it needs no pipeline or
+  `registry.py` change (the pipeline hands an extractor only the URL), because
+  it is config and not code, and because a person can open the URL and see the
+  list the reader reads. A query with no faithful translation is refused
+  before any request, naming what it could not read: a key with no `=`, an
+  empty name or id. A key Workday does not know is not refused up front,
+  because the applied check below fails it on the first response. The query
+  never reaches `detail_url`, since the rendered listing appends it to every
+  job href and stored jobs are keyed on that field. `listing_url` is the
+  configured URL as given. The cap refusal stays: a narrowed board that still
+  states 2000 fails, and that check runs before the applied check, because at
+  the cap `total` is a floor and comparing a facet count with it would wrongly
+  blame the filter. Reading all of airbus by splitting the walk per country was
+  rejected: about 150 POSTs per run to one employer, almost all of them for
+  postings the location filter drops.
+- **An unproven facet fails the source; it is not a warning** (SP3c). A filter
+  Workday ignored reads a different board from the one configured. For a board
+  over the cap that shows up as the cap refusal. For one under it, the walk
+  would pass `reconcile` cleanly while holding the wrong postings. So the
+  source fails when the first response lists no facet under the query's
+  parameter, has no counted value under the id, states no total, or gives the
+  id a count other than `total`. With several ids under one parameter, their
+  summed counts must reach `total`. One consequence to know about: a chosen
+  country with no postings on the day is absent from its own facet list, so
+  it fails the source as unproven rather than reading as an empty board. That
+  is deliberate, because a mistyped id looks exactly the same, and reading it
+  as empty would be the "no vacancies" failure priority 2 forbids.
+- **The capped refusal is `workday.CappedTotalError`, and the probe reads its
+  fields** (SP3c). It subclasses `ShortWalkError`, so a run treats it exactly as
+  before. It carries `.total` and `.endpoint`, and the probe's verdict is built
+  from them, never from the message (the `RobotsDisallowed.url` rule). The
+  verdict says the board is past Workday's cap and must be narrowed with a
+  facet query. It no longer calls this "a bug in workday.py", which was wrong,
+  since the reader is right to refuse. A Workday URL probed with a query keeps
+  it in the board read and in the `sources.yaml` block printed
+  (`Platform.keeps_query`). This applies only to the URL typed: a board merely
+  linked from a page is read without one. A filter the response does not show
+  applied is handled the same way (SP3c review): `workday.FacetNotAppliedError`,
+  still a `ValueError`, carrying `.endpoint` and `.facets`. The probe tells the
+  owner to check the url's query, not that the reader is broken.
+- **The owner's chosen country stays out of tracked prose, but not out of the
+  fixture** (SP3c). Which country the owner wants to work in belongs with
+  `rules.json` and `sources.yaml`. So no plan, decisions entry, docstring,
+  commit message or translation test names it or its id; they say "the
+  owner's chosen country" and `<country-id>`, and the translation tests use
+  invented ids. The owner then chose (2026-09-24) to capture airbus's walk
+  anyway, knowing it publishes the country: `tests/fixtures/airbus.json`'s
+  postings name it, and `FIXTURE_CASES`' listing URL and the golden test carry
+  the id. That was a considered trade for a real capture of a filtered walk,
+  and it does not loosen the prose rule. Do not add the name to prose because
+  the fixture already shows it.

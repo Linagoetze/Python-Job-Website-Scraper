@@ -35,6 +35,34 @@ from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 # difference is real, and the company-stamping in pipeline.py relies on the
 # extractor setting the field only when it genuinely knows the employer.
 _GOLDEN: dict[str, dict[str, Any]] = {
+    "airbus": {
+        # SP3c (2026-09-24): one POST, with the listing's own facet query sent
+        # as appliedFacets. The board is narrowed below Workday's 2000 cap to
+        # the owner's chosen country; unnarrowed it states 2000 and is refused.
+        # The response proved the filter applied (the country's own facet count
+        # equals total). The query reaches no detail_url, and the one posting
+        # also in the store has a byte-identical key there.
+        "count": 16,
+        "first_job": {
+            "source_name": "airbus",
+            "title": "Student Assistant HR",
+            "department": "",
+            "location": "CPO - Copenhagen Office",
+            "listing_url": (
+                "https://ag.wd3.myworkdayjobs.com/Airbus"
+                "?locationCountry=49ab063f422741e2aef271de00efeac8"
+            ),
+            "detail_url": (
+                "https://ag.wd3.myworkdayjobs.com/en-US/Airbus/job/CPO---Copenhagen-Office/"
+                "Student-Assistant-HR_JR10443545"
+            ),
+            "apply_url": (
+                "https://ag.wd3.myworkdayjobs.com/en-US/Airbus/job/CPO---Copenhagen-Office/"
+                "Student-Assistant-HR_JR10443545"
+            ),
+            "raw_snippet": "Student Assistant HR CPO - Copenhagen Office",
+        },
+    },
     "busuu": {
         # SP3b (2026-09-23): re-captured as the board's JSON walk (one POST;
         # the board holds 5). The page this replaced was the rendered listing
