@@ -34,16 +34,20 @@ from job_scraper.extractors import (  # noqa: E402
     against_malaria,
     ashby,
     bearingpoint,
+    breezy,
     gfi_europe,
     giving_what_we_can,
     greenhouse,
     impactpool,
     jpal,
+    lever,
     niras,
     personio,
+    smartrecruiters,
     successfactors_html,
     teamtailor,
     unops,
+    workable,
     workday,
 )
 
@@ -224,11 +228,36 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="seven_perigee"),
     ),
     # --- SP4: the five generic ATS readers, captured for the first time ---
+    "new_incentives": (
+        "new_incentives.json",
+        "https://new-incentives.breezy.hr",
+        lambda url, fetch: breezy.extract(url, fetch, source_name="new_incentives"),
+    ),
+    "wave": (
+        "wave.json",
+        "https://www.waveapps.com/about-us/culture",
+        lambda url, fetch: lever.extract(url, fetch, source_name="wave", org_slug="waveapps"),
+    ),
     "outdooractive": (
         # A Personio XML feed, not HTML — see capture_fixtures._guess_extension.
         "outdooractive.xml",
         "https://outdooractive.jobs.personio.de/?language=en",
         lambda url, fetch: personio.extract(url, fetch, source_name="outdooractive"),
+    ),
+    "oecd": (
+        "oecd.json",
+        "https://careers.smartrecruiters.com/OECD/oecd---en",
+        lambda url, fetch: smartrecruiters.extract(url, fetch, source_name="oecd", org_slug="OECD"),
+    ),
+    "nutrition_international": (
+        "nutrition_international.json",
+        "https://apply.workable.com/nutritionintl/",
+        lambda url, fetch: workable.extract(url, fetch, source_name="nutrition_international"),
+    ),
+    "simprints": (
+        "simprints.json",
+        "https://apply.workable.com/simprints/",
+        lambda url, fetch: workable.extract(url, fetch, source_name="simprints"),
     ),
 }
 
