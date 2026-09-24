@@ -1,0 +1,328 @@
+{
+ "total": 9,
+ "results": [
+  {
+   "id": 5253759,
+   "shortcode": "3CAA06941B",
+   "title": "Director of Strategic Partnerships",
+   "remote": true,
+   "location": {
+    "country": "Ghana",
+    "countryCode": "GH",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "Ghana",
+     "countryCode": "GH",
+     "city": "",
+     "region": null,
+     "hidden": true
+    },
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": true
+    },
+    {
+     "country": "Kenya",
+     "countryCode": "KE",
+     "city": "",
+     "region": null,
+     "hidden": true
+    },
+    {
+     "country": "Ethiopia",
+     "countryCode": "ET",
+     "city": "",
+     "region": null,
+     "hidden": true
+    },
+    {
+     "country": "Switzerland",
+     "countryCode": "CH",
+     "city": "",
+     "region": null,
+     "hidden": true
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-08-26T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Partnerships"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 5854217,
+   "shortcode": "DFE7D289AA",
+   "title": "Chief Operating Officer",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": null,
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-06-04T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 5803572,
+   "shortcode": "DE39008B39",
+   "title": "Partnerships Operations Manager",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-05-10T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Partnerships"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 5694575,
+   "shortcode": "8DEE535A33",
+   "title": "Senior Technical Product Manager",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": null,
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-03-31T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Product and Engineering"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 4637923,
+   "shortcode": "665E53DB13",
+   "title": "Finance Professionals",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2025-02-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Finance"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 4637933,
+   "shortcode": "2DB18DA2B1",
+   "title": "Strategic Partnerships Professionals",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2025-02-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Partnerships"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 4637941,
+   "shortcode": "A75976D512",
+   "title": "Project Delivery and Technical Project Solutions Professionals",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2025-02-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Delivery"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 4637948,
+   "shortcode": "93106D2D91",
+   "title": "Product and Engineering Professionals",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2025-02-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Product and Engineering"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 4639067,
+   "shortcode": "57EEE5EB7D",
+   "title": "People Operations Professionals",
+   "remote": true,
+   "location": {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "United Kingdom",
+     "countryCode": "GB",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2025-02-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "People Operations"
+   ],
+   "accountUid": "47b99594-8641-4215-b574-062f5d67d02c",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  }
+ ]
+}

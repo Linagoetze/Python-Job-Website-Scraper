@@ -5,8 +5,14 @@ Nothing here touches the network. The fixtures on disk are the input.
 
 from __future__ import annotations
 
+import http.server
 import json
 import re
+import socketserver
+import sys
+import threading
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +75,151 @@ def test_fixture_contains_no_secret_shaped_values(path: Path) -> None:
     for pattern in _SECRET_PATTERNS:
         match = pattern.search(text)
         assert match is None, f"{path.name} matches {pattern.pattern}: {match.group(0)[:40]!r}"
+
+
+# --- STEP 0: a capture is a polite guest ------------------------------------
+#
+# The one part of this script that does touch the network, in the sense that
+# real sockets open — to 127.0.0.1, never the internet, exactly like
+# tests/test_politeness.py. What is under test is that `main()` wraps its
+# batch in `http.polite_fetching` built from `sources.yaml` and `rules.json`
+# the way `pipeline.run_pipeline` does, not the throttle or retry behaviour
+# that module already covers.
+
+
+@dataclass
+class _Server:
+    port: int = 0
+    requests: list[tuple[str, str | None]] = field(default_factory=list)
+    robots: str | None = None
+
+    @property
+    def origin(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+
+@pytest.fixture
+def polite_server() -> Iterator[_Server]:
+    state = _Server()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self) -> None:  # noqa: N802 - stdlib's spelling
+            state.requests.append((self.path, self.headers.get("User-Agent")))
+            if self.path == "/robots.txt":
+                if state.robots is None:
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                body = state.robots.encode()
+            else:
+                body = b"<html><body>hello</body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
+    srv.daemon_threads = True
+    state.port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+    try:
+        yield state
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+@pytest.fixture
+def main_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point `main()` at a throwaway fixtures directory, same as `capture_env`.
+
+    Separate from `capture_env` because these tests exercise `main()`, not
+    `capture_one` directly, and so also stub `load_sources` / `load_rules`.
+    """
+    monkeypatch.setattr(capture_fixtures, "FIXTURES_DIR", tmp_path)
+    monkeypatch.setattr(capture_fixtures, "default_project_root", lambda: tmp_path)
+    return tmp_path
+
+
+def test_main_identifies_itself_with_the_rules_json_user_agent(
+    polite_server: _Server, main_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = {
+        "name": "not_in_registry",
+        "url": f"{polite_server.origin}/careers",
+        "strategy": "static",
+    }
+    monkeypatch.setattr(capture_fixtures, "load_sources", lambda: [source])
+    monkeypatch.setattr(
+        capture_fixtures,
+        "load_rules",
+        lambda: {
+            "contact_url": "https://example.invalid/bot",
+            "contact_email": "bot@example.invalid",
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["capture_fixtures.py", "not_in_registry"])
+
+    exit_code = capture_fixtures.main()
+
+    assert exit_code == 0
+    agents = [ua for path, ua in polite_server.requests if path == "/careers"]
+    assert agents == ["job-scraper/0.1 (+https://example.invalid/bot; contact=bot@example.invalid)"]
+    assert (main_env / "not_in_registry.html").exists()
+
+
+def test_a_robots_refusal_is_a_failed_capture_not_a_crash(
+    polite_server: _Server,
+    main_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    polite_server.robots = "User-agent: *\nDisallow: /careers\n"
+    source = {
+        "name": "not_in_registry",
+        "url": f"{polite_server.origin}/careers",
+        "strategy": "static",
+    }
+    monkeypatch.setattr(capture_fixtures, "load_sources", lambda: [source])
+    monkeypatch.setattr(capture_fixtures, "load_rules", lambda: {})
+    monkeypatch.setattr(sys, "argv", ["capture_fixtures.py", "not_in_registry"])
+
+    exit_code = capture_fixtures.main()
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "FAILED" in out
+    assert "robots.txt forbids" in out
+    assert [p for p, _ in polite_server.requests if p == "/careers"] == []
+    assert not (main_env / "not_in_registry.html").exists()
+
+
+def test_a_source_s_ignore_robots_exempts_the_capture(
+    polite_server: _Server, main_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same `ignore_robots` a real run reads, built by the same code (`_robots_overrides`)."""
+    polite_server.robots = "User-agent: *\nDisallow: /careers\n"
+    source = {
+        "name": "not_in_registry",
+        "url": f"{polite_server.origin}/careers",
+        "strategy": "static",
+        "ignore_robots": True,
+    }
+    monkeypatch.setattr(capture_fixtures, "load_sources", lambda: [source])
+    monkeypatch.setattr(capture_fixtures, "load_rules", lambda: {})
+    monkeypatch.setattr(sys, "argv", ["capture_fixtures.py", "not_in_registry"])
+
+    exit_code = capture_fixtures.main()
+
+    assert exit_code == 0
+    assert (main_env / "not_in_registry.html").exists()
 
 
 # --- capture_one, with the network faked out --------------------------------
@@ -185,6 +336,36 @@ def test_capture_sanitises_html_and_leaves_no_temp_file(
     assert "window.ENV" not in saved
     assert "Engineer" in saved
     assert list(capture_env.glob("*.tmp")) == []
+
+
+def test_capture_does_not_sanitise_xml(capture_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SP4, found by capturing outdooractive: an XML feed must not go through
+    the HTML sanitiser.
+
+    `sanitise_html` runs BeautifulSoup with an HTML parser (`lxml`), which
+    rewrites `<![CDATA[` as an HTML comment and closes tags it does not
+    recognise — a real Personio feed captured this way parsed to 0 jobs
+    instead of 22. `_guess_extension` now recognises the XML declaration and
+    the fixture is saved as `.xml`, untouched.
+    """
+    body = '<?xml version="1.0" encoding="UTF-8"?>\n<workzag-jobs><position><name>' + (
+        "<![CDATA[Role & Co]]></name><id>1</id></position></workzag-jobs>"
+    )
+    fake = _FakeFetcher(body)
+    monkeypatch.setattr(capture_fixtures, "fetch_text", fake)
+
+    ok, message = capture_one(
+        {
+            "name": "outdooractive",
+            "url": "https://outdooractive.jobs.personio.de/?language=en",
+            "strategy": "static",
+        }
+    )
+
+    assert ok, message
+    saved = (capture_env / "outdooractive.xml").read_text(encoding="utf-8")
+    assert saved == body
+    assert not (capture_env / "outdooractive.html").exists()
 
 
 def test_capture_removes_the_stale_sibling(
@@ -315,7 +496,9 @@ def test_capture_records_a_walk_made_by_post(
 
     The fetcher's `post_json` is recorded like a GET, so the fixture holds the
     whole walk and replays it — rather than a hand-written JSON file, or
-    nothing at all, which is what `workable.py`'s direct `http.post_json` gets.
+    nothing at all, which is what a reader calling `http.post_json` directly
+    would get. `workable.py` used to be that reader; SP4 moved it onto the
+    fetcher's `post_json` too, the same way workday.py already was.
     """
     fake = _FakeFetcher("<html>the listing, never asked for</html>", renders=True)
     posted: list[tuple[str, int]] = []

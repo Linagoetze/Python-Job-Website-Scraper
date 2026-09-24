@@ -32,7 +32,7 @@ import yaml
 
 from job_scraper import curated, probe
 from job_scraper import http as http_mod
-from job_scraper.extractors import workable, workday
+from job_scraper.extractors import workday
 from job_scraper.http import FetchedPage
 from job_scraper.robots import RobotsDisallowed, RobotsPolicy
 from job_scraper.tools import sources as sources_cli
@@ -719,35 +719,40 @@ class TestReaders:
         _, report = run_probe(PATH_PROBED, path_workday([]), curated_dir, tmp_path)
         assert "! 21 of 64 row(s) have no location" in report
 
-    def test_workable_reads_through_post_json(
-        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # workable.py POSTs through http.post_json rather than the fetcher it is
-        # handed, so this is the one reader whose request is stubbed at the
-        # module. The payload is a minimal invented board, not a capture: SP4
-        # captures the real one.
-        posted: list[str] = []
-
-        def fake_post(url: str, payload: Any, **kwargs: Any) -> Any:
-            posted.append(url)
-            return {
-                "results": [
-                    {
-                        "title": "Analyst",
-                        "shortcode": "ABC123",
-                        "department": ["Research"],
-                        "location": {"city": "London", "country": "United Kingdom"},
-                    }
-                ]
-            }
-
-        monkeypatch.setattr(workable, "post_json", fake_post)
+    def test_workable_reads_through_post_json(self, curated_dir: Path, tmp_path: Path) -> None:
+        # workable.py POSTs through the fetcher it is handed (SP4, the same
+        # way workday.py already did), so this goes through StubFetcher's own
+        # post_json rather than a monkeypatch of the module. The payload is a
+        # minimal invented board, not a capture: SP4 captures the real ones.
+        api = "https://apply.workable.com/api/v3/accounts/contoso/jobs"
         board = "https://apply.workable.com/contoso/"
         shell = probe_fixture("shell.html")
-        fetcher = StubFetcher([], static={board: shell}, rendered={board: shell})
+        fetcher = StubFetcher(
+            [],
+            static={board: shell},
+            rendered={board: shell},
+            posted={
+                api: [
+                    json.dumps(
+                        {
+                            "results": [
+                                {
+                                    "title": "Analyst",
+                                    "shortcode": "ABC123",
+                                    "department": ["Research"],
+                                    "location": {"city": "London", "country": "United Kingdom"},
+                                }
+                            ]
+                        }
+                    )
+                ]
+            },
+        )
         result, report = run_probe(board, fetcher, curated_dir, tmp_path)
 
-        assert posted == ["https://apply.workable.com/api/v3/accounts/contoso/jobs"]
+        assert [line for line in fetcher.log if line.startswith("POST ")] == [
+            f"POST {api} offset=0"
+        ]
         assert result.kind == probe.REUSE
         assert "detail_url: https://apply.workable.com/contoso/j/ABC123/" in report
         assert "follows no next-page token" in report
@@ -1447,6 +1452,12 @@ class RefusingFetcher(StubFetcher):
             raise _http_refusal(url)
         return super().text(url)
 
+    def post_json(self, url: str, payload: dict[str, Any], **kwargs: Any) -> Any:
+        if url in self.refuse:
+            self.log.append(f"POST {url} (refused)")
+            raise _http_refusal(url)
+        return super().post_json(url, payload, **kwargs)
+
 
 class TestReaderRefusedByRobots:
     def test_the_verdict_is_rung_two_and_names_the_url(
@@ -1468,20 +1479,18 @@ class TestReaderRefusedByRobots:
         assert f"REFUSED by robots.txt — the reader asked for {GIVEWELL_API}" in report
         assert "bug in" not in report
 
-    def test_a_refusal_outside_the_fetcher_is_read_from_the_exception(
-        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_a_refusal_on_a_post_is_read_from_the_exception(
+        self, curated_dir: Path, tmp_path: Path
     ) -> None:
-        # workable.py POSTs through http.post_json, not through the fetcher the
-        # probe hands it, so the URL comes from the refusal's own message.
+        # workable.py POSTs through the fetcher it is handed (SP4, as
+        # workday.py already did), so the refusal comes from the fetcher's own
+        # post_json — but the URL still comes from the exception's own field,
+        # never from tracking what the fetcher logged, since the readers that
+        # POST are not the only ones that could refuse this way.
         api = "https://apply.workable.com/api/v3/accounts/contoso/jobs"
-
-        def refuse(url: str, payload: Any, **kwargs: Any) -> Any:
-            raise _http_refusal(url)
-
-        monkeypatch.setattr(workable, "post_json", refuse)
         board = "https://apply.workable.com/contoso/"
         shell = probe_fixture("shell.html")
-        fetcher = StubFetcher([], static={board: shell}, rendered={board: shell})
+        fetcher = RefusingFetcher([], {api}, static={board: shell}, rendered={board: shell})
         result, _ = run_probe(board, fetcher, curated_dir, tmp_path)
 
         assert result.line.startswith(f"not feasible — rung 2: robots.txt forbids {api}")

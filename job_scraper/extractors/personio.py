@@ -23,8 +23,12 @@ def extract(
 
     try:
         root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
+    except ET.ParseError as exc:
+        # An empty list here would read as "no vacancies" — priority 2 says a
+        # broken feed must fail instead (SP4, found by capturing
+        # outdooractive: a stale sanitised fixture whose HTML parser had
+        # mangled the XML parsed silently to zero jobs).
+        raise ValueError(f"{source_name}: could not parse the XML feed at {xml_url}") from exc
 
     out: list[dict[str, Any]] = []
     for position in root.findall("position"):

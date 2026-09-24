@@ -1,0 +1,336 @@
+{
+ "total": 11,
+ "results": [
+  {
+   "id": 6102901,
+   "shortcode": "A3711AA7FC",
+   "title": "Program Assistant",
+   "remote": false,
+   "location": {
+    "country": "Kenya",
+    "countryCode": "KE",
+    "city": "Nairobi",
+    "region": "Nairobi County"
+   },
+   "locations": [
+    {
+     "country": "Kenya",
+     "countryCode": "KE",
+     "city": "Nairobi",
+     "region": "Nairobi County",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-18T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Programs"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "on_site"
+  },
+  {
+   "id": 6089876,
+   "shortcode": "1190680534",
+   "title": "Finance Officer - Nigeria",
+   "remote": false,
+   "location": {
+    "country": "Nigeria",
+    "countryCode": "NG",
+    "city": "Abuja",
+    "region": "Federal Capital Territory"
+   },
+   "locations": [
+    {
+     "country": "Nigeria",
+     "countryCode": "NG",
+     "city": "Abuja",
+     "region": "Federal Capital Territory",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Corporate Services"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "on_site"
+  },
+  {
+   "id": 6093592,
+   "shortcode": "1DE8006190",
+   "title": "National Program Officer- Adolescent and Maternal Health & Nutrition",
+   "remote": false,
+   "location": {
+    "country": "India",
+    "countryCode": "IN",
+    "city": "New Delhi",
+    "region": "Delhi"
+   },
+   "locations": [
+    {
+     "country": "India",
+     "countryCode": "IN",
+     "city": "New Delhi",
+     "region": "Delhi",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Programs"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "on_site"
+  },
+  {
+   "id": 6090803,
+   "shortcode": "97573634EA",
+   "title": "Senior Manager, Corporate Finance",
+   "remote": false,
+   "location": {
+    "country": "Canada",
+    "countryCode": "CA",
+    "city": "Ottawa",
+    "region": "Ontario"
+   },
+   "locations": [
+    {
+     "country": "Canada",
+     "countryCode": "CA",
+     "city": "Ottawa",
+     "region": "Ontario",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-10T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Corporate Services"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "hybrid"
+  },
+  {
+   "id": 6083088,
+   "shortcode": "2124E2F252",
+   "title": "Program Manager, Maternal, Newborn and Child Health",
+   "remote": false,
+   "location": {
+    "country": "Canada",
+    "countryCode": "CA",
+    "city": "Ottawa",
+    "region": "Ontario"
+   },
+   "locations": [
+    {
+     "country": "Canada",
+     "countryCode": "CA",
+     "city": "Ottawa",
+     "region": "Ontario",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-07T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Programs"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "hybrid"
+  },
+  {
+   "id": 6069917,
+   "shortcode": "39F93EBA12",
+   "title": "Sr Officer, Strategic Engagement, Analysis and Communication",
+   "remote": false,
+   "location": {
+    "country": "Bangladesh",
+    "countryCode": "BD",
+    "city": "Dhaka",
+    "region": "Dhaka Division"
+   },
+   "locations": [
+    {
+     "country": "Bangladesh",
+     "countryCode": "BD",
+     "city": "Dhaka",
+     "region": "Dhaka Division",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-01T00:00:00.000Z",
+   "type": "contract",
+   "language": "en",
+   "department": [
+    "Programs"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "on_site"
+  },
+  {
+   "id": 6029771,
+   "shortcode": "3DADD62701",
+   "title": "Sr Technical Advisor, Child Survival Research",
+   "remote": true,
+   "location": {
+    "country": "Canada",
+    "countryCode": "CA",
+    "city": "",
+    "region": null
+   },
+   "locations": [
+    {
+     "country": "Canada",
+     "countryCode": "CA",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-08-13T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Programs"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "remote"
+  },
+  {
+   "id": 6029825,
+   "shortcode": "D6CA9CA301",
+   "title": "Senior Director, Global Communications",
+   "remote": false,
+   "location": {
+    "country": "Canada",
+    "countryCode": "CA",
+    "city": "Ottawa",
+    "region": "Ontario"
+   },
+   "locations": [
+    {
+     "country": "Canada",
+     "countryCode": "CA",
+     "city": "Ottawa",
+     "region": "Ontario",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-08-13T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Front Office"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "hybrid"
+  },
+  {
+   "id": 6024086,
+   "shortcode": "91587A9A06",
+   "title": "Manager, Corporate Finance",
+   "remote": false,
+   "location": {
+    "country": "Canada",
+    "countryCode": "CA",
+    "city": "Ottawa",
+    "region": "Ontario"
+   },
+   "locations": [
+    {
+     "country": "Canada",
+     "countryCode": "CA",
+     "city": "Ottawa",
+     "region": "Ontario",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-08-11T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Corporate Services"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "hybrid"
+  },
+  {
+   "id": 5960277,
+   "shortcode": "7011E8E304",
+   "title": "Director, IT & Data Transformation",
+   "remote": false,
+   "location": {
+    "country": "Canada",
+    "countryCode": "CA",
+    "city": "Ottawa",
+    "region": "Ontario"
+   },
+   "locations": [
+    {
+     "country": "Canada",
+     "countryCode": "CA",
+     "city": "Ottawa",
+     "region": "Ontario",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-07-15T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Corporate Services"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "hybrid"
+  }
+ ],
+ "nextPage": "WzE3ODQwNzM2MDAwMDAsNTk2MDI3N10="
+}

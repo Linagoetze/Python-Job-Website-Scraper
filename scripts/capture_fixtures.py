@@ -21,8 +21,20 @@ the fixture replays the real walk. J-PAL is captured this way; see
 docs/REFACTOR-PLAN.md, WP11.
 
 A POST made through the fetcher's `post_json` (Workday's JSON walk) is recorded
-in the same sequence as the GETs, saved as the JSON it decoded to. An extractor
-that calls `http.post_json` itself (workable.py) still bypasses the recorder.
+in the same sequence as the GETs, saved as the JSON it decoded to.
+
+Every capture runs inside `http.polite_fetching`, unlike the rest of this
+script's own network use (see docs/DECISIONS.md, "Politeness is run-scoped").
+A test or a one-off fetch pays nothing by design, but a capture is neither: it
+is a live request to somebody else's career site, and this script's whole job
+is making five or six of them a session. `main()` builds the run's User-Agent
+and its `ignore_robots` exemptions the same way `pipeline.run_pipeline` does —
+`http.user_agent_from_rules` and `pipeline._robots_overrides`, reused rather
+than copied — and opens one `polite_fetching` block around the whole batch, so
+a capture identifies itself, honours robots.txt and waits its turn per host
+exactly as a real run would. A robots.txt refusal surfaces as `RobotsDisallowed`
+from inside the extractor and is reported as a failed capture like any other
+exception; nothing here treats it specially.
 
 Run this by hand whenever a fixture goes stale; see docs/REFACTOR-PLAN.md, WP0,
 for the how-to.
@@ -47,9 +59,10 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from job_scraper.config_loader import default_project_root, load_sources
+from job_scraper.config_loader import default_project_root, load_rules, load_sources
 from job_scraper.extractors.registry import get_extractor
-from job_scraper.http import fetch_rendered, fetch_text
+from job_scraper.http import fetch_rendered, fetch_text, polite_fetching, user_agent_from_rules
+from job_scraper.pipeline import _robots_overrides
 
 FIXTURES_DIR = default_project_root() / "tests" / "fixtures"
 PAUSE_SECONDS = 3
@@ -247,8 +260,8 @@ def _page_filename(name: str, index: int, ext: str) -> str:
 def _remove_stale(name: str, ext: str, kept: int) -> list[str]:
     """Delete previous fixtures for *name* that this capture has superseded.
 
-    Two kinds go: the other extension entirely, and any page file past the
-    *kept* pages just written.
+    Two kinds go: any other known extension entirely, and any page file past
+    the *kept* pages just written.
 
     A source changes artefact type when its extractor is corrected — givewell
     went from listing HTML to the Greenhouse API's JSON. Leaving the old file
@@ -260,13 +273,13 @@ def _remove_stale(name: str, ext: str, kept: int) -> list[str]:
     Only ever removes files this script itself would have written.
     """
     removed: list[str] = []
-    other = "json" if ext == "html" else "html"
+    others = {e for e in _KNOWN_EXTENSIONS if e != ext}
     for candidate in sorted(FIXTURES_DIR.glob(f"{name}.*")):
         page = _page_of(candidate.name, name)
         if page is None:
             continue  # not a file this script writes for this source
         index, suffix = page
-        if suffix == other or index >= kept:
+        if suffix in others or index >= kept:
             candidate.unlink()
             removed.append(candidate.name)
     return removed
@@ -288,8 +301,22 @@ def _page_of(filename: str, name: str) -> tuple[int, str] | None:
     return None
 
 
+_KNOWN_EXTENSIONS = ("html", "json", "xml")
+
+
 def _guess_extension(text: str) -> str:
-    """Decide whether *text* is JSON or HTML by attempting to parse it as JSON."""
+    """Decide whether *text* is JSON, XML or HTML.
+
+    XML matters as its own case, not a subset of "html": Personio's feed is
+    XML, and `sanitise_html` below runs an HTML parser (BeautifulSoup + lxml)
+    over anything not recognised as JSON. Run over real XML that parser
+    rewrites `<![CDATA[` into an HTML comment and closes tags it does not
+    recognise, which is not a cosmetic difference — it broke `personio.py`'s
+    `ET.fromstring` on every posting (SP4, found by capturing outdooractive:
+    the sanitised fixture parsed to 0 jobs, the raw feed to 22). XML is
+    detected by its declaration, which every feed here starts with; nothing
+    downstream needs a more general sniff.
+    """
     stripped = text.lstrip()
     if stripped[:1] in ("{", "["):
         try:
@@ -297,6 +324,8 @@ def _guess_extension(text: str) -> str:
             return "json"
         except json.JSONDecodeError:
             pass
+    if stripped.startswith("<?xml"):
+        return "xml"
     return "html"
 
 
@@ -343,19 +372,25 @@ def main() -> int:
 
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    sources_by_name = {s["name"]: s for s in load_sources()}
+    rules = load_rules()
+    sources = load_sources()
+    sources_by_name = {s["name"]: s for s in sources}
     unknown = [n for n in args.names if n not in sources_by_name]
     if unknown:
         parser.error(f"not in sources.yaml: {', '.join(unknown)}")
 
     exit_code = 0
-    for i, name in enumerate(args.names):
-        ok, message = capture_one(sources_by_name[name], pages=pages)
-        print(message)
-        if not ok:
-            exit_code = 1
-        if i < len(args.names) - 1:
-            time.sleep(PAUSE_SECONDS)
+    with polite_fetching(
+        user_agent=user_agent_from_rules(rules),
+        robots_overrides=_robots_overrides(sources),
+    ):
+        for i, name in enumerate(args.names):
+            ok, message = capture_one(sources_by_name[name], pages=pages)
+            print(message)
+            if not ok:
+                exit_code = 1
+            if i < len(args.names) - 1:
+                time.sleep(PAUSE_SECONDS)
 
     return exit_code
 

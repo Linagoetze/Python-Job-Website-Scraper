@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from job_scraper.extractors import personio, workable
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
@@ -544,6 +545,124 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    # --- SP4: the five generic ATS readers, captured for the first time ---
+    "new_incentives": {
+        # breezy.py. No bug: title, location, department and detail_url all
+        # matched the captured JSON exactly.
+        "count": 5,
+        "first_job": {
+            "source_name": "new_incentives",
+            "title": "Field Officers (entry-level) - All Locations",
+            "location": "NorthWest and NorthEast, NG",
+            "department": "",
+            "listing_url": "https://new-incentives.breezy.hr",
+            "detail_url": (
+                "https://new-incentives.breezy.hr/p/"
+                "d0d0e6ea8f4f-field-officers-entry-level-all-locations"
+            ),
+            "apply_url": (
+                "https://new-incentives.breezy.hr/p/"
+                "d0d0e6ea8f4f-field-officers-entry-level-all-locations"
+            ),
+            "raw_snippet": (
+                "Field Officers (entry-level) - All Locations NorthWest and NorthEast, NG"
+            ),
+        },
+    },
+    "wave": {
+        # lever.py. No bug: `categories.department` ("Customer Experience")
+        # is preferred over `categories.team` ("Wave Advisors") on this row,
+        # as the extractor's `department or team` fallback intends.
+        "count": 8,
+        "first_job": {
+            "source_name": "wave",
+            "title": "Accounting Associate",
+            "location": "Toronto, Ontario",
+            "department": "Customer Experience",
+            "listing_url": "https://www.waveapps.com/about-us/culture",
+            "detail_url": "https://jobs.lever.co/waveapps/69616656-9b45-45e9-8170-9d4915a3fde0",
+            "apply_url": (
+                "https://jobs.lever.co/waveapps/69616656-9b45-45e9-8170-9d4915a3fde0/apply"
+            ),
+            "raw_snippet": "Accounting Associate Customer Experience Toronto, Ontario",
+        },
+    },
+    "outdooractive": {
+        # personio.py. Two bugs found by capturing this one, both fixed in
+        # SP4, neither in the reader's field mapping:
+        #  - capture_fixtures.py ran every non-JSON capture through an HTML
+        #    parser (BeautifulSoup + lxml), which rewrites `<![CDATA[` as an
+        #    HTML comment and closes tags it does not recognise. Run over
+        #    real XML that corrupted the feed enough that ET.fromstring could
+        #    not read it — the first capture parsed to 0 jobs, all 22 silently
+        #    dropped. `_guess_extension` now recognises XML by its declaration
+        #    and skips sanitisation for it, as it already did for JSON.
+        #  - personio.py caught that same ET.ParseError and returned [], an
+        #    empty list indistinguishable from "no vacancies" — the exact
+        #    failure CLAUDE.md's priority 2 rules out. It now raises.
+        # Against the raw (unsanitised) feed fetched directly, all 22 rows
+        # matched this golden's field mapping exactly.
+        "count": 22,
+        "first_job": {
+            "source_name": "outdooractive",
+            "title": "Android Entwickler (w/m/d)",
+            "location": "Immenstadt (Deutschland)",
+            "department": "Development",
+            "listing_url": "https://outdooractive.jobs.personio.de/?language=en",
+            "detail_url": "https://outdooractive.jobs.personio.de/job/2040503?language=en",
+            "apply_url": "https://outdooractive.jobs.personio.de/job/2040503?language=en",
+            "raw_snippet": "Android Entwickler (w/m/d) Development Immenstadt (Deutschland)",
+        },
+    },
+    "oecd": {
+        # smartrecruiters.py. No bug: `totalFound` (14) matched `len(content)`
+        # exactly, so the pagination guard never has to fire on this board.
+        # `relativeUri` is null on every posting here, so every detail_url
+        # comes from the `org_slug`/`job_id` fallback rather than the
+        # relative-path branch — both are exercised elsewhere in the suite.
+        "count": 14,
+        "first_job": {
+            "source_name": "oecd",
+            "title": "Nurse – Temporary position",
+            "location": "Paris, fr",
+            "department": "Corporate Functions",
+            "listing_url": "https://careers.smartrecruiters.com/OECD/oecd---en",
+            "detail_url": "https://jobs.smartrecruiters.com/OECD/744000150054199",
+            "apply_url": "https://jobs.smartrecruiters.com/OECD/744000150054199",
+            "raw_snippet": "Nurse – Temporary position Corporate Functions Paris, fr",
+        },
+    },
+    "nutrition_international": {
+        # workable.py, moved onto the fetcher's post_json in this same
+        # package ahead of its first capture. No bug in the field mapping.
+        "count": 10,
+        "first_job": {
+            "source_name": "nutrition_international",
+            "title": "Program Assistant",
+            "location": "Nairobi, Kenya",
+            "department": "Programs",
+            "listing_url": "https://apply.workable.com/nutritionintl/",
+            "detail_url": "https://apply.workable.com/nutritionintl/j/A3711AA7FC/",
+            "apply_url": "https://apply.workable.com/nutritionintl/j/A3711AA7FC/",
+            "raw_snippet": "Program Assistant Programs Nairobi, Kenya",
+        },
+    },
+    "simprints": {
+        # workable.py's second source. No bug: this row has no city, and the
+        # extractor's `", ".join(x for x in [city, country] if x)` correctly
+        # drops the empty part rather than leaving a stray leading comma.
+        "count": 9,
+        "first_job": {
+            "source_name": "simprints",
+            "title": "Director of Strategic Partnerships",
+            "location": "Ghana",
+            "department": "Partnerships",
+            "listing_url": "https://apply.workable.com/simprints/",
+            "detail_url": "https://apply.workable.com/simprints/j/3CAA06941B/",
+            "apply_url": "https://apply.workable.com/simprints/j/3CAA06941B/",
+            "raw_snippet": "Director of Strategic Partnerships Partnerships Ghana",
+        },
+    },
 }
 
 
@@ -649,3 +768,33 @@ def test_gfi_europe_matches_absolute_hrefs_and_skips_near_misses() -> None:
         assert parts.path.startswith("/careers/"), f"non-posting path parsed: {parts.path}"
         assert parts.path.rstrip("/") != "/careers", "the listing page parsed as a posting"
         assert not parts.path.startswith("/de/"), "the German listing parsed as a posting"
+
+
+def test_personio_fails_loudly_on_a_malformed_feed() -> None:
+    """Pin the bug found capturing outdooractive (SP4): a broken feed must not
+    read as "no vacancies".
+
+    personio.py used to catch `ET.ParseError` and return `[]`, which is exactly
+    the failure CLAUDE.md's priority 2 rules out — indistinguishable from a
+    board that genuinely has nothing open. It now raises. This does not need a
+    captured fixture: any XML a real feed could never serve says the same
+    thing, and the point is the reader's own behaviour, not this board's data.
+    """
+    with pytest.raises(ValueError, match="could not parse the XML feed"):
+        personio.extract(
+            "https://outdooractive.jobs.personio.de/?language=en",
+            lambda url, *a, **k: "<workzag-jobs><position>",
+            "outdooractive",
+        )
+
+
+def test_workable_refuses_a_fetcher_that_cannot_post() -> None:
+    """Refused, not bypassed (SP4, matching workday.py's rule in test_pagination.py):
+    falling back to http.post_json would reach the network from a test, or from a
+    capture that would then record nothing — which is exactly what happened before
+    this reader was moved onto the fetcher's post_json.
+    """
+    with pytest.raises(TypeError, match="no post_json"):
+        workable.extract(
+            "https://apply.workable.com/simprints/", lambda url, *a, **k: "", "simprints"
+        )

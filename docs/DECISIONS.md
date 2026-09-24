@@ -411,11 +411,25 @@ session — see `CLAUDE.md`.
 
 - **Politeness is run-scoped, like the [WP9](REFACTOR-PLAN.md#wp9--playwright-reuse-and-http-caching) resources** ([WP10](REFACTOR-PLAN.md#wp10--politeness-and-observability)). `polite_fetching`
   installs the User-Agent, the throttle and the robots policy for the length of
-  `run_pipeline` only. Outside it — tests, the fixture capture script, a one-off
-  `fetch_text` — nothing applies, so no test pays a second per request and none
-  of them reaches for robots.txt over the network. The pipeline is the only
-  thing in this project that fetches at volume, which is what makes that scope
-  the right one.
+  `run_pipeline` only. Outside it — tests, a one-off `fetch_text` — nothing
+  applies, so no test pays a second per request and none of them reaches for
+  robots.txt over the network. The pipeline is the only thing in this project
+  that fetches at volume, which is what makes that scope the right one.
+  **Amended in SP4 (2026-09-24): the fixture capture script is the one
+  exception.** Every capture so far, SP3b's and SP3c's included, went out as
+  `DEFAULT_USER_AGENT` ("no contact configured"), consulted no robots.txt and
+  paid no per-host spacing — fine for a one-off fetch, not for a tool whose
+  whole job is live requests to other people's sites, several a session.
+  `scripts/capture_fixtures.py main()` now opens one `polite_fetching` block
+  around its whole batch, built exactly as `run_pipeline` builds its own:
+  `http.user_agent_from_rules(load_rules())` and `pipeline._robots_overrides
+  (load_sources())`, reused rather than copied. A robots.txt refusal surfaces
+  as `RobotsDisallowed` from inside the extractor and is reported as a failed
+  capture by `capture_one`'s existing catch-all, same as any other exception —
+  nothing new was needed there. `capture_one` itself stays as it was: its
+  module-level `fetch_text` / `fetch_rendered` names are what the rest of this
+  project's tests monkeypatch, and wrapping only the outer batch keeps that
+  seam intact.
 
 - **An empty page only ends a walk when something says how long the walk is**
   ([WP11](REFACTOR-PLAN.md#wp11--j-pal-pagination-and-silent-short-walks)). `extractors/pagination.py` holds the policy: an extractor that can
@@ -761,8 +775,22 @@ session — see `CLAUDE.md`.
   rather than falling back to `http.post_json`: a fallback would let a test or
   a capture reach the network by a route it did not choose. A POSTed page is
   saved as the JSON it decoded to, in the same positional sequence as GETs.
-  `workable.py` still calls `http.post_json` itself and is still invisible to
-  the capture; moving it onto the fetcher is SP4's to do when it captures it.
+  **`workable.py` moved onto the fetcher in SP4**, ahead of its own capture:
+  it called `http.post_json` itself, which meant the capture script recorded
+  nothing for it ("extractor made no request") and the probe's
+  `test_workable_reads_through_post_json` stubbed `http.post_json` at the
+  module instead of going through its own fetcher — the one seam SP3's
+  `_rendering`/`_static` wrappers already carried
+  (`fetch.post_json = fetcher.post_json`) but that reader never used. It now
+  refuses a fetcher with no `post_json`, exactly as `workday.py` does, and the
+  probe test was rewritten to post through `StubFetcher.post_json`
+  (`posted={api: [...]}`, the same shape the Workday tests already use)
+  rather than monkeypatching the module. One knock-on: the refusal test that
+  used to say a POST reader is "outside the fetcher" — `workable.py`'s old
+  direct call was the only such case in the codebase — no longer has a real
+  example, so `TestReaderRefusedByRobots` covers the same claim (the probe
+  reads a refusal's URL from the exception's own field, not from tracking the
+  fetcher) generically: `RefusingFetcher` now refuses a POST as well as a GET.
 - **The Workday endpoint's tenant is the host's with `-` read as `_`** (SP3b).
   busuu's POST to `/wday/cxs/osv-chegg/Busuu/jobs` answered 422. One
   diagnostic render (owner-approved) logged the page's own call:

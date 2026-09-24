@@ -892,7 +892,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-974 tests, about fifteen seconds, no network access required. Extractors are
+1010 tests, about fifteen seconds, no network access required. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
@@ -912,10 +912,19 @@ walk made by POST, like Workday's; each response is saved as JSON:
 python scripts/capture_fixtures.py --pages all <source_name>
 ```
 
+A capture runs inside the same politeness a real run does (SP4): it
+identifies itself with the `contact_url` / `contact_email` from `rules.json`,
+honours robots.txt with the same `ignore_robots` exemptions `sources.yaml`
+declares, and waits its turn per host. A robots.txt refusal is reported as a
+failed capture rather than a crash.
+
 Captured pages go through a sanitiser first, which strips the inline
-third-party config that a whole-page save would otherwise commit. Not every
-source has one yet — thirteen of the twenty-six extractors are uncovered, and
-closing that gap is planned as SP4 and SP6 of
+third-party config that a whole-page save would otherwise commit — except a
+response recognised as XML, which is saved as-is: an HTML parser corrupts it
+(SP4, found capturing Personio's feed). Not every source has one yet — eight
+of the twenty-six extractors are uncovered, down from thirteen after SP4
+covered the five generic ATS readers (Breezy, Lever, Personio, SmartRecruiters,
+Workable). Closing the rest is planned as SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.
 
