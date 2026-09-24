@@ -338,6 +338,36 @@ def test_capture_sanitises_html_and_leaves_no_temp_file(
     assert list(capture_env.glob("*.tmp")) == []
 
 
+def test_capture_does_not_sanitise_xml(capture_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SP4, found by capturing outdooractive: an XML feed must not go through
+    the HTML sanitiser.
+
+    `sanitise_html` runs BeautifulSoup with an HTML parser (`lxml`), which
+    rewrites `<![CDATA[` as an HTML comment and closes tags it does not
+    recognise — a real Personio feed captured this way parsed to 0 jobs
+    instead of 22. `_guess_extension` now recognises the XML declaration and
+    the fixture is saved as `.xml`, untouched.
+    """
+    body = '<?xml version="1.0" encoding="UTF-8"?>\n<workzag-jobs><position><name>' + (
+        "<![CDATA[Role & Co]]></name><id>1</id></position></workzag-jobs>"
+    )
+    fake = _FakeFetcher(body)
+    monkeypatch.setattr(capture_fixtures, "fetch_text", fake)
+
+    ok, message = capture_one(
+        {
+            "name": "outdooractive",
+            "url": "https://outdooractive.jobs.personio.de/?language=en",
+            "strategy": "static",
+        }
+    )
+
+    assert ok, message
+    saved = (capture_env / "outdooractive.xml").read_text(encoding="utf-8")
+    assert saved == body
+    assert not (capture_env / "outdooractive.html").exists()
+
+
 def test_capture_removes_the_stale_sibling(
     capture_env: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

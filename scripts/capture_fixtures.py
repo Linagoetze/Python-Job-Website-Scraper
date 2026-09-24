@@ -260,8 +260,8 @@ def _page_filename(name: str, index: int, ext: str) -> str:
 def _remove_stale(name: str, ext: str, kept: int) -> list[str]:
     """Delete previous fixtures for *name* that this capture has superseded.
 
-    Two kinds go: the other extension entirely, and any page file past the
-    *kept* pages just written.
+    Two kinds go: any other known extension entirely, and any page file past
+    the *kept* pages just written.
 
     A source changes artefact type when its extractor is corrected — givewell
     went from listing HTML to the Greenhouse API's JSON. Leaving the old file
@@ -273,13 +273,13 @@ def _remove_stale(name: str, ext: str, kept: int) -> list[str]:
     Only ever removes files this script itself would have written.
     """
     removed: list[str] = []
-    other = "json" if ext == "html" else "html"
+    others = {e for e in _KNOWN_EXTENSIONS if e != ext}
     for candidate in sorted(FIXTURES_DIR.glob(f"{name}.*")):
         page = _page_of(candidate.name, name)
         if page is None:
             continue  # not a file this script writes for this source
         index, suffix = page
-        if suffix == other or index >= kept:
+        if suffix in others or index >= kept:
             candidate.unlink()
             removed.append(candidate.name)
     return removed
@@ -301,8 +301,22 @@ def _page_of(filename: str, name: str) -> tuple[int, str] | None:
     return None
 
 
+_KNOWN_EXTENSIONS = ("html", "json", "xml")
+
+
 def _guess_extension(text: str) -> str:
-    """Decide whether *text* is JSON or HTML by attempting to parse it as JSON."""
+    """Decide whether *text* is JSON, XML or HTML.
+
+    XML matters as its own case, not a subset of "html": Personio's feed is
+    XML, and `sanitise_html` below runs an HTML parser (BeautifulSoup + lxml)
+    over anything not recognised as JSON. Run over real XML that parser
+    rewrites `<![CDATA[` into an HTML comment and closes tags it does not
+    recognise, which is not a cosmetic difference — it broke `personio.py`'s
+    `ET.fromstring` on every posting (SP4, found by capturing outdooractive:
+    the sanitised fixture parsed to 0 jobs, the raw feed to 22). XML is
+    detected by its declaration, which every feed here starts with; nothing
+    downstream needs a more general sniff.
+    """
     stripped = text.lstrip()
     if stripped[:1] in ("{", "["):
         try:
@@ -310,6 +324,8 @@ def _guess_extension(text: str) -> str:
             return "json"
         except json.JSONDecodeError:
             pass
+    if stripped.startswith("<?xml"):
+        return "xml"
     return "html"
 
 

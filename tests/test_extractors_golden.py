@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from job_scraper.extractors import personio
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
@@ -544,6 +545,34 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    # --- SP4: the five generic ATS readers, captured for the first time ---
+    "outdooractive": {
+        # personio.py. Two bugs found by capturing this one, both fixed in
+        # SP4, neither in the reader's field mapping:
+        #  - capture_fixtures.py ran every non-JSON capture through an HTML
+        #    parser (BeautifulSoup + lxml), which rewrites `<![CDATA[` as an
+        #    HTML comment and closes tags it does not recognise. Run over
+        #    real XML that corrupted the feed enough that ET.fromstring could
+        #    not read it — the first capture parsed to 0 jobs, all 22 silently
+        #    dropped. `_guess_extension` now recognises XML by its declaration
+        #    and skips sanitisation for it, as it already did for JSON.
+        #  - personio.py caught that same ET.ParseError and returned [], an
+        #    empty list indistinguishable from "no vacancies" — the exact
+        #    failure CLAUDE.md's priority 2 rules out. It now raises.
+        # Against the raw (unsanitised) feed fetched directly, all 22 rows
+        # matched this golden's field mapping exactly.
+        "count": 22,
+        "first_job": {
+            "source_name": "outdooractive",
+            "title": "Android Entwickler (w/m/d)",
+            "location": "Immenstadt (Deutschland)",
+            "department": "Development",
+            "listing_url": "https://outdooractive.jobs.personio.de/?language=en",
+            "detail_url": "https://outdooractive.jobs.personio.de/job/2040503?language=en",
+            "apply_url": "https://outdooractive.jobs.personio.de/job/2040503?language=en",
+            "raw_snippet": "Android Entwickler (w/m/d) Development Immenstadt (Deutschland)",
+        },
+    },
 }
 
 
@@ -649,3 +678,21 @@ def test_gfi_europe_matches_absolute_hrefs_and_skips_near_misses() -> None:
         assert parts.path.startswith("/careers/"), f"non-posting path parsed: {parts.path}"
         assert parts.path.rstrip("/") != "/careers", "the listing page parsed as a posting"
         assert not parts.path.startswith("/de/"), "the German listing parsed as a posting"
+
+
+def test_personio_fails_loudly_on_a_malformed_feed() -> None:
+    """Pin the bug found capturing outdooractive (SP4): a broken feed must not
+    read as "no vacancies".
+
+    personio.py used to catch `ET.ParseError` and return `[]`, which is exactly
+    the failure CLAUDE.md's priority 2 rules out — indistinguishable from a
+    board that genuinely has nothing open. It now raises. This does not need a
+    captured fixture: any XML a real feed could never serve says the same
+    thing, and the point is the reader's own behaviour, not this board's data.
+    """
+    with pytest.raises(ValueError, match="could not parse the XML feed"):
+        personio.extract(
+            "https://outdooractive.jobs.personio.de/?language=en",
+            lambda url, *a, **k: "<workzag-jobs><position>",
+            "outdooractive",
+        )

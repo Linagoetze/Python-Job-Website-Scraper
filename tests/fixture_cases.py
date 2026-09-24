@@ -40,6 +40,7 @@ from job_scraper.extractors import (  # noqa: E402
     impactpool,
     jpal,
     niras,
+    personio,
     successfactors_html,
     teamtailor,
     unops,
@@ -221,6 +222,13 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "seven_perigee.html",
         "https://careers.perigee.se",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="seven_perigee"),
+    ),
+    # --- SP4: the five generic ATS readers, captured for the first time ---
+    "outdooractive": (
+        # A Personio XML feed, not HTML — see capture_fixtures._guess_extension.
+        "outdooractive.xml",
+        "https://outdooractive.jobs.personio.de/?language=en",
+        lambda url, fetch: personio.extract(url, fetch, source_name="outdooractive"),
     ),
 }
 
