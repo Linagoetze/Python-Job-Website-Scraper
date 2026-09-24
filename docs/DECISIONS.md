@@ -809,3 +809,27 @@ session — see `CLAUDE.md`.
   past its own check. That is `not feasible — rung 5`, a bug in that reader,
   matching the SP3 rule that a broken generic reader is fixed, not joined by
   a second module. `needs a new extractor` stays for an unguarded reader.
+- **A Workday facet proves itself applied: the chosen value's own count equals
+  `total`** (SP3c, 2026-09-24, from one render and one POST). Workday's facets
+  are disjunctive. The applied parameter's own list keeps the whole board's
+  counts, so that another value can be added to it, while every other facet
+  narrows to the filtered set. In airbus's response filtered to the owner's
+  chosen country, `total` was 16 (the count SP3b's unfiltered response gave
+  that country the day before); `locationCountry`, nested under
+  `locationMainGroup`, still listed all 37 countries summing to 2,898 with
+  the chosen one at 16; and every other facet (posting date, job category,
+  job family, company, job type, full/part time) summed to exactly 16, where
+  the unfiltered board's did to about 2,940. So an applied filter shows up as
+  "the applied id is in its parameter's list and its count is `total`". An
+  ignored one cannot pass that check: the board's `total` would come back
+  instead, and it is not the country's count. The check needs no extra request,
+  because it reads the first page's response. With several ids under one
+  parameter, a posting listed under two of them counts in both, so the sum can
+  only bound `total` from above. The rendered listing agreed ("16 JOBS
+  FOUND", "1 - 16 of 16 jobs") and put the query on all 16 job hrefs, as
+  `?page=2` did in SP3b. That is why a detail URL is never taken from a
+  rendered href. robots.txt on `ag.wd3.myworkdayjobs.com` was `User-agent: *`
+  / `Allow: /Airbus/` / `Disallow: /Airbus_Specific/` / `Disallow:
+  /refreshFacet/`. `RobotsPolicy.explain` found no deciding line for
+  `/Airbus?locationCountry=…` or `/wday/cxs/ag/Airbus/jobs`, so it allowed
+  both.
