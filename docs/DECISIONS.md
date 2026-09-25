@@ -932,9 +932,16 @@ session — see `CLAUDE.md`.
   source. A title element that is present but empty is a blank posting (8 that
   day), and is skipped and logged, since failing the source over it would drop
   the other 3,539. The same change fixes an older bug: a card with no location
-  had its grade read as the location. Repair: the next correct run's upsert
-  rewrites the fields of every posting still listed, and `retrofilter` then
-  re-applies the filters to the unreviewed rows that got through. The fixture
+  had its grade read as the location. The repair did not go as first planned.
+  A run upserts only the postings that pass its filters, not every posting it
+  sees. So run 31, the first correct run, rewrote 76 of the 101 bad rows and
+  left 25 with shifted fields. Those 25 were 3 postings the corrected titles
+  now filter out, 8 blank-title postings now skipped, and 14 already
+  `rejected`. `retrofilter` could not have helped. It re-judges a stored
+  row by its stored title, which for these rows was still the employer's
+  name. The owner rejected the unreviewed ones by hand. Lesson for next time:
+  after a field-shifting bug, look for rows whose `last_run_id` stayed at the
+  bad run. A correct run does not overwrite a posting its filters reject. The fixture
   was refreshed from run 30's page 1 in the HTTP cache, passed through
   `capture_fixtures.sanitise_html`, with the owner's approval, rather than by
   a new capture. The run's own response is the markup that broke it.
