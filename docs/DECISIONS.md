@@ -917,3 +917,24 @@ session — see `CLAUDE.md`.
   the id. That was a considered trade for a real capture of a filtered walk,
   and it does not loosen the prose rule. Do not add the name to prose because
   the fixture already shows it.
+- **Impactpool cards are read by role, not by position (2026-09-25).** That
+  morning's run (run 30) stored the employer as the title of every Impactpool
+  posting. The card title had moved from a `<div>` to an `<h3>`, and
+  `_parse_page` counted `div.ip-typography` elements, so every field slid one
+  place left. Nothing failed: the parser's only check was a non-empty title,
+  and an employer name is never empty. 3,488 postings were then excluded on
+  a grade read as a location. 101 got through, because they were the cards
+  with no location (empty location passes, WP8f): 97 were stored as new rows,
+  and 4 existing rows had their title overwritten. `_card_fields` now finds
+  the title by `type="cardTitle"` and the organisation, location and grade by
+  where they sit in the card's two `ip-layout` blocks. A card missing its
+  title element, or of any other shape, raises `CardMarkupError` and fails the
+  source. A title element that is present but empty is a blank posting (8 that
+  day), and is skipped and logged, since failing the source over it would drop
+  the other 3,539. The same change fixes an older bug: a card with no location
+  had its grade read as the location. Repair: the next correct run's upsert
+  rewrites the fields of every posting still listed, and `retrofilter` then
+  re-applies the filters to the unreviewed rows that got through. The fixture
+  was refreshed from run 30's page 1 in the HTTP cache, passed through
+  `capture_fixtures.sanitise_html`, with the owner's approval, rather than by
+  a new capture. The run's own response is the markup that broke it.
