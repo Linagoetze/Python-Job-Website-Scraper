@@ -218,17 +218,30 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "impactpool": {
+        # Refreshed 2026-09-25 from that morning's run (page 1 from the HTTP
+        # cache, through capture_fixtures.sanitise_html). The title had moved
+        # from a <div> to an <h3>, and the positional parser stored the
+        # employer as every posting's title; `_card_fields` now reads fields
+        # by role. The card shapes this page lacks (no location, blank title,
+        # unknown markup) are pinned in `tests/test_impactpool_extractor.py`.
         "count": 40,
         "first_job": {
             "source_name": "impactpool",
-            "title": "Director of Programmes",
-            "company": "Resource justice Network",
+            "title": "Senior Analyst of the International Accountability Platform for Belarus",
+            "company": "DIGNITY - Danish Institute Against Torture",
             "department": "",
-            "location": "Remote",
+            "location": (
+                "Remote | Copenhagen | Netherlands | Germany | France | Spain | Portugal"
+                " | Au | United Kingdom | Switzerland"
+            ),
             "listing_url": "https://www.impactpool.org/search",
-            "detail_url": "https://www.impactpool.org/jobs/1229365",
-            "apply_url": "https://www.impactpool.org/jobs/1229365",
-            "raw_snippet": "Director of Programmes Remote",
+            "detail_url": "https://www.impactpool.org/jobs/1238292",
+            "apply_url": "https://www.impactpool.org/jobs/1238292",
+            "raw_snippet": (
+                "Senior Analyst of the International Accountability Platform for Belarus"
+                " Remote | Copenhagen | Netherlands | Germany | France | Spain | Portugal"
+                " | Au | United Kingdom | Switzerland"
+            ),
         },
     },
     "kognity": {

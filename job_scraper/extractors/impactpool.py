@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from job_scraper.extractors import pagination
+
+logger = logging.getLogger(__name__)
 
 _BASE = "https://www.impactpool.org"
 _MAX_PAGES = 200
@@ -27,6 +30,69 @@ def _links_to_page(soup: BeautifulSoup, page: int) -> bool:
     return any(re.search(rf"[?&]page={page}\b", a.get("href", "")) for a in soup.select("a[href]"))
 
 
+class CardMarkupError(ValueError):
+    """A job card whose markup no longer has the shape this parser reads."""
+
+
+def _card_fields(a: Tag, detail_url: str, source_name: str) -> tuple[str, str, str]:
+    """Title, organisation and location from one card's link.
+
+    Each field is found by its role in the card, never by counting
+    `ip-typography` elements. Counting is what broke on 2026-09-25: the title
+    moved from a <div> to an <h3>, every field slid one place left, and 3,547
+    postings "parsed" with the employer as their title. The card is:
+
+        <h3 type="cardTitle">title</h3>
+        <div class="ip-layout">                  outer
+          <div type="bodyEmphasis">organisation</div>
+          <div class="ip-layout">                inner
+            [<div type="bodyEmphasis">location</div>]
+            <div type="bodyEmphasis">grade</div>
+
+    The inner layout has two fields, or one when the posting names no location
+    (102 of 3,547 cards on 2026-09-25). That single field is the grade, not a
+    location — every one carried the grade's styling — so it leaves `location`
+    empty rather than filling it with "P-3" or "Mid - Mid level". Any other
+    shape raises: a card this parser does not recognise is a changed site, and
+    guessing at it is how the employer ended up in the title column.
+
+    A title element that is present but empty is a different thing: the
+    poster left the title blank (8 cards on 2026-09-25). The markup is intact,
+    so this returns an empty title for the caller to skip, not an error that
+    would fail the whole source over one posting.
+    """
+
+    def text(el: Tag | None) -> str:
+        return el.get_text(" ", strip=True) if el is not None else ""
+
+    def fail(what: str) -> CardMarkupError:
+        return CardMarkupError(
+            f"{source_name}: the card for {detail_url} {what}. Impactpool's card markup "
+            "has changed; refusing to guess which field is which."
+        )
+
+    title_el = a.find(attrs={"type": "cardTitle"})
+    if title_el is None:
+        raise fail('has no type="cardTitle" element')
+    title = text(title_el)
+
+    outer = a.find("div", class_="ip-layout", recursive=False)
+    if outer is None:
+        raise fail("has no ip-layout block under its title")
+    orgs = outer.find_all(attrs={"type": "bodyEmphasis"}, recursive=False)
+    inner = outer.find("div", class_="ip-layout", recursive=False)
+    details = inner.find_all(attrs={"type": "bodyEmphasis"}, recursive=False) if inner else []
+    if len(orgs) != 1 or len(details) not in (1, 2):
+        raise fail(
+            f"has {len(orgs)} organisation field(s) and {len(details)} detail field(s), "
+            "expected 1 and 1-2"
+        )
+
+    company = text(orgs[0])
+    location = text(details[0]) if len(details) == 2 else ""
+    return title, company, location
+
+
 def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list[dict[str, Any]]:
     """Every posting on one search page, in the order the page lists them.
 
@@ -37,6 +103,7 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
     """
     out: list[dict[str, Any]] = []
     on_this_page: set[str] = set()
+    untitled: list[str] = []
     jobs = soup.find_all("div", class_="job")
     for job in jobs:
         a = job.find("a")
@@ -53,12 +120,9 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
             continue
         on_this_page.add(detail_url)
 
-        divs = [d.get_text(" ", strip=True) for d in a.find_all("div", class_="ip-typography")]
-        title = divs[0] if len(divs) > 0 else ""
-        company = divs[1] if len(divs) > 1 else ""
-        location = divs[2] if len(divs) > 2 else ""
-
+        title, company, location = _card_fields(a, detail_url, source_name)
         if not title:
+            untitled.append(detail_url)
             continue
 
         raw_snippet = " ".join(x for x in [title, location] if x)
@@ -76,6 +140,13 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
             }
         )
 
+    if untitled:
+        logger.info(
+            "%s: skipped %d posting(s) listed with a blank title: %s",
+            source_name,
+            len(untitled),
+            ", ".join(untitled),
+        )
     return out
 
 

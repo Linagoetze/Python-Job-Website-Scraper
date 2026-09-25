@@ -306,9 +306,10 @@ def test_unops_without_a_readable_total_says_it_could_not_check(
 def _impactpool_page(jobs: int, next_page: int | None, offset: int = 0) -> str:
     rows = "".join(
         f'<div class="job"><a href="/jobs/role-{offset + i}">'
-        f'<div class="ip-typography">Role {offset + i}</div>'
-        f'<div class="ip-typography">Org</div>'
-        f'<div class="ip-typography">Geneva</div></a></div>'
+        f'<h3 type="cardTitle">Role {offset + i}</h3>'
+        f'<div class="ip-layout"><div type="bodyEmphasis">Org</div>'
+        f'<div class="ip-layout"><div type="bodyEmphasis">Geneva</div>'
+        f'<div type="bodyEmphasis">P-3</div></div></div></a></div>'
         for i in range(jobs)
     )
     nxt = f'<a href="/search?page={next_page}">Next</a>' if next_page else ""
