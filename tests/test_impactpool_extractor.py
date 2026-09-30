@@ -10,8 +10,6 @@ for every posting. See `impactpool._card_fields`.
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 from bs4 import BeautifulSoup
 
@@ -87,10 +85,13 @@ def test_card_of_an_unknown_shape_fails_loudly(details: tuple[str, ...]) -> None
         _parse(_card("Programme Officer", *details))
 
 
-def test_blank_title_is_skipped_and_logged_not_fatal(caplog: pytest.LogCaptureFixture) -> None:
+def test_blank_title_is_returned_empty_not_fatal() -> None:
     """8 postings on 2026-09-25 had an empty title element: the markup is intact,
-    the poster left it blank, and that must not fail the other 3,539."""
-    with caplog.at_level(logging.INFO, logger="job_scraper.extractors.impactpool"):
-        jobs = _parse(_card("", "Mid"), _card("Programme Officer", "Geneva", "P-3", job_id=102))
-    assert [j["title"] for j in jobs] == ["Programme Officer"]
-    assert "skipped 1 posting(s) listed with a blank title" in caplog.text
+    the poster left it blank, and that must not fail the other 3,539. It goes
+    back with an empty title for the pipeline to skip, since only the pipeline
+    can tell whether the owner already rejected it."""
+    jobs = _parse(_card("", "Mid"), _card("Programme Officer", "Geneva", "P-3", job_id=102))
+    assert [(j["title"], j["detail_url"]) for j in jobs] == [
+        ("", "https://www.impactpool.org/jobs/101"),
+        ("Programme Officer", "https://www.impactpool.org/jobs/102"),
+    ]

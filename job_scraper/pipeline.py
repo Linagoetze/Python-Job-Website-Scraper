@@ -87,6 +87,49 @@ def _exclusions(jobs: list[JobRecord], layer: str) -> list[dict[str, Any]]:
     return [exclusion(job, layer, str(job.get(DROP_RULE_KEY) or "unattributed")) for job in jobs]
 
 
+def _split_untitled(rows: list[JobRecord]) -> tuple[list[JobRecord], list[JobRecord]]:
+    """Separate the postings a site listed with no title from the rest.
+
+    Most extractors drop these themselves. Impactpool hands them back with an
+    empty title, because its board keeps them up for weeks and whether each is
+    worth a log line depends on the store (see `_log_untitled`). Either way a
+    posting with no title is not one: it is never filtered, stored or counted.
+    """
+    titled = [r for r in rows if str(r.get("title") or "").strip()]
+    untitled = [r for r in rows if not str(r.get("title") or "").strip()]
+    return titled, untitled
+
+
+def _log_untitled(untitled: list[JobRecord], stored: dict[str, dict[str, Any]]) -> None:
+    """Name the untitled postings the owner has not already rejected.
+
+    The ones already rejected are the leftovers of run 30, which stored the
+    employer as their title (docs/DECISIONS.md, 2026-09-25). Naming them on
+    every run until the poster fixes them says nothing new, so they are only
+    counted, at DEBUG. One line per source, not per listing page.
+    """
+    by_source: dict[str, list[str]] = {}
+    already_rejected = 0
+    for job in untitled:
+        if stored.get(dedupe_key_for_job(job), {}).get("status") == "rejected":
+            already_rejected += 1
+            continue
+        url = str(job.get("detail_url") or job.get("apply_url") or "")
+        by_source.setdefault(str(job.get("source_name") or ""), []).append(url)
+    for source, urls in by_source.items():
+        logger.info(
+            "%s: skipped %d posting(s) listed with a blank title: %s",
+            source,
+            len(urls),
+            ", ".join(urls),
+        )
+    if already_rejected:
+        logger.debug(
+            "Skipped %d blank-title posting(s) already stored as rejected",
+            already_rejected,
+        )
+
+
 @dataclass
 class RunSummary:
     sources_total: int
@@ -333,6 +376,8 @@ def _run_pipeline(
     # the source_health table. Sources skipped for config reasons (no URL,
     # unknown strategy, no extractor) never reached the site, so they get no row.
     source_health: list[tuple[str, int, bool, str | None]] = []
+    # Logged once the store is open; see _log_untitled.
+    untitled: list[JobRecord] = []
 
     for src in sources:
         name = str(src.get("name") or "").strip()
@@ -388,6 +433,8 @@ def _run_pipeline(
             source_health.append((name, 0, False, str(exc)))
             skipped += 1
             continue
+        rows, source_untitled = _split_untitled(rows)
+        untitled += source_untitled
         source_health.append((name, len(rows), True, None))
 
         # Config-supplied company for single-employer sources. Aggregators
@@ -536,6 +583,7 @@ def _run_pipeline(
             store.record_source_health(run_id, name, rows_found, ok, error)
 
         stored = store.job_index()
+        _log_untitled(untitled, stored)
 
         # Layer 4 — review-status exclusion, replacing the CSV blocklist: a
         # stored job the owner (or a filter change) rejected stays out of the
