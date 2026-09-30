@@ -1859,8 +1859,9 @@ layers is the thing SP5 would otherwise discover one bad row at a time.
 `1a-title-keyword`, `1-seniority`, `1d-review-status`, `2-detail`, including
 Layer 5's two deferred states, hybrid and unresolvable location), and
 `refilter_stored_jobs` / `retrofilter`, which re-apply them to stored rows.
-**Out of scope:** the optional LLM scoring stage (`scoring.py`) — it ranks,
-it does not exclude — unless you say otherwise at the start.
+**Out of scope, decided by the owner on 2026-09-30:** the optional LLM
+scoring stage (`scoring.py`). It ranks what the ladder kept; it does not
+exclude anything.
 
 ```
 think hard
@@ -1869,6 +1870,8 @@ Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4b
 only. This is an AUDIT. Do not change filter code, extractor code, config, or
 the store. The deliverable is a findings table, characterisation tests where
 they are cheap, and proposed follow-up packages for the owner to approve.
+scoring.py is OUT of scope (owner, 2026-09-30): it ranks, it does not exclude.
+Do not audit it, and do not propose packages for it.
 
 THE QUESTION, per layer and per source: does each filter receive the input it
 assumes, and does it make the decision it claims to? A filter can be wrong in
@@ -1962,7 +1965,7 @@ Branch sp4b-filter-audit. Commit, do not push. Update the Status table here.
 
 ### Your to-dos
 
-- [ ] **Say at the start whether `scoring.py` is in scope.** Default is no.
+- [x] **Say whether `scoring.py` is in scope.** Decided 2026-09-30: it is not.
 - [ ] **Check that `data/curated/labels.csv` is current enough to be worth
       measuring against.** `eval.py` is only as good as the gold set, and the
       session is told not to label rows itself. If it has no rows for
