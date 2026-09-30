@@ -945,3 +945,17 @@ session — see `CLAUDE.md`.
   was refreshed from run 30's page 1 in the HTTP cache, passed through
   `capture_fixtures.sanitise_html`, with the owner's approval, rather than by
   a new capture. The run's own response is the markup that broke it.
+- **Blank-title postings are skipped by the pipeline, and named only if not
+  already rejected (2026-09-30).** Run 32 logged six Impactpool postings with
+  a blank title, over four INFO lines, one per listing page. All six were the
+  run-30 leftovers the owner had already rejected. The poster has not fixed
+  them, so they would be named on every run until then. The extractor cannot
+  see the store, so it no longer decides. `_parse_page` returns a blank-title
+  posting with an empty title. The pipeline's `_split_untitled` removes such
+  rows straight after extraction, before `source_health`, the zero-row check
+  and delisting keys see them. That keeps them out of every count, as before.
+  `_log_untitled` then runs once the store is open. It names the postings not
+  stored as `rejected`, in one line per source, and counts the rest at DEBUG.
+  The other extractors still drop blank titles themselves. The split in the
+  pipeline is a no-op for them, not a new filter layer: nothing is recorded
+  in `run_exclusions`, and nothing a title-bearing posting meets changes.

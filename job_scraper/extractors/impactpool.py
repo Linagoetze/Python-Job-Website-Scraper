@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import re
 from collections.abc import Callable
 from typing import Any
@@ -9,8 +8,6 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup, Tag
 
 from job_scraper.extractors import pagination
-
-logger = logging.getLogger(__name__)
 
 _BASE = "https://www.impactpool.org"
 _MAX_PAGES = 200
@@ -58,8 +55,9 @@ def _card_fields(a: Tag, detail_url: str, source_name: str) -> tuple[str, str, s
 
     A title element that is present but empty is a different thing: the
     poster left the title blank (8 cards on 2026-09-25). The markup is intact,
-    so this returns an empty title for the caller to skip, not an error that
-    would fail the whole source over one posting.
+    so this returns an empty title, not an error that would fail the whole
+    source over one posting. The posting goes back to the pipeline with that
+    empty title, and the pipeline skips it — see `_split_untitled` there.
     """
 
     def text(el: Tag | None) -> str:
@@ -103,7 +101,6 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
     """
     out: list[dict[str, Any]] = []
     on_this_page: set[str] = set()
-    untitled: list[str] = []
     jobs = soup.find_all("div", class_="job")
     for job in jobs:
         a = job.find("a")
@@ -120,11 +117,10 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
             continue
         on_this_page.add(detail_url)
 
+        # A blank title is kept, not skipped here: whether it is worth a log
+        # line depends on whether the owner has already rejected the posting,
+        # and only the pipeline can see the store.
         title, company, location = _card_fields(a, detail_url, source_name)
-        if not title:
-            untitled.append(detail_url)
-            continue
-
         raw_snippet = " ".join(x for x in [title, location] if x)
         out.append(
             {
@@ -140,13 +136,6 @@ def _parse_page(soup: BeautifulSoup, listing_url: str, source_name: str) -> list
             }
         )
 
-    if untitled:
-        logger.info(
-            "%s: skipped %d posting(s) listed with a blank title: %s",
-            source_name,
-            len(untitled),
-            ", ".join(untitled),
-        )
     return out
 
 
