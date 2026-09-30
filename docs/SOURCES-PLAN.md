@@ -98,6 +98,7 @@ the ordering below.
 | 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
+| 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | not started | `sp4b-filter-audit` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
@@ -120,19 +121,28 @@ airbus fails loudly on every run until it lands. It is independent of SP4,
 and it goes before SP5 only if SP5 adds a Workday board past the cap.
 **SP4 before SP5** if any new
 company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
-do, SP4 and SP5 are independent. SP6 is ongoing maintenance with no deadline.
+do, SP4 and SP5 are independent. **SP4b before SP5**: two of the readers it found blind at Layer 5 are
+generic ATS readers (Ashby, Workable), so a new employer on either would be
+unfiltered from its first run. It needs nothing else merged, and it may add
+fix packages of its own ahead of SP5. SP6 is ongoing maintenance with no deadline.
 SP7 needs only SP1 and SP3b, and sooner is better: until it lands, a source
 whose reader fails reads as "skipped" in the run summary. Its tombstone guard
 is the one optional part.
 
 ### Model recommendations
 
-`Opus 5` for SP1, SP2, SP2b, SP3 and SP3b: each is a design decision with a data-loss edge
+`Opus 5` for SP1, SP2, SP2b, SP3, SP3b and SP4b: each is a design decision with a data-loss edge
 (a schema people will live with, a one-shot recovery from an archive, a
 judgement ladder that has to know when to stop, and — for SP3b — a choice
 between two fragile routes where a changed detail URL would silently
 rewrite review history). SP3b looks like SP4's capture-and-fix work, but the
-route choice and the dedupe-key edge are why it is not a Sonnet package. SP3c follows
+route choice and the dedupe-key edge are why it is not a Sonnet package. SP4b is
+an audit, not a build, but it is Opus work for two reasons: its core
+judgement is telling a *starved* filter (bad input from an extractor) from a
+*wrong* one (bad decision on good input) across five layers and every source,
+and its false-negative findings sit on CLAUDE.md's first priority. It also
+writes the prompts for its own follow-ups, which is design work. The fix
+packages it proposes can be Sonnet, and it should say which. SP3c follows
 SP3b but is a Sonnet package: its route and config shape are decided in its
 prompt, its detail URLs are untouched by construction, and its one open
 judgement — what proves a facet was applied — is written as a stop-and-ask.
@@ -161,7 +171,7 @@ The surfaces, and what invalidates each:
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7 | Three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
+| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
@@ -1796,6 +1806,179 @@ worth not repeating.
 - [x] `rules.json`'s contact details were filled in and reached every capture
       via `polite_fetching` — confirmed by the User-Agent each capture sent.
 - [x] Needed one session, not two.
+
+---
+
+## SP4b — Audit the filter ladder, source by source
+
+Added on 2026-09-30, after a posting that asked for well over five years of
+experience reached `jobs.xlsx`. The diagnosis went further than that one row.
+**Layer 5 (`2-detail`) has never read a real description for five sources:**
+`jobsinlund`, `undp`, `kognity`, `monday_com` and `simprints`. None of the
+five has a stored description longer than 300 characters in the whole store,
+and none has ever had a posting excluded for experience. Their detail pages
+are JavaScript shells. A static fetch returns a 200 carrying the page title
+and a loading spinner, and Layer 5 reads that as "no requirement found" and
+keeps the job. That is the silent-empty-result shape CLAUDE.md's second
+priority forbids, one layer further down than the extractors it was written
+for. On 2026-09-30 it covered 21 of the 51 rows in the spreadsheet.
+
+The same session found two weaker faults in sources whose descriptions *are*
+read:
+
+- **Phrasings the years patterns miss.** Any word between the number and
+  "experience" defeats every pattern, so the shape "N years of *relevant*
+  experience" matches nothing, whether N is a digit or a word. Neither does
+  "N years' experience", or any Swedish phrasing. Two live rows on 2026-09-30.
+- **`_extract_min_years` takes the smallest number in the whole text.** A
+  posting's "minimum 5 years" requirement was overridden by an unrelated
+  "at least 2 years" of one narrow skill further down, and the posting was
+  stored as junior. Where a posting offers tiered routes
+  (an advanced degree and 2 years, or a first degree and 4), the minimum is
+  arguably right, which makes that half a policy question, not a bug.
+
+**Why this is a package and not three fixes.** One layer was checked, by
+accident, because one row looked wrong. The other four were not checked at
+all, and the one checked turned out to be blind for a fifth of the sources.
+`eval.py` (WP8c) measures Layers 0–3 against the gold set, but it lists
+Layer 5 as unreplayable, and nothing measures whether each layer *receives
+the input it assumes* from each extractor. A Layer 0 location rule on an
+extractor that fills `location` with a grade is exactly as blind (the
+impactpool shift of 2026-09-25 did that to 3,488 postings). So this is an
+audit that ends in a findings table and proposed fix packages, not in code.
+CLAUDE.md's "redesign, do not patch" names the filter ladder as one of the two
+areas that grew one session at a time; the fixes should be designed from the
+whole picture, not appended one regex at a time.
+
+**Why here, before SP5.** SP5 adds sources. Two of the five blind readers are
+generic ATS readers (Ashby and Workable), so every employer SP5 adds on them
+joins the blind population on day one. Knowing which extractors starve which
+layers is the thing SP5 would otherwise discover one bad row at a time.
+
+**Scope, fixed:** the five layers of `pipeline.py` (`0-rules`,
+`1a-title-keyword`, `1-seniority`, `1d-review-status`, `2-detail`, including
+Layer 5's two deferred states, hybrid and unresolvable location), and
+`refilter_stored_jobs` / `retrofilter`, which re-apply them to stored rows.
+**Out of scope, decided by the owner on 2026-09-30:** the optional LLM
+scoring stage (`scoring.py`). It ranks what the ladder kept; it does not
+exclude anything.
+
+```
+think hard
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4b
+only. This is an AUDIT. Do not change filter code, extractor code, config, or
+the store. The deliverable is a findings table, characterisation tests where
+they are cheap, and proposed follow-up packages for the owner to approve.
+scoring.py is OUT of scope (owner, 2026-09-30): it ranks, it does not exclude.
+Do not audit it, and do not propose packages for it.
+
+THE QUESTION, per layer and per source: does each filter receive the input it
+assumes, and does it make the decision it claims to? A filter can be wrong in
+two ways and they must be kept apart:
+  (a) STARVED — the extractor or fetch hands it empty, truncated or mis-mapped
+      input (a JS shell for a description, a grade in the location column, an
+      employer in the title), so the rule never has a chance.
+  (b) WRONG — the input is fine and the rule mis-decides (a missed phrasing, a
+      lowest-number-wins, a keyword that over-matches).
+(a) is per extractor and is usually the bigger number. Measure it first.
+
+EVIDENCE, all read-only and offline:
+- data/jobs.sqlite3 (open with mode=ro): jobs, run_exclusions, source_health,
+  export_rows. run_exclusions names layer and rule for every drop.
+- data/http_cache.sqlite3 (requests_cache): the raw responses Layer 5 read.
+- `python -m job_scraper.eval` against data/curated/labels.csv for Layers 0–3.
+  If the gold set is thin for some source, say so; do not label rows yourself.
+- tests/fixtures/ for what each extractor emits.
+No live HTTP. Do not run the pipeline, not even with --dry-run, without asking:
+a dry run fetches every source. Write scratch scripts in your scratchpad, not
+the repo.
+
+WORK THROUGH, in this order:
+1. INPUT COVERAGE MATRIX. For every source with rows in the store: for each
+   field a layer reads (title, company, location, description_text), the
+   share of rows where it is empty, suspiciously short, or a constant. For
+   description_text, flag any source whose descriptions never exceed a few
+   hundred characters, and read one cached response to say WHY (JS shell,
+   redirect, login wall, robots refusal). Starting point, already found on
+   2026-09-30: jobsinlund, undp, kognity, monday_com, simprints — confirm or
+   correct it, do not just copy it.
+2. LAYER 0 (rules): include/exclude keywords, the location cases, and the
+   deferred states it hands to Layer 5. Which location_drop rules fire per
+   source, and does any source have its location field systematically
+   dropped or systematically admitted as empty (WP8f)?
+3. LAYERS 1a and 1 (title keyword, seniority): from eval.py, every false
+   negative with the rule that killed it. Keywords in
+   config/title_exclude_keywords.csv that have never fired, and ones that
+   fire on titles they should not.
+4. LAYER 1d (review status): does a rejected posting stay out when its URL
+   changes shape (dedupe key), and does anything un-reject? This is history,
+   not a rule; a short check is enough.
+5. LAYER 5 (detail): the years patterns, lowest-number-wins, the PhD rule,
+   and the fail-open/fail-closed split. Distinguish "fetch failed" (counted,
+   kept), "fetch returned nothing usable" (today counted as NO requirement —
+   the core finding), and "read and found nothing". Measure how many stored
+   descriptions would change verdict under an obviously better reading,
+   using the cached text, but do not commit that reading as a fix.
+6. RETROFILTER: does re-applying the ladder to stored rows see the same
+   inputs a run does? (docs/DECISIONS.md, 2026-09-25: it re-judges by stored
+   title, which is why it could not repair the impactpool shift.)
+
+TESTS. Where a finding can be pinned cheaply, add a characterisation test
+built from SYNTHETIC text (never text from the store or the cache): the known-
+wrong cases as `pytest.mark.xfail(strict=True, reason=...)`, so the fix
+package inherits a red-to-green target. Nothing else in src changes.
+
+PRIVACY. The store, the cache and labels.csv are private. The findings table
+in this file names sources, extractors, layers, rules and counts. It does NOT
+quote job titles, employers of individual postings, or description text.
+Paraphrase a phrasing ("a word between the number and 'experience'") rather
+than quoting a posting.
+
+DO NOT add a filter layer, and do not propose one without saying why the
+existing five cannot carry it (CLAUDE.md). A fix that makes a starved layer
+fail loudly — a source-level warning in the style of SP7, or a Layer 5
+"unreadable" state distinct from "no requirement" — is not a new layer; say
+which it is.
+
+DELIVERABLES:
+- A result section under SP4b in this file: the input coverage matrix, then
+  one row per finding — layer, sources affected, starved or wrong, rows
+  affected in the store and in the current export, severity by CLAUDE.md's
+  priorities (a false negative outranks a false positive).
+- Proposed follow-up packages (SP4c, SP4d, ...), each with a draft prompt,
+  model and effort cue, in the same shape as this one. Group by root cause,
+  not by layer: "detail pages that need rendering" is one package however
+  many layers it starves. Mark each as a proposal; the owner approves before
+  any is added to the Status table.
+- Questions for the owner, listed at the end of the result, for anything that
+  is policy rather than correctness (the tiered-requirement case is one).
+- docs/DECISIONS.md: anything a later session would re-derive — above all the
+  distinction between a starved and a wrong filter, and which sources are
+  starved of what.
+
+DOCS. No user-visible output changes, so README.md changes only if you add
+tests (the test count). Do not touch the run summary.
+
+Branch sp4b-filter-audit. Commit, do not push. Update the Status table here.
+```
+
+### Your to-dos
+
+- [x] **Say whether `scoring.py` is in scope.** Decided 2026-09-30: it is not.
+- [ ] **Check that `data/curated/labels.csv` is current enough to be worth
+      measuring against.** `eval.py` is only as good as the gold set, and the
+      session is told not to label rows itself. If it has no rows for
+      jobsinlund, impactpool since the 2026-09-25 shift, or any source added
+      since you last labelled, twenty minutes of labelling before the session
+      buys a far better Layer 0–3 answer.
+- [ ] **Answer the policy questions the result section lists.** At least one is
+      known already: when a posting offers tiered routes (an advanced degree
+      and 2 years, or a first degree and 4), should the lowest route decide?
+- [ ] **Approve, reorder or reject each proposed follow-up package** before it
+      goes into the Status table.
+- [ ] Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
+      `kognity`, `monday_com` or `simprints` as **not experience-checked**.
 
 ---
 
