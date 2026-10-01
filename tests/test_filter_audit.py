@@ -48,7 +48,7 @@ _JS_SHELL = (
 )
 
 _RULES = {
-    "locations": ["Lund"],
+    "locations": ["Northwind"],
     "conditional_locations": ["Fabrikam City"],
     "conditional_location_keywords": ["hybrid"],
     "non_place_locations": ["EMEA", "Worldwide"],

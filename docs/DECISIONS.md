@@ -959,3 +959,73 @@ session — see `CLAUDE.md`.
   The other extractors still drop blank titles themselves. The split in the
   pipeline is a no-op for them, not a new filter layer: nothing is recorded
   in `run_exclusions`, and nothing a title-bearing posting meets changes.
+- **A filter can fail in two ways, and they need different fixes (SP4b,
+  2026-10-01).** A filter is *starved* when its input cannot support the
+  decision: the extractor or the fetch hands it empty, truncated or mis-mapped
+  text, a JS shell for a description or a grade for a location. It is *wrong*
+  when the input is fine and the rule mis-decides: a missed phrasing, a
+  keyword that over-matches. A starved filter cannot be repaired in its own
+  rule, because no regex reads a requirement out of a loading spinner. Its fix
+  belongs in the reader or the fetch, and until then the layer must say it did
+  not run. So measure the input first, per source, before touching a rule.
+  SP4b's coverage matrix (field by field, share empty, short or constant, from
+  the store) is the instrument, and the impactpool shift of 2026-09-25 is the
+  same failure seen at Layer 0.
+- **Which sources were starved of what, as of 2026-10-01 (SP4b).** Layer 5
+  read no posting text for **jobsinlund, undp, kognity, monday_com and
+  simprints**: the longest stored description in each is under 110
+  characters. strava and nutrition_international share the Ashby and Workable
+  readers, and are just as blind, but Layer 0 drops all they list. Layer 0
+  admits unread the empty location fields of **impactpool, path, irc, oatly,
+  jpal and gfi_europe** (WP8f). No source's location field is mis-mapped since
+  2026-09-25. No layer reads `company`, and with `include_keywords` and
+  `exclude_keywords` empty in `rules.json`, Layer 0 is a location filter only.
+  Re-measure rather than trust this list after SP4c or SP4d.
+- **A 200 response is not a reading (SP4b).** Layer 5 has "fetch failed" and
+  "read", and a shell is "read". For years and PhD that keeps the job as "no
+  requirement". For the two fail-closed deferred states it is worse: the shell
+  is read as checked and found lacking, never as unverified, so the job is
+  stored `rejected` for good. 24 rows were lost that way (undp 16,
+  simprints 4, kognity 4). The stored texts separate cleanly: every unreadable
+  one was 159 characters or fewer, every readable one 2,060 or more. Length is
+  not the whole test, though. tetrapak's old URL shape returned one 3,612-character
+  cookie-and-chrome page for four different postings, and the
+  same-text-on-different-postings signature is what caught it.
+- **Look in what was already fetched before rendering anything (SP4b).**
+  jobsinlund's listing API returns the full description of every posting, and
+  the extractor discards it. Its detail page is a Vue shell whose posting text
+  sits only in `<meta>` attributes. `_strip_html` uses BeautifulSoup's
+  `get_text`, which reads neither attributes nor script contents (checked on
+  the installed bs4 4.15). So "this detail page is client-rendered" can mean the text is in
+  the HTML and not read, or not in the HTML at all. Capture one and look
+  before choosing between a reader-supplied description, the platform's JSON
+  and `strategy: dynamic`.
+- **The years phrasing and lowest-number-wins must be fixed together (SP4b,
+  measured).** Broadening the patterns to read "N years of relevant
+  experience" and its kin moves 34 stored rows from "no requirement" to
+  excluded. On its own, though, it also flipped 20 rows from excluded to kept.
+  It started reading UN-system equivalence clauses ("a first-level degree with
+  an additional 2 years ... in lieu of") as the requirement, and `min()` then
+  let them win. Today's patterns already misread that clause whenever nothing
+  sits between "years of" and "experience". Separately, 12 rows were rejected
+  on a number that was no requirement at all: an employer's own history
+  phrased as "more than 40 years of experience", and a minimum age of 18. Any
+  change to `_extract_min_years` is a redesign measured against the stored
+  descriptions, not a pattern appended, and its tiered-route behaviour is the
+  owner's call (SP4b Q1).
+- **The replay's recall is a ceiling twice over (SP4b).** `eval.py` cannot see
+  Layer 5, and it reports deferred-location jobs as kept (WP8d's ceiling). In
+  the store, Layer 5 removed 18 of the 59 wanted jobs the replay keeps: 11 on
+  years it read correctly (a threshold question, SP4b Q2), 6 through the
+  deferred location state (5 read in full, 1 a shell), and 1 on a correctly
+  read non-hybrid. To judge Layer 5, join the gold set to the store's
+  `experience_level`. The replay alone will not show it.
+- **The re-filter pass never re-runs Layer 5, and the retrofilter tool logs
+  nothing (SP4b).** `refilter_stored_jobs` re-judges Layers 0–1 from stored
+  fields, without `raw_snippet` or `department`. Under today's config that
+  changed no verdict across 762 fixture postings, because only the
+  remote-keyword check reads those fields. It never re-applies Layer 5,
+  although the description is stored, so a fixed years rule reaches no stored
+  row by itself. And `tools/retrofilter.py` discards the drop rows the pass
+  returns, which makes its rejections the one exclusion missing from
+  `run_exclusions`.

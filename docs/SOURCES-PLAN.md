@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c and SP4 are done** (as of 2026-09-24); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b are done** (as of 2026-10-01); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -98,7 +98,7 @@ the ordering below.
 | 3b | Workday reads the whole board | 3 hr | Opus 5 | `think hard` | done | `sp3b-workday-walk` |
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
-| 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | not started | `sp4b-filter-audit` |
+| 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
@@ -124,7 +124,9 @@ company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
 do, SP4 and SP5 are independent. **SP4b before SP5**: two of the readers it found blind at Layer 5 are
 generic ATS readers (Ashby, Workable), so a new employer on either would be
 unfiltered from its first run. It needs nothing else merged, and it may add
-fix packages of its own ahead of SP5. SP6 is ongoing maintenance with no deadline.
+fix packages of its own ahead of SP5. It did (2026-10-01): SP4c–SP4h are
+proposals under SP4b's result, outside this table until the owner approves
+them, and it recommends SP4c and SP4d before SP5. SP6 is ongoing maintenance with no deadline.
 SP7 needs only SP1 and SP3b, and sooner is better: until it lands, a source
 whose reader fails reads as "skipped" in the run summary. Its tombstone guard
 is the one optional part.
@@ -1962,6 +1964,440 @@ tests (the test count). Do not touch the run summary.
 
 Branch sp4b-filter-audit. Commit, do not push. Update the Status table here.
 ```
+
+### Result — done 2026-10-01, branch `sp4b-filter-audit`
+
+An audit, so nothing in `job_scraper/` changed. Evidence: the store as of
+run 32 (2026-09-30, 1,524 jobs, 52 rows in the current export), the drop log
+for runs 23–32, the HTTP cache (which holds run 32's responses only, so it has
+listing pages for most sources but detail pages only for jobsinlund), the gold
+set as of 2026-10-01 (1,676 scored rows, 73 `review`), and the saved fixtures.
+All read-only; the cache was read from a copy. No HTTP request was made and the
+pipeline was not run. The scratch scripts stayed in the session scratchpad.
+
+**Three corrections to the prompt, before the numbers.**
+
+- **No layer reads `company`.** Layer 0's haystack is title, `raw_snippet`,
+  `department` and location (`filtering._haystack`). Company is presentation
+  only. Its gaps (jobsinlund 35 empty, impactpool 16) cost no filter decision.
+- **Layer 0 is a location filter and nothing else.** `include_keywords` and
+  `exclude_keywords` are both empty in `rules.json`. So the only
+  haystack-dependent rule is the remote-keyword check, and the snippet and
+  department fields matter only to it.
+- **"Fetch failed" has no rows to count.** Every stored row with an empty
+  description was first seen before 2026-08-13, when descriptions started to be
+  stored (WP6). Since then no detail fetch for a stored row has failed. That
+  makes the second bucket, "fetched but unreadable", the whole of the Layer 5
+  problem.
+
+#### 1. Input coverage matrix
+
+Shares are of each source's rows in the store, all statuses. `desc max` is the
+longest stored description in characters. **Starved** marks a field that
+cannot support the decision its layer makes. The 19 sources with no stored
+rows (strava and nutrition_international among them) are not in the table.
+Nothing they listed survived Layers 0–1, so no later layer ever received their
+input. Their Layer 0 drops are covered below the findings.
+
+| source | rows | export | title | location empty | desc <300 | desc max | starved |
+|---|---:|---:|---|---:|---:|---:|---|
+| jobsinlund | 380 | 21 | ok | 111 (one run, 2026-08-11) | 224 | 107 | **Layer 5** |
+| undp | 18 | 0 | ok | 1 | 16 | 4 | **Layer 5**, and its deferred states |
+| kognity | 4 | 0 | ok | 0 | 4 | 105 | **Layer 5**, and its deferred states |
+| simprints | 4 | 0 | ok | 0 | 4 | 48 | **Layer 5**, and its deferred states |
+| monday_com | 4 | 0 | ok | 2 | 2 | 86 | **Layer 5** |
+| impactpool | 694 | 16 | ok since 09-25 | 167 (121 since 08-20) | 0 | 20,000 | **Layer 0** (empty location admitted) |
+| path | 35 | 0 | ok | 25 | 1 | 12,940 | **Layer 0** (empty location admitted) |
+| irc | 52 | 0 | ok | 16 | 0 | 20,000 | **Layer 0** (empty location admitted) |
+| oatly | 21 | 0 | ok | 18 | 0 | 13,028 | **Layer 0** (empty location admitted) |
+| tetrapak | 17 | 0 | ok | 6 | 0 | 9,253 | Layer 5, historically (see below) |
+| every other source | 295 | 15 | ok | ≤ 4 each | 0 | ≥ 4,117 | none found |
+
+**Why each Layer 5 source is starved.** None of the causes is a robots
+refusal, a redirect or a login wall. Every one is a successful fetch with
+nothing readable in its visible text. A failed fetch stores an empty
+description, and none of these rows has one.
+
+- **jobsinlund.** Confirmed from 21 cached detail pages. Each is about 60 KB of
+  HTML whose visible text is the page title alone: a Vue mount point
+  (`id="app"`) plus fourteen scripts. The posting text is in the HTML (found
+  in 18 of the 21), but where it was traced it sat in `<meta>` attributes,
+  which text extraction never reads. **The listing API the
+  extractor already calls carries the full description.** In run 32's 759
+  cached postings it runs from 420 to 13,022 characters (median 1,768), and the
+  extractor discards it. Read through today's own years rule, those
+  descriptions would exclude **4 of the 21 jobsinlund rows in the current
+  export**, and 23 rows the owner has since rejected.
+- **kognity, monday_com (Ashby).** Each stored text is the posting title,
+  followed by the platform's "You need to enable JavaScript to run this app."
+  The cached listing pages carry no description in `window.__appData` either.
+  Its postings have no description field, and no department, only a `teamId`.
+  No Ashby detail page is cached, so whether the detail HTML embeds the posting
+  in a script is **unverified**. The fix package must capture one first.
+  strava runs on the same reader and has no stored rows, because Layer 0 drops
+  every posting it lists.
+- **simprints (Workable).** Each stored text is "<title> - <organisation>". This
+  is the client-rendered `apply.workable.com/<org>/j/<id>` page. Nothing is
+  cached. nutrition_international shares the reader and has no stored rows.
+- **undp.** Detail URLs point at an Oracle HCM candidate-experience page, and
+  the whole stored text is the four characters of the organisation's name.
+  Nothing is cached.
+- **tetrapak, historical.** Four rows stored under the old `/job-detail/<id>/`
+  URL shape hold one identical 3,612-character page: a cookie notice and site
+  chrome, not a posting. A length threshold does not catch this, but the same
+  text on four different postings does. The URL shape has since changed, and
+  the same postings were re-stored under new keys with real text (see
+  Layer 1d).
+
+#### 2. Findings
+
+Severity follows CLAUDE.md. **Critical** is a wanted job lost permanently.
+**High** is a job lost, or a layer silently not running on rows the owner
+sees. **Medium** is false positives in the export. **Low** is latent, or
+costs only attribution. "Store" counts rows in `jobs` (all statuses), and
+"export" counts rows in the 52-row sheet of 2026-09-30.
+
+| # | layer | sources | kind | store | export | severity | finding |
+|---|---|---|---|---:|---:|---|---|
+| F1 | 5 deferred states | undp, simprints, kognity | **starved** | 24 | 0 | **critical** | A JS shell settles a deferred location as checked and found lacking, never as unverified. All 24 are stored `rejected`, permanently: undp 16 and simprints 4 on an unresolvable location, kognity 2 + 2 on location and hybrid. One is labelled `review` in the gold set. |
+| F2 | 5 years and PhD | jobsinlund, undp, kognity, monday_com, simprints (path 1, one-off) | **starved** | 251 | 21 | **high** | A page with no readable text is recorded as `unspecified`, the same value as a posting read in full that states no requirement. Every jobsinlund row in the sheet is unchecked, and nothing in the run says so. |
+| F3 | 5 deferred location | canonical, impactpool, irc, jpal, airbus, axis_comms + 8 | **wrong** (by design, so policy) | 480 | 0 | **critical** | Fail-closed asks the description to name a listed place. A home-based, worldwide or regional role rarely does, because it is not in one place. 83 rejections are of that shape (16 of them undp shells, F1), 127 are "N Locations" placeholders, and 270 are bare countries or regions. **6 are labelled `review`**: 5 read in full, 1 a shell. Under diacritic folding and substring matching none of the 6 names a listed place, so this is the rule doing what it says, not a matching bug. |
+| F4 | 5 years | path 10, irc 2 | **wrong** | 12 | 0 | **high** | The number that decided was not a requirement. path's descriptions open with the employer's own age, phrased as "more than N years of experience", and 10 rows were rejected at 40+ years. Two irc internships were rejected at 18+ years for a minimum age. |
+| F5 | 0 | impactpool, path, irc, oatly, jpal, gfi_europe | **starved** | 182 | 14 | **medium** | An empty location is admitted outright (WP8f). WP8f's premise is that there is no page to read the place off, which is false here: these detail pages are read in full. Of impactpool's 13 empty-location rows in the export, 12 have descriptions naming neither a listed place nor remote work. |
+| F6 | 5 years | impactpool 19, unops 8, oatly 4, dsv 3 | **wrong** | 34 | 2 | **medium** | Missed phrasings stop a requirement being read at all: a word between the number and "experience", the possessive "years'", a number word with a qualifier, Swedish. Under a broader reading these 34 move from "no requirement" to "excluded". |
+| F7 | 5 years | impactpool 49, unops 2, path 5, irc 4, jpal 3, axis_comms 2 + 5 | **wrong**, partly policy | 70 | 3 | **medium** | Lowest-number-wins. 70 readable descriptions state both a ≤ 2 and a ≥ 3 figure, after "an additional N years" clauses are set aside. Some are tiered routes (policy, Q1), some a narrow skill overriding the role's requirement (a bug). **The phrasing fix cannot ship alone.** A naive broadening flipped 20 rows from excluded to kept, by reading the additive clause in UN-system equivalence text ("a first-level degree with an additional 2 years ... in lieu of") as the requirement. Today's patterns already misread that clause whenever no word sits between "years of" and "experience". |
+| F8 | 5 years | givewell, give_directly, impactpool, oatly, bearingpoint_sweden, path | policy | 11 | 0 | — (Q2) | 11 jobs labelled `review` were rejected on years that were **read correctly** (5 of them at exactly 3, four of those the bottom of a range). Not a bug, but it means the replay's recall of 0.808 is a ceiling twice over. Of the 59 wanted jobs the replay keeps, Layer 5 removed 18 in reality: 11 here, 6 under F3, 1 a correctly read non-hybrid. |
+| F9 | 1a | dsv, impactpool, jobsinlund | **wrong** | 8 | 0 | low | A prefix keyword matches only at the start of a word, so a family word at the end of a compound never matches: German and Swedish `techniker`, `utvecklare`, `ingenjör`, `chaufför`, `mekaniker`, and English `therapist`. 19 distinct titles in the evidence pass the keyword layer this way. |
+| F10 | 1a, 1 | gold set | over-match (owner's call) | — | — | low (Q7) | Measured marginally (rule removed, replay re-run, diffed, per the WP8 method). `AI` costs 1 wanted job to save 13 unwanted, `Student` 1 for 4, `donor` 1 for 1, and seniority `Director` 2 for 53. `SEA` and `Lead` are settled in `docs/DECISIONS.md` and were not re-measured. |
+| F11 | 1a, 1 | — | idle | — | — | none | 37 of 102 keywords were never attributed a drop in runs 23–32 or in the labels, and 18 match no title in any evidence. Attribution is first-match (DECISIONS, WP8), so "never fired" is not "never matched". These cost nothing, so they are not proposed for pruning. 16 of the 23 seniority terms (`Staff Engineer` and the C-suite titles) fired neither in run 32 nor in the labels. |
+| F12 | 1d | jobsinlund 3, tetrapak 1 | by design | 4 | 3 | low | Layer 1d holds as designed: nothing automatic ever un-rejects, and `review --shortlist` addresses only export rows. But the key is the whole URL. jobsinlund re-posts a posting under a new hash, so 3 rejected postings are back in the sheet as new. tetrapak's URL-shape change brought one back, which the owner then shortlisted. bearingpoint_sweden's 6 keys carry a query string, a key one tracking-parameter change from splitting. |
+| F13 | retrofilter | all | **starved** (latent) | 0 | 0 | medium (design) | The re-filter pass judges stored rows, which have no `raw_snippet` or `department`. Replaying all 762 fixture postings through both paths changed no verdict under today's config, only the rule named on 2 planted drops. That is because the remote-keyword check is the only rule reading those fields, and it cannot flip a verdict when the location field decides. It becomes real the moment `include_keywords` or `exclude_keywords` is configured. Two live gaps: the pass never re-applies Layer 5, so **a fixed years rule reaches no stored row**. And `tools/retrofilter.py` discards its drop rows, so its rejections are the one exclusion the drop log never sees (WP8a). |
+| F14 | 5 PhD | — | **wrong** (latent) | 0 | 0 | low | The PhD rule has never fired. 36 readable descriptions mention a doctorate, and none was ruled required. In code, "requires a Master's or PhD" reads as required, and "a doctoral degree is required" does not. |
+| F15 | 0 | canonical, outdooractive, givewell | **wrong** (attribution only) | — | 0 | low | Layer 0's location input is clean: every location dropped in run 32, in every source, names a real place or region. Three shape quirks change no verdict today. `;` is not a segment separator, but splitting on it would still drop on the office city (Q3). Country names written in German are judged as unlisted cities rather than deferred, which gives the same outcome. "US + International" reads as a city. |
+
+Layer 0's drop rules per source in run 32: `city not on the list` accounts for
+all but 437 of 6,846 location drops. `remote keyword overridden by a named
+city` fires on impactpool (434), founders_pledge (2) and coloplast (1).
+`conditional city, hybrid gate not configured` never fires, because the gate
+is configured. **No source has its location field systematically mis-mapped**
+since the impactpool repair of 2026-09-25. Ten sources lose every posting at
+Layer 0, all to real places off the list.
+
+The hybrid deferred state has confirmed only 2 jobs, ever. Of its 39
+rejections, 2 are the kognity shells (F1) and 37 were read in full.
+
+#### Gold set coverage
+
+73 `review` labels across 1,676 rows, and they are thin wherever this audit
+found trouble. jobsinlund has 19 `review` labels and impactpool 29, enough to
+measure. canonical has 3, path 3, and kognity 1. undp has no labels at all,
+simprints and monday_com have none labelled `review`. The labels file is dated
+2026-10-01. Whether that labelling has caught up with impactpool since its
+2026-09-25 shift is the owner's to say. No row was labelled in this session.
+
+#### Tests
+
+`tests/test_filter_audit.py`, synthetic text only. **13 strict xfails** pin
+F1, F2, F4, F6, F7 and F14, so each fix package inherits a red-to-green target.
+**4 passing tests** pin today's answer to Q1 and Q3, and say what flips if the
+owner rules otherwise. Suite: 1,023 passed, 13 xfailed. README's count had
+drifted to 1,010 before this package, and now reads 1,023 plus 13 expected
+failures.
+
+#### Proposed follow-up packages — PROPOSALS, not yet in the Status table
+
+Grouped by root cause. **SP4c first**: it is the only proposal that stops
+permanent loss, needs no policy answer and no capture, and is generic, so every
+future source inherits it. SP4d before SP5, because two of its readers (Ashby,
+Workable) are generic ATS readers SP5 might add employers on. SP4e and SP4f
+wait on the owner's answers. None of them adds a filter layer.
+
+**SP4c — Layer 5 learns to say "I could not read this"** (proposal). Root
+cause: Layer 5 has two outcomes, "fetch failed" and "read", and a shell is
+"read". Fixes F1 and F2 and makes them loud. **Not a new layer**: it is a third
+outcome of Layer 5, `unreadable`, beside fetch-failed and read, plus a
+source-level warning in SP7's style. Sonnet 5, `think`, 2.5 hr.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4c
+only. Do not add a filter layer. This adds an outcome to Layer 5.
+
+PROBLEM (SP4b, F1 and F2). A client-rendered detail page reaches Layer 5 as a
+title and a "please enable JavaScript" notice. Layer 5 records that as
+`unspecified`, the same value as a posting read in full that states no
+requirement. Worse, the two fail-closed deferred states (hybrid, unresolvable
+location) read the shell as "checked and found lacking", not unverified, so
+the job is stored 'rejected' permanently. 24 rows were lost that way.
+
+1. An `unreadable` outcome in experience_filter._fetch_and_analyze, decided on
+   the stripped text: below a length threshold, or matching a JS-shell
+   marker. Measure the threshold against the store read-only. SP4b found
+   every unreadable description at 159 characters or fewer, and every
+   readable one at 2,060 or more, so there is a wide gap. Report the gap you choose. Also
+   consider the tetrapak signature (the same text on several different
+   postings of one source in one run). Say whether it is cheap enough to
+   include, and stop and ask if it is not.
+2. For both deferred states, unreadable is unverified: UNVERIFIED_KEY set,
+   never stored 'rejected'. The xfails in tests/test_filter_audit.py
+   (test_a_js_shell_cannot_settle_a_deferred_location) go green.
+3. A kept unreadable job gets its own experience_level (say
+   "unchecked (page unreadable)"), not `unspecified`, and it shows in the
+   sheet. test_a_js_shell_is_not_reported_as_no_requirement goes green.
+   Fail OPEN for years and PhD, as today. Ask the owner if you think
+   otherwise.
+4. Re-check on the next run. Today a stored job is never detail-fetched
+   again, so a fetch that failed or read a shell is final. A stored row whose
+   description is empty or unreadable is re-fetched (Layer 1d still runs
+   first, so a rejected row costs nothing). Pin with a test that counts
+   requests, like test_logging_costs_no_extra_http_request.
+5. One warning per source in the run summary, in the style of the
+   source-health and empty-source blocks: "<source>: N of M detail pages
+   unreadable — those jobs are not experience-checked". Printed through
+   run.py's summary path, not logging. If SP7 has landed, sit beside its
+   blocks. If not, add the block yourself in the same shape.
+6. DO NOT revive the 24 stored rows. List them read-only for the owner, by
+   source and count, with the command that would revive them, and ask.
+
+DOCS. README "Reading the run summary" shows the new block exactly as
+rendered, with illustrative counts. Update the test count.
+docs/DECISIONS.md: unreadable is a Layer 5 outcome, not a layer, and why
+unverified is the right failure direction for it.
+
+Branch sp4c-layer5-unreadable. Commit, do not push. Update this plan file.
+```
+
+**SP4d — Feed Layer 5 the text the starved readers can reach** (proposal).
+Root cause: five readers hand Layer 5 a URL whose static fetch is a shell.
+Fixes F2 at the source and removes most of SP4c's warnings. Needs SP4c merged,
+so that the before and after are visible. Sonnet 5, `think`, 3 hr, in two
+halves if the captures take long.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4d
+only. SP4c must be merged.
+
+Five sources reach Layer 5 as a JS shell (SP4b): jobsinlund, kognity and
+monday_com (Ashby), simprints (Workable), undp (Oracle HCM detail pages).
+strava and nutrition_international share the Ashby and Workable readers.
+
+1. JOBSINLUND FIRST, no capture needed. The listing API it already reads
+   carries the full `description` per posting (SP4b: 759 of 759, none under
+   420 characters). Let an extractor supply `description_text` itself, and
+   let Layer 5 read that instead of fetching when it is present. That is one
+   rule in apply_detail_filter, not a per-source branch, and it saves a
+   request per job. Config over code: no new module. Pin with the existing
+   jobsinlund pattern. That reader has no fixture (SP6's list), so capture
+   one first with scripts/capture_fixtures.py. The capture is live, so ask the
+   owner before running it.
+2. ASHBY, WORKABLE, UNDP: CAPTURE FIRST, THEN DECIDE. Capture one detail page
+   per reader, static and rendered. For each, report the cheapest route that
+   yields the posting text: text embedded in the static HTML's own data,
+   the platform's own posting JSON, or `strategy: dynamic`. Prefer a route
+   that needs no browser. Remember that `strategy` also picks the listing's
+   fetcher (DECISIONS, SP3b). Put the choice to the owner before
+   implementing it. An undocumented endpoint is rung 3 of the CU2 ladder, and
+   that is a judgement call.
+3. Ashby's reader returns [] when window.__appData is missing (a silent
+   empty list, priority 2). Make it raise, as personio.py now does (SP4), and
+   pin it.
+4. Re-measure SP4b's coverage matrix for these sources, read-only, and report
+   it.
+
+DOCS. Test count; README's uncovered-reader sentence if a fixture is added.
+docs/DECISIONS.md: a reader may supply description_text, and when Layer 5
+reads that rather than fetching.
+
+Branch sp4d-feed-layer5. Commit, do not push. Update this plan file.
+```
+
+**SP4e — Read the years requirement, not the smallest number** (proposal).
+Root cause: `_extract_min_years` is five patterns and a `min()`. Fixes F4, F6,
+F7 and F14, as one redesign, because they interact: F7 measured broader
+phrasing making lowest-number-wins worse. **Waits on Q1 and Q2.** Opus 5,
+`think hard`, 3 hr. It is the WP8 shape again, a rule redesigned against
+measurements, with a false-negative edge.
+
+```
+think hard
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4e
+only. The owner has answered SP4b's Q1 (tiered routes) and Q2 (threshold).
+Read their answers first.
+
+Redesign how Layer 5 reads an experience requirement. Do not append regexes
+to _EXPERIENCE_PATTERNS. SP4b measured that broader phrasing on its own makes
+lowest-number-wins worse (20 rows flipped from excluded to kept on additive
+"in lieu of" clauses). Design the reading as a whole: which figures are
+requirements (a number tied to experience or a minimum), which are not (a
+minimum age, the employer's own history, an "additional N years" clause), and
+how several requirements combine (Q1's answer). Compile once, per CLAUDE.md.
+
+The red-to-green targets are the strict xfails in tests/test_filter_audit.py:
+test_missed_phrasing, test_not_a_requirement,
+test_an_additional_years_clause_is_not_the_requirement,
+test_a_narrow_skill_does_not_override_the_requirement and both PhD tests.
+test_tiered_routes_take_the_lowest_today changes only if Q1 says so.
+
+MEASURE against the stored descriptions (read-only, offline), as SP4b did:
+verdict changes by source and direction, separating rows in the current
+export. Report every change from excluded to kept. A false negative outranks
+a false positive, so a change that keeps fewer wanted jobs needs the owner.
+
+Stored rows: Layer 5 never re-runs on a stored row (SP4b F13). Propose, and do
+not run, a read-only report of which 'new' rows the new reading would exclude,
+for the owner to act on with `review`.
+
+DOCS. Test count. docs/DECISIONS.md: the reading rule, and why min() went.
+
+Branch sp4e-years-reading. Commit, do not push. Update this plan file.
+```
+
+**SP4f — Where is a job whose location field does not say?** (proposal). Root
+cause: Layer 0 and Layer 5 have no policy for a role that is not in a place.
+Home-based, worldwide and regional fields defer and fail closed (F3), while an
+empty field on a readable source is admitted unread (F5). **Waits on Q3 and
+Q4.** Opus 5, `think hard`, 2.5 hr. It reopens WP8d and WP8f, both recorded
+decisions.
+
+```
+think hard
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4f
+only. The owner has answered SP4b's Q3 (home-based, worldwide and regional
+fields) and Q4 (empty location on a readable source). Read their answers
+first. This revises WP8d and WP8f: amend those DECISIONS entries, do not
+contradict them silently.
+
+SP4b found two opposite failures of the same question. (F3) A home-based,
+worldwide or regional location is deferred to Layer 5 and fails closed,
+because its description rarely names a listed city: 83 stored rejections of
+that shape, and 6 gold-set `review` rows rejected through the deferred state.
+(F5) An empty location is admitted outright, even on sources whose detail page
+is read in full anyway: 12 of impactpool's 13 empty-location export rows name
+no listed place in their description.
+
+Implement the owner's answers inside the existing layers. Layer 0 decides
+what a field means. Layer 5 settles what Layer 0 deferred. No new layer and
+no new rule pass. If remote work is to count, prefer extending what
+remote_keywords and _GENERIC_LOCATION_TOKENS already mean over a new list.
+Consider whether `;` should separate segments, now that SP4b showed it
+changes nothing on its own (test_a_home_based_region_beside_an_office_city_is_dropped).
+Measure with `python -m job_scraper.eval` and against the stored rows
+(read-only). Report the detail-fetch cost of anything that newly defers, as
+WP8d did.
+
+DOCS. Test count. The tests in tests/test_filter_audit.py that pin today's
+Layer 0 answers flip with the owner's answers. docs/DECISIONS.md.
+
+Branch sp4f-location-policy. Commit, do not push. Update this plan file.
+```
+
+**SP4g — The re-filter pass sees what a run sees** (proposal). Root cause:
+`refilter_stored_jobs` judges stored rows without the fields or the layer a
+run uses (F13). Lower priority, because it is latent today. It becomes
+necessary once SP4e lands, since a better years rule should reach stored
+rows. Sonnet 5, `think`, 2 hr.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4g
+only.
+
+SP4b (F13): the re-filter pass judges stored rows without `raw_snippet` and
+`department`, which Layer 0's remote-keyword check reads in a run. Today that
+flips no verdict, and it would once include/exclude keywords are configured.
+It never re-applies Layer 5, although the description is stored. And
+tools/retrofilter.py throws away its drop rows, so its rejections never reach
+run_exclusions.
+
+1. Decide, with the owner, between storing the two fields (a schema change,
+   which needs the migration care WP4/WP5 took) and documenting the pass as
+   title-and-location only. Ask; do not choose quietly.
+2. Let the pass re-judge Layer 5 from the stored description_text for 'new'
+   rows only (never 'seen', per the WP5 rule), with no HTTP. An unreadable
+   description (SP4c) is left alone.
+3. retrofilter records its drops under the `refilter/` prefix, in a run of
+   its own, so they are logged like every other exclusion (WP8a).
+
+DOCS. README's maintenance-commands entry for retrofilter, test count,
+docs/DECISIONS.md.
+
+Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
+```
+
+**SP4h — Title keywords that match compounds** (proposal, optional). Root
+cause: `prefix` anchors at the start of a word, and German and Swedish put the
+family word at the end (F9). Small: 8 stored rows, none exported. Fold the
+owner's answers on Q7 in if they want any keyword removed. Sonnet 5, `think`,
+1 hr.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4h
+only. config/title_exclude_keywords.csv is one of the two areas CLAUDE.md says
+to redesign rather than patch: read the whole file first.
+
+SP4b (F9): `prefix` matches at the start of a word, so a family word at the
+end of a compound never matches (techniker, utvecklare, ingenjör, chaufför,
+mekaniker, therapist). Add a match type that matches a word's end, or say why
+an existing one should carry it. Measure every change with eval --compare,
+marginally, per the WP8 method. Apply the owner's Q7 answers, if any, the
+same way. Never prune from the printed attribution table.
+
+DOCS. Test count. docs/DECISIONS.md if a match type is added.
+
+Branch sp4h-keyword-compounds. Commit, do not push. Update this plan file.
+```
+
+#### Questions for the owner
+
+1. **Tiered routes (Q1).** When a posting offers alternative routes (an
+   advanced degree and 2 years, or a first degree and 4), should the lowest
+   route decide? Today it does. SP4e needs the answer.
+2. **The threshold (Q2).** 11 jobs you labelled `review` require 3 or more
+   years by a correct reading, 5 of them exactly 3. Is "more than 2 years"
+   still the line? Or did those labels mean "I would look", not "I would
+   apply"?
+3. **Home-based, worldwide and regional fields (Q3).** Should a role that is
+   home-based, worldwide or across a region you live in count as remote and be
+   admitted? Today it must name a listed city in its description or be
+   rejected, and 83 stored rows went that way. And when a field offers both a
+   home-based region and an office city, should the home-based option admit
+   it?
+4. **An empty location on a readable source (Q4).** impactpool cards with no
+   location are admitted unread (WP8f). Should they instead be deferred to the
+   description, failing closed as an "N Locations" field does? 12 of the 16
+   impactpool rows in today's sheet name no listed place in their
+   description.
+5. **The 24 rows rejected against a shell (Q5)** (undp 16, simprints 4,
+   kognity 4), and the 6 gold-set `review` rows rejected through the deferred
+   location state. Do you want them revived by hand? That is a store write,
+   and yours to authorise. SP4c will list them.
+6. **An unreadable job (Q6).** Keep it in the sheet marked unchecked, failing
+   open as today and as SP4c proposes? Or hold it back until it can be read?
+7. **Four keywords (Q7)**, by marginal measurement: `AI` keeps 1 wanted job
+   out to save 13 unwanted, `Student` 1 for 4, `donor` 1 for 1, and seniority
+   `Director` 2 for 53. Keep or remove each?
+8. **Labelling.** undp has no labels at all, and simprints and monday_com have
+   none labelled `review`. Once SP4d makes them readable, a few labels there
+   would let the eval harness say something about them.
+
+#### Noticed, out of scope
+
+- `extractors/ashby.py` returns `[]` when the page has no `window.__appData`,
+  or when the JSON fails to parse. That is a silent "no vacancies", priority
+  2. Folded into SP4d's prompt.
+- `extractors/jobsinlund.py` writes "Lund" when the API gives no city. That
+  is an invented location. It is latent: 0 of 759 postings in run 32 lacked
+  one, and the API query already restricts to that city.
+- README's test count read 1,010 while the suite had 1,019 before this
+  package. Corrected along with this package's own tests.
 
 ### Your to-dos
 

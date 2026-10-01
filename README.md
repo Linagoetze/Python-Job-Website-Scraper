@@ -892,7 +892,10 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1010 tests, about fifteen seconds, no network access required. Extractors are
+1023 tests plus 13 expected failures, about fifteen seconds, no network access
+required. The expected failures are strict `xfail`s in
+`tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
+each pinned so that its fix turns it green. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
