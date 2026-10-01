@@ -75,7 +75,7 @@ posting you have already rejected should never cost a request.
 Layer 5 fails open — if a detail page can't be fetched or parsed, the job is kept
 rather than silently dropped.
 
-A page that *was* fetched but holds no posting (a client-rendered shell: a title
+A page that could not be fetched, or *was* fetched but holds no posting (a client-rendered shell: a title
 and a "please enable JavaScript" notice) is a third case, and is never mistaken
 for a posting that states no requirement. The job is kept, and the review sheet's
 `experience_level` column says `unchecked (page unreadable)` instead of
@@ -918,7 +918,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1045 tests plus 12 expected failures, about fifteen seconds, no network access
+1048 tests plus 12 expected failures, about fifteen seconds, no network access
 required. The expected failures are strict `xfail`s in
 `tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
 each pinned so that its fix turns it green. Extractors are

@@ -23,6 +23,7 @@ from job_scraper.drops import (
     refiltered,
 )
 from job_scraper.experience_filter import (
+    EXPERIENCE_UNREADABLE,
     MIN_READABLE_CHARS,
     PAGE_FAILED,
     PAGE_STATE_KEY,
@@ -741,7 +742,8 @@ def _run_pipeline(
         def _keep_stored_level(job: JobRecord) -> JobRecord:
             # A re-check whose fetch failed knows nothing new. Its "unspecified"
             # must not overwrite the stored "unchecked (page unreadable)".
-            if job.get(PAGE_STATE_KEY) == PAGE_FAILED and _is_stored(job):
+            unchecked = job.get("experience_level") == EXPERIENCE_UNREADABLE
+            if unchecked and job.get(PAGE_STATE_KEY) != PAGE_UNREADABLE and _is_stored(job):
                 return dict(job, experience_level="")
             return job
 

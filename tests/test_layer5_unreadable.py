@@ -126,6 +126,26 @@ def test_a_deferred_job_against_a_shell_is_unverified_with_no_description(
     assert dropped["description_text"] == ""
 
 
+def _boom(_url: str) -> str:
+    raise RuntimeError("network down")
+
+
+def test_a_failed_fetch_is_marked_unchecked_not_unspecified() -> None:
+    (kept,), excluded = apply_detail_filter([_job()], _boom)
+    assert not excluded
+    assert kept["experience_level"] == EXPERIENCE_UNREADABLE
+
+
+def test_a_job_with_no_url_is_marked_unchecked_not_unspecified() -> None:
+    (kept,), _ = _detail(_job(detail_url=""), _SHELL)
+    assert kept["experience_level"] == EXPERIENCE_UNREADABLE
+
+
+def test_unspecified_is_only_for_a_posting_read_in_full() -> None:
+    (kept,), _ = _detail(_job(), posting("A role that states no requirement."))
+    assert kept["experience_level"] == "unspecified"
+
+
 def test_a_readable_page_is_still_read() -> None:
     (kept,), _ = _detail(
         _job(), posting("Requires 1 year of experience... 2+ years of experience.")

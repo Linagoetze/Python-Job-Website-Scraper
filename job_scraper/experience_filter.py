@@ -608,15 +608,18 @@ def apply_detail_filter(
             "description_fetched_at": fetched_at if description_text else "",
             **_page_state(signals),
         }
-        if signals.unreadable:
-            # Kept, and marked: the owner decided (SP4b Q6) that an unreadable
-            # job is shown rather than lost, but never as though it was checked.
-            # Fails open for years and PhD because there is nothing to fail on.
-            unreadable += 1
+        if signals.unreadable or failed or not description_text:
+            # Kept, and marked: the owner decided (SP4b Q6) that a job whose page
+            # could not be read is shown rather than lost, but never as though it
+            # was checked. A failed fetch and a missing URL are the same fact as
+            # a shell, so they carry the same level; "unspecified" is reserved
+            # for a posting read in full that states no requirement. Fails open
+            # for years and PhD because there is nothing to fail on.
+            if failed:
+                fetch_failed += 1
+            else:
+                unreadable += 1
             kept.append(dict(job, experience_level=EXPERIENCE_UNREADABLE, **extra))
-        elif failed:
-            fetch_failed += 1
-            kept.append(dict(job, experience_level="unspecified", **extra))
         elif phd_req:
             excluded.append(
                 dict(

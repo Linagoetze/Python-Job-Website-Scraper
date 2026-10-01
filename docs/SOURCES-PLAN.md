@@ -2315,7 +2315,11 @@ a tidy-up.
   `'rejected'`. Without it a revived row judged "senior" would stay in the review
   sheet. `'seen'` and `'shortlisted'` are the owner's decisions and keep their
   status, as in the re-filter pass.
-- A re-check whose fetch *fails* no longer overwrites the stored experience level
+- A failed fetch and a missing URL get the same `unchecked (page unreadable)`
+  level as a shell (added after review): `unspecified` now means only "read in
+  full, states no requirement". They are not counted in the summary block, which
+  is of pages that came back.
+- A re-check that gets no page no longer overwrites the stored experience level
   (it would have turned "unchecked" back into "unspecified").
 - The sheet had no experience column at all, so "shows in the sheet" needed one:
   `experience_level`, between `score_flags` and `detail_url`.
