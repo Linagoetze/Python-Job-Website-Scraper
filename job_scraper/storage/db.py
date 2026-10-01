@@ -717,10 +717,22 @@ class JobStore:
         }
 
     def job_index(self) -> dict[str, dict[str, Any]]:
-        """dedupe_key -> {status, hybrid_confirmed} for every stored job."""
+        """dedupe_key -> {status, hybrid_confirmed, description_chars} per stored job.
+
+        `description_chars` is the length of the stored description, so a caller
+        can tell a job that was read from one that was not without pulling the
+        text of every row.
+        """
         return {
-            r["dedupe_key"]: {"status": r["status"], "hybrid_confirmed": r["hybrid_confirmed"]}
-            for r in self._c().execute("SELECT dedupe_key, status, hybrid_confirmed FROM jobs")
+            r["dedupe_key"]: {
+                "status": r["status"],
+                "hybrid_confirmed": r["hybrid_confirmed"],
+                "description_chars": r["description_chars"],
+            }
+            for r in self._c().execute(
+                "SELECT dedupe_key, status, hybrid_confirmed, "
+                "LENGTH(description_text) AS description_chars FROM jobs"
+            )
         }
 
     def jobs_with_status(self, statuses: tuple[str, ...]) -> list[dict[str, Any]]:

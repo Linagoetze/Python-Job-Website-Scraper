@@ -317,8 +317,10 @@ def test_jobs_with_status_filters_and_validates(tmp_path: Path) -> None:
             store.jobs_with_status(("starred",))
 
 
-def test_job_index_reports_status_and_hybrid(tmp_path: Path) -> None:
+def test_job_index_reports_status_hybrid_and_description_length(tmp_path: Path) -> None:
     with JobStore(tmp_path / "jobs.sqlite3") as store:
         run_id = store.begin_run()
         store.upsert_jobs([dict(_job(_KEY), hybrid_confirmed=1)], run_id)
-        assert store.job_index() == {_KEY: {"status": "new", "hybrid_confirmed": 1}}
+        assert store.job_index() == {
+            _KEY: {"status": "new", "hybrid_confirmed": 1, "description_chars": 0}
+        }

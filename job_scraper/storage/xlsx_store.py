@@ -33,6 +33,9 @@ _DISPLAY_FIELDS = [
     "score",
     "score_reasoning",
     "score_flags",
+    # Shows "unchecked (page unreadable)" for a job Layer 5 could not read (SP4c),
+    # so it is never taken for one that was checked.
+    "experience_level",
     "detail_url",
     "apply_url",
 ]
@@ -66,6 +69,7 @@ _COL_WIDTHS: dict[str, float] = {
     "score": 7,
     "score_reasoning": 60,
     "score_flags": 30,
+    "experience_level": 26,
     "first_seen": 22,
     "last_seen": 22,
     "detail_url": 55,

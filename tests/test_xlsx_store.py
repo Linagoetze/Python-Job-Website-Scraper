@@ -14,8 +14,8 @@ from job_scraper.storage.xlsx_store import write_xlsx
 
 # Review sheet column positions (1-based), after the addressable '#' column.
 _ROW_NUMBER, _SOURCE, _TITLE, _LOCATION = 1, 2, 3, 4
-_SCORE, _REASONING, _FLAGS, _DETAIL, _APPLY = 5, 6, 7, 8, 9
-_STATUS = 10  # present only with --show-all
+_SCORE, _REASONING, _FLAGS, _EXPERIENCE, _DETAIL, _APPLY = 5, 6, 7, 8, 9, 10
+_STATUS = 11  # present only with --show-all
 
 
 def _seed(

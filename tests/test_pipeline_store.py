@@ -24,6 +24,7 @@ import yaml
 from job_scraper import pipeline as pipeline_mod
 from job_scraper.pipeline import run_pipeline
 from job_scraper.storage.db import JobStore
+from tests.pages import posting
 
 _SOURCE = "acme"
 _LISTING = "https://acme.example/jobs"
@@ -59,7 +60,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     def fake_fetch(url: str, *a: Any, **k: Any) -> str:
         fetches[url] += 1
-        return "A great opportunity, no experience required."
+        return posting("A great opportunity, no experience required.")
 
     monkeypatch.setattr(
         pipeline_mod, "get_extractor", lambda name: lambda url, fetch_fn: list(extracted)
@@ -102,7 +103,7 @@ def test_first_run_stores_jobs_with_run_metadata(env: dict[str, Any]) -> None:
         assert job["experience_level"] == "unspecified"
         # WP6: the stripped description text Layer 2 fetched is kept too, not
         # discarded, along with when it was captured.
-        assert job["description_text"] == "A great opportunity, no experience required."
+        assert job["description_text"].startswith("A great opportunity, no experience required.")
         assert job["description_fetched_at"]
 
 
@@ -138,7 +139,7 @@ def test_layer2_rejected_job_is_stored_and_not_refetched(env: dict[str, Any]) ->
 
     def senior_fetch(u: str, *a: Any, **k: Any) -> str:
         fetches[u] += 1
-        return "We require 8+ years of experience in the field."
+        return posting("We require 8+ years of experience in the field.")
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(pipeline_mod, "fetch_text", senior_fetch)
@@ -279,7 +280,7 @@ def test_hybrid_confirmation_is_persisted_and_ends_the_refetch_loop(
 
     def fake_fetch(u: str, *a: Any, **k: Any) -> str:
         env["fetches"][u] += 1
-        return "This is a hybrid role, no experience required."
+        return posting("This is a hybrid role, no experience required.")
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
@@ -327,7 +328,7 @@ def test_stored_unconfirmed_conditional_job_is_rechecked_once(
 
     def fake_fetch(u: str, *a: Any, **k: Any) -> str:
         env["fetches"][u] += 1
-        return "This is a hybrid role, no experience required."
+        return posting("This is a hybrid role, no experience required.")
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
@@ -416,7 +417,7 @@ def test_resolved_unresolvable_location_is_not_refetched_next_run(
 
     def fake_fetch(u: str, *a: Any, **k: Any) -> str:
         env["fetches"][u] += 1
-        return "You will work from our Berlin office. No experience required."
+        return posting("You will work from our Berlin office. No experience required.")
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
@@ -445,7 +446,7 @@ def test_unresolvable_location_dropped_at_layer_2_is_not_refetched_either(
 
     def fake_fetch(u: str, *a: Any, **k: Any) -> str:
         env["fetches"][u] += 1
-        return "You will work from our Nairobi office. No experience required."
+        return posting("You will work from our Nairobi office. No experience required.")
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(pipeline_mod, "fetch_text", fake_fetch)

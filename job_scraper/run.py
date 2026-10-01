@@ -70,12 +70,13 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     left gutter (WP8h; see `drops.LAYERS`), so "L3  − senior-level title" is
     Layer 3 of 5 — the three detail-page lines all share Layer 5.
 
-    Three blocks appear only when they have something to say, which is why the
+    Four blocks appear only when they have something to say, which is why the
     funnel's pinned layout in tests/test_run_summary.py is unchanged: the
     source-health warnings (WP10), in a marker of their own so a shrinking
     source is never mistaken for a filter that fired; the empty sources (CU2),
     which is the same marker asking the question health warnings structurally
     cannot — "did this return anything at all?" rather than "did it shrink?";
+    the unreadable pages (SP4c), "could the pages behind the listing be read?";
     and the dry-run notice."""
 
     # All numeric columns end at the same character position for vertical
@@ -138,7 +139,7 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
             (after_blocklist, "after blocklist"),
         ),
         row("already in table (skipped)", f"{summary.jobs_already_stored:,}", indent=_GUTTER),
-        row("stored, hybrid recheck", f"{summary.jobs_stored_rechecked:,}", indent=_GUTTER),
+        row("stored, rechecked", f"{summary.jobs_stored_rechecked:,}", indent=_GUTTER),
         row("new, detail-checked", f"{summary.jobs_new_checked:,}", indent=_GUTTER),
         cut(
             LAYER_DETAIL,
@@ -200,6 +201,22 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         )
         for name in summary.empty_sources:
             lines.append(f"!  {name}: 0 rows — {fate}; check its extractor")
+    if summary.unreadable_pages:
+        # A third question again: not "did it shrink?" or "was it empty?" but
+        # "could the pages behind the listing be read?". The jobs were kept, so
+        # nothing in the funnel above looks wrong, and that is exactly why a
+        # source whose detail pages are all shells needs a line of its own.
+        n = len(summary.unreadable_pages)
+        lines.append(_RULE)
+        lines.append(
+            f"!  Unreadable pages: {n} source{'' if n == 1 else 's'} had detail pages "
+            "with no posting in them"
+        )
+        for page in summary.unreadable_pages:
+            lines.append(
+                f"!  {page.source_name}: {page.unreadable:,} of {page.fetched:,} detail pages "
+                "unreadable — those jobs are not experience-checked"
+            )
     if summary.dry_run:
         lines.append(_RULE)
         lines.extend(

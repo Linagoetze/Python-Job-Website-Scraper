@@ -23,6 +23,10 @@ from job_scraper.drops import (
     refiltered,
 )
 from job_scraper.experience_filter import (
+    MIN_READABLE_CHARS,
+    PAGE_FAILED,
+    PAGE_STATE_KEY,
+    PAGE_UNREADABLE,
     UNVERIFIED_KEY,
     apply_combined_title_filter,
     apply_detail_filter,
@@ -130,6 +134,38 @@ def _log_untitled(untitled: list[JobRecord], stored: dict[str, dict[str, Any]]) 
         )
 
 
+@dataclass(frozen=True)
+class UnreadablePages:
+    """One source's detail pages that held no posting this run (SP4c).
+
+    `fetched` counts the pages that came back, readable or not, so "3 of 40" is
+    a share of what was actually reached rather than of what was attempted.
+    """
+
+    source_name: str
+    unreadable: int
+    fetched: int
+
+
+def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]:
+    """Per-source unreadable-page counts, for sources with at least one.
+
+    Takes every job Layer 5 returned, kept and excluded alike: a deferred job
+    that was dropped as unverified is still a page that could not be read.
+    """
+    fetched: dict[str, int] = {}
+    unreadable: dict[str, int] = {}
+    for job in jobs:
+        state = job.get(PAGE_STATE_KEY)
+        if state is None or state == PAGE_FAILED:
+            continue
+        name = str(job.get("source_name") or "")
+        fetched[name] = fetched.get(name, 0) + 1
+        if state == PAGE_UNREADABLE:
+            unreadable[name] = unreadable.get(name, 0) + 1
+    return tuple(UnreadablePages(n, unreadable[n], fetched[n]) for n in sorted(unreadable))
+
+
 @dataclass
 class RunSummary:
     sources_total: int
@@ -174,6 +210,11 @@ class RunSummary:
     # under that flag an empty source's stored jobs *are* delisted, so the
     # block must not claim nothing happened to them.
     allow_empty_delist: bool = False
+    # Sources whose detail pages came back without a posting in them (SP4c): the
+    # jobs were kept, marked unchecked, and not experience-checked. Separate
+    # from the two above because it is neither a shrunken nor an empty source;
+    # the listing was fine and the pages behind it were not.
+    unreadable_pages: tuple[UnreadablePages, ...] = ()
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -619,13 +660,23 @@ def _run_pipeline(
                 return False
             return not stored.get(dedupe_key_for_job(job), {}).get("hybrid_confirmed")
 
+        def _is_unread(job: JobRecord) -> bool:
+            # A stored job whose page was never read: the fetch failed, or it
+            # was a shell, so no description was kept (SP4c). Without this a
+            # failed or unreadable first fetch is final, because a stored job is
+            # never detail-fetched again. Layer 4 has already removed the
+            # rejected rows, so this costs a request only for jobs still wanted.
+            entry = stored.get(dedupe_key_for_job(job))
+            return entry is not None and entry["description_chars"] < MIN_READABLE_CHARS
+
         def _needs_detail(job: JobRecord) -> bool:
-            return not _is_stored(job) or _is_hybrid_pending(job)
+            return not _is_stored(job) or _is_hybrid_pending(job) or _is_unread(job)
 
         # new_jobs is everything that needs a detail-page fetch: genuinely new
         # jobs, plus stored conditional-city jobs whose hybrid confirmation is
-        # not yet persisted. The two are reported separately so "new,
-        # detail-checked" reconciles against "new rows written".
+        # not yet persisted, plus stored jobs whose page was never read. The
+        # stored ones are reported separately so "new, detail-checked"
+        # reconciles against "new rows written".
         new_jobs = [j for j in kept_rows if _needs_detail(j)]
         cached_jobs = [j for j in kept_rows if not _needs_detail(j)]
         truly_new_jobs = [j for j in new_jobs if not _is_stored(j)]
@@ -687,7 +738,18 @@ def _run_pipeline(
             confirmed = _HYBRID_CONFIRMED_REASON in (job.get("matched_reasons") or [])
             return job_to_row(dict(job, hybrid_confirmed=1 if confirmed else 0))
 
-        upserts = [r for j in [*kept_new, *cached_jobs, *blocked_jobs] if (r := _row(j))]
+        def _keep_stored_level(job: JobRecord) -> JobRecord:
+            # A re-check whose fetch failed knows nothing new. Its "unspecified"
+            # must not overwrite the stored "unchecked (page unreadable)".
+            if job.get(PAGE_STATE_KEY) == PAGE_FAILED and _is_stored(job):
+                return dict(job, experience_level="")
+            return job
+
+        upserts = [
+            r
+            for j in [*(_keep_stored_level(j) for j in kept_new), *cached_jobs, *blocked_jobs]
+            if (r := _row(j))
+        ]
         rows_written, refreshed = store.upsert_jobs(upserts, run_id)
         logger.debug("Store: %d rows inserted, %d refreshed", rows_written, refreshed)
 
@@ -716,6 +778,20 @@ def _run_pipeline(
             inserted_rejected, refreshed_rejected = store.upsert_jobs(
                 detail_rejected_rows, run_id, initial_status="rejected"
             )
+            # An upsert keeps a stored row's status, so a stored 'new' job that
+            # a re-check has now judged (read in full, and found wanting) would
+            # sit in the review sheet beside a "senior" experience_level. Same
+            # rule as the re-filter pass: only 'new' flips; 'seen' and
+            # 'shortlisted' are the owner's decisions and stay.
+            flipped = [
+                k
+                for j in detail_excluded
+                if not j.get(UNVERIFIED_KEY)
+                and (k := dedupe_key_for_job(j))
+                and stored.get(k, {}).get("status") == "new"
+            ]
+            if flipped:
+                store.set_status(flipped, "rejected")
             logger.debug(
                 "Store: %d %s rejections recorded as 'rejected', %d refreshed",
                 inserted_rejected,
@@ -795,5 +871,6 @@ def _run_pipeline(
         health_warnings=health_warnings,
         empty_sources=empty_sources,
         allow_empty_delist=allow_empty_delist,
+        unreadable_pages=count_unreadable_pages([*kept_new, *detail_excluded]),
         dry_run=dry_run,
     )
