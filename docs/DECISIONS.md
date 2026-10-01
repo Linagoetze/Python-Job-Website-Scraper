@@ -1071,3 +1071,43 @@ session — see `CLAUDE.md`.
     their pages can be read, a label would measure the starvation, not the
     filters.
   - SP4c–SP4h were approved as a set and are in the Status table.
+- **`unreadable` is an outcome of Layer 5, not a layer, and its failure
+  direction is "unverified" (SP4c, 2026-10-01).** Layer 5 had two outcomes,
+  fetch failed and read, and a shell counted as read. It now has a third: the
+  page came back but its stripped text is under 500 characters, or under 2,000
+  with a JS-shell notice in it (`experience_filter.is_unreadable`). It is decided
+  on the text alone, inside `_fetch_and_analyze`, so it adds no request and no
+  filter layer, and nothing is read off such a page. The consequences follow
+  from what each state means. A kept job gets `unchecked (page unreadable)`,
+  never `unspecified`, because `unspecified` says a posting was read and states
+  no requirement. A job in one of the two fail-closed deferred states is
+  **unverified**, not rejected. "Unverified" is the right direction because a
+  rejection is permanent (nothing automatic ever un-rejects, and a rejected job
+  is never shown or fetched again), whereas unverified costs one more fetch on
+  the next run. Reading a shell is no more a verification than a timeout, and
+  the permanent error was the expensive one: 24 rows were lost to it. Years and
+  PhD fail open, as the owner decided (SP4b Q6), because with nothing read there
+  is nothing to fail on. The two numbers: 500 sits in the measured gap of 160 to
+  2,059 characters, and 2,000 is the highest a marker counts at, since a readable
+  posting can carry the same noscript line in its footer.
+- **A stored job whose page was never read is fetched again, every run, until it
+  reads (SP4c).** A stored job used to be detail-fetched once and never again, so
+  a fetch that failed or read a shell was final. A stored row whose description
+  is under the threshold is now re-fetched. Layer 4 runs first, so a rejected row
+  costs nothing. The price is one request per such job per run, which is the
+  point of the new summary block: a source whose pages are all shells pays that
+  every run until its reader is fixed (SP4d), and says so. A posting that is
+  genuinely under 500 characters would be fetched every run; none exists in the
+  store today.
+- **A re-check that reads and rejects flips a stored `'new'` row to
+  `'rejected'` (SP4c).** An upsert keeps a stored row's status, so without this a
+  revived row judged too senior would sit in the review sheet beside a "senior"
+  level. Only `'new'` flips, as in the re-filter pass: `'seen'` and
+  `'shortlisted'` are the owner's decisions.
+- **The tetrapak signature was left out of `unreadable` (SP4c).** One text on
+  several different postings of a source is also what a real duplicate looks
+  like (one role in several cities), and a page of cookie chrome cannot be told
+  from a posting by comparing it with its neighbours. The store holds one such
+  group at readable length, tetrapak's four postings sharing 3,612 characters,
+  and its cause was a URL shape that has since been fixed. Do not add the
+  signature without a rule for what makes a duplicate legitimate.

@@ -99,7 +99,7 @@ the ordering below.
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
-| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | not started | `sp4c-layer5-unreadable` |
+| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | steps 1–5 done, step 6 (revival) awaiting the owner's confirmation | `sp4c-layer5-unreadable` |
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | not started | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
@@ -2276,6 +2276,62 @@ unverified is the right failure direction for it.
 
 Branch sp4c-layer5-unreadable. Commit, do not push. Update this plan file.
 ```
+
+### Result — steps 1–5 done 2026-10-01, branch `sp4c-layer5-unreadable`
+
+Step 6, the revival, has **not** been written: it waits for the owner to confirm
+the number (see the to-dos). The suite is 1,045 passed and 12 expected failures;
+`ruff check`, `ruff format --check` and `run --help` are clean. SP7 had not
+landed, so the warning block is SP4c's own, in SP7's shape (`!` marker, own
+block, printed by `format_summary`).
+
+**The threshold: 500 characters, with a marker ceiling of 2,000.** Measured
+read-only against `data/jobs.sqlite3` (run 32). Every stored description under
+2,060 characters is a shell or a stub: jobsinlund 224 (longest 107), undp 16
+(longest 4), simprints 4, kognity 4, monday_com 2, and one path row at 159. The
+next length up is 2,060. So the gap is **160 to 2,059** and 500 sits inside it,
+more than three times the longest shell and under a quarter of the shortest
+posting. The JS-shell marker (`enable javascript`, `javascript is required`, …)
+counts only below 2,000 characters, because a posting read in full can carry the
+same noscript line in its footer and must not be called unreadable for it.
+
+**The tetrapak signature is not included.** The code is cheap (a counter over
+one run's results), but the test is not safe, so this is a recommendation and not
+a stop. Identical text on several postings of a source is also what a real
+duplicate looks like: one role advertised in several cities. The store shows the
+two kinds side by side. The single readable-length group in it is tetrapak's
+four postings sharing 3,612 characters of chrome, and the only other (impactpool,
+two postings at 2,200) is the 2026-09-25 field-shift bug. Neither text can be
+told from a legitimate duplicate by looking at it, and a wrong call keeps a
+readable job as "unchecked" and drops a deferred one as unverified every run.
+tetrapak's own cause was a URL shape that has since been fixed in its reader.
+If the owner wants it anyway, it belongs where all of a run's pages are in hand,
+and needs a rule for what makes a duplicate legitimate. That is a decision, not
+a tidy-up.
+
+**Beyond the prompt, each one a consequence of it:**
+
+- A stored `'new'` row that a re-check reads and rejects is now stored
+  `'rejected'`. Without it a revived row judged "senior" would stay in the review
+  sheet. `'seen'` and `'shortlisted'` are the owner's decisions and keep their
+  status, as in the re-filter pass.
+- A re-check whose fetch *fails* no longer overwrites the stored experience level
+  (it would have turned "unchecked" back into "unspecified").
+- The sheet had no experience column at all, so "shows in the sheet" needed one:
+  `experience_level`, between `score_flags` and `detail_url`.
+- The summary row "stored, hybrid recheck" is now "stored, rechecked", since it
+  also counts the unread ones.
+- `JobStore.job_index` gained `description_chars`, which is how a run tells a
+  stored job that was read from one that was not.
+- Tests whose fake pages were a sentence long now read as shells. They wrap the
+  sentence with `tests/pages.posting`, which pads it past the threshold.
+
+**One thing the owner should know before confirming step 6.** Of the 29 selected
+rows only 10 are still listed on their source as of run 32 (simprints 4,
+impactpool 2, canonical 2, kognity 2). The other 19 (undp 16, kognity 2, busuu 1)
+were not on their listing that run. A row that is not listed is never fetched, so
+it cannot be re-checked, and once it is `'new'` it is eligible for delisting like
+any other. See the to-dos.
 
 ### Your to-dos
 
