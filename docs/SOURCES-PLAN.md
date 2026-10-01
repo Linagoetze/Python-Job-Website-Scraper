@@ -130,8 +130,9 @@ company runs on Breezy, Lever, Personio, SmartRecruiters or Workable; if none
 do, SP4 and SP5 are independent. **SP4b before SP5**: two of the readers it found blind at Layer 5 are
 generic ATS readers (Ashby, Workable), so a new employer on either would be
 unfiltered from its first run. It needs nothing else merged, and it may add
-fix packages of its own ahead of SP5. It did: SP4c–SP4h, written under
-SP4b's result and approved by the owner on 2026-10-01. **SP4c, then SP4d,
+fix packages of its own ahead of SP5. It did: SP4c–SP4h, proposed in
+SP4b's result and approved by the owner on 2026-10-01, each now a section of
+its own after SP4b. **SP4c, then SP4d,
 before SP5**: SP4d fixes the Ashby and Workable readers SP5 may add employers
 on. SP4e and SP4f follow in either order. SP4g goes after SP4e, and SP4h
 whenever convenient. SP6 is ongoing maintenance with no deadline.
@@ -179,9 +180,9 @@ The surfaces, and what invalidates each:
 | Surface | Invalidated by | Notes |
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
-| `README.md` — "Maintenance commands" | SP1, SP2, SP2b | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
-| `README.md` — "Reading the run summary" | SP7 | Three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
+| `README.md` — "Maintenance commands" | SP1, SP2, SP2b, SP4g | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
+| `README.md` — "Reading the run summary" | SP7, SP4c | SP7: three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. SP4c: the unreadable-detail-pages block. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
+| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP5, SP6, SP7 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
@@ -2115,301 +2116,23 @@ count had drifted to 1,010 before this package, and now matches the suite.
 
 #### Follow-up packages — approved by the owner, 2026-10-01
 
-Grouped by root cause. Written as proposals, then approved as a set by the
-owner on 2026-10-01, and now in the Status table. Their prompts carry the
-owner's answers to the questions below. **SP4c first**: it is the only one that
-stops permanent loss, needs no capture, and is generic, so every future source
-inherits it. SP4d before SP5, because two of its readers (Ashby, Workable) are
-generic ATS readers SP5 might add employers on. None of them adds a filter
-layer.
+Grouped by root cause. Written here as proposals, approved as a set by the
+owner on 2026-10-01, and now packages of their own, each with its prompt and
+to-dos, between this section and SP5. None adds a filter layer.
 
-**SP4c — Layer 5 learns to say "I could not read this"** (approved). Root
-cause: Layer 5 has two outcomes, "fetch failed" and "read", and a shell is
-"read". Fixes F1 and F2 and makes them loud. **Not a new layer**: it is a third
-outcome of Layer 5, `unreadable`, beside fetch-failed and read, plus a
-source-level warning in SP7's style. Sonnet 5, `think`, 2.5 hr.
-
-```
-think
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4c
-only. Do not add a filter layer. This adds an outcome to Layer 5.
-
-PROBLEM (SP4b, F1 and F2). A client-rendered detail page reaches Layer 5 as a
-title and a "please enable JavaScript" notice. Layer 5 records that as
-`unspecified`, the same value as a posting read in full that states no
-requirement. Worse, the two fail-closed deferred states (hybrid, unresolvable
-location) read the shell as "checked and found lacking", not unverified, so
-the job is stored 'rejected' permanently. 24 rows were lost that way.
-
-1. An `unreadable` outcome in experience_filter._fetch_and_analyze, decided on
-   the stripped text: below a length threshold, or matching a JS-shell
-   marker. Measure the threshold against the store read-only. SP4b found
-   every unreadable description at 159 characters or fewer, and every
-   readable one at 2,060 or more, so there is a wide gap. Report the gap you choose. Also
-   consider the tetrapak signature (the same text on several different
-   postings of one source in one run). Say whether it is cheap enough to
-   include, and stop and ask if it is not.
-2. For both deferred states, unreadable is unverified: UNVERIFIED_KEY set,
-   never stored 'rejected'. The xfails in tests/test_filter_audit.py
-   (test_a_js_shell_cannot_settle_a_deferred_location) go green.
-3. A kept unreadable job gets its own experience_level (say
-   "unchecked (page unreadable)"), not `unspecified`, and it shows in the
-   sheet. test_a_js_shell_is_not_reported_as_no_requirement goes green.
-   Fail OPEN for years and PhD, as today. The owner decided this
-   (2026-10-01, SP4b Q6): keep an unreadable job, clearly marked.
-4. Re-check on the next run. Today a stored job is never detail-fetched
-   again, so a fetch that failed or read a shell is final. A stored row whose
-   description is empty or unreadable is re-fetched (Layer 1d still runs
-   first, so a rejected row costs nothing). Pin with a test that counts
-   requests, like test_logging_costs_no_extra_http_request.
-5. One warning per source in the run summary, in the style of the
-   source-health and empty-source blocks: "<source>: N of M detail pages
-   unreadable — those jobs are not experience-checked". Printed through
-   run.py's summary path, not logging. If SP7 has landed, sit beside its
-   blocks. If not, add the block yourself in the same shape.
-6. REVIVE, as the owner authorised on 2026-10-01 (SP4b Q5), once 1-4 work:
-   the 24 rows rejected against a shell (experience_level
-   unresolvable_location or non_hybrid_conditional_location, description
-   under the threshold, sources undp, simprints, kognity) and the 5 further
-   rows labelled `review` in data/curated/labels.csv that Layer 5 rejected
-   through the deferred location state (29 in all; the sixth `review` row is
-   one of the 24). Select them by query, not by a hand-typed key list. Print
-   the selection by source and count, and the owner confirms the number
-   before the write. Set them to 'new' and clear their stored
-   description and experience_level, so the next run re-fetches and re-judges
-   them under step 4. One transaction, a copy of jobs.sqlite3 made first
-   outside data/, and nothing else in the store touched. Report what the next
-   run made of them.
-
-DOCS. README "Reading the run summary" shows the new block exactly as
-rendered, with illustrative counts. Update the test count.
-docs/DECISIONS.md: unreadable is a Layer 5 outcome, not a layer, and why
-unverified is the right failure direction for it.
-
-Branch sp4c-layer5-unreadable. Commit, do not push. Update this plan file.
-```
-
-**SP4d — Feed Layer 5 the text the starved readers can reach** (approved).
-Root cause: five readers hand Layer 5 a URL whose static fetch is a shell.
-Fixes F2 at the source and removes most of SP4c's warnings. Needs SP4c merged,
-so that the before and after are visible. Sonnet 5, `think`, 3 hr, in two
-halves if the captures take long.
-
-```
-think
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4d
-only. SP4c must be merged.
-
-Five sources reach Layer 5 as a JS shell (SP4b): jobsinlund, kognity and
-monday_com (Ashby), simprints (Workable), undp (Oracle HCM detail pages).
-strava and nutrition_international share the Ashby and Workable readers.
-
-1. JOBSINLUND FIRST, no capture needed. The listing API it already reads
-   carries the full `description` per posting (SP4b: 759 of 759, none under
-   420 characters). Let an extractor supply `description_text` itself, and
-   let Layer 5 read that instead of fetching when it is present. That is one
-   rule in apply_detail_filter, not a per-source branch, and it saves a
-   request per job. Config over code: no new module. Pin with the existing
-   jobsinlund pattern. That reader has no fixture (SP6's list), so capture
-   one first with scripts/capture_fixtures.py. The capture is live, so ask the
-   owner before running it.
-2. ASHBY, WORKABLE, UNDP: CAPTURE FIRST, THEN DECIDE. Capture one detail page
-   per reader, static and rendered. For each, report the cheapest route that
-   yields the posting text: text embedded in the static HTML's own data,
-   the platform's own posting JSON, or `strategy: dynamic`. Prefer a route
-   that needs no browser. Remember that `strategy` also picks the listing's
-   fetcher (DECISIONS, SP3b). Put the choice to the owner before
-   implementing it. An undocumented endpoint is rung 3 of the CU2 ladder, and
-   that is a judgement call.
-3. Ashby's reader returns [] when window.__appData is missing (a silent
-   empty list, priority 2). Make it raise, as personio.py now does (SP4), and
-   pin it.
-4. Re-measure SP4b's coverage matrix for these sources, read-only, and report
-   it. Then remind the owner of their SP4b Q8 answer: label a handful of
-   undp, simprints and monday_com rows now that they can be read.
-
-DOCS. Test count; README's uncovered-reader sentence if a fixture is added.
-docs/DECISIONS.md: a reader may supply description_text, and when Layer 5
-reads that rather than fetching.
-
-Branch sp4d-feed-layer5. Commit, do not push. Update this plan file.
-```
-
-**SP4e — Read the years requirement, not the smallest number** (approved).
-Root cause: `_extract_min_years` is five patterns and a `min()`. Fixes F4, F6,
-F7 and F14, as one redesign, because they interact: F7 measured broader
-phrasing making lowest-number-wins worse. **Waits on Q1 and Q2.** Opus 5,
-`think hard`, 3 hr. It is the WP8 shape again, a rule redesigned against
-measurements, with a false-negative edge.
-
-```
-think hard
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4e
-only. The owner's answers (2026-10-01, docs/DECISIONS.md):
-- Q1: where a posting offers alternative routes (an advanced degree and 2
-  years, or a first degree and 4), the LOWEST route decides.
-- Q2: the threshold stays: more than 2 years is excluded.
-Lowest-wins is right across ROUTES. It is still wrong across UNRELATED
-figures (a narrow secondary skill, an additive "in lieu of" clause, an age,
-the employer's own history). Telling those apart is the core of the design.
-
-Redesign how Layer 5 reads an experience requirement. Do not append regexes
-to _EXPERIENCE_PATTERNS. SP4b measured that broader phrasing on its own makes
-lowest-number-wins worse (20 rows flipped from excluded to kept on additive
-"in lieu of" clauses). Design the reading as a whole: which figures are
-requirements (a number tied to experience or a minimum), which are not (a
-minimum age, the employer's own history, an "additional N years" clause), and
-how several requirements combine (Q1's answer). Compile once, per CLAUDE.md.
-
-The red-to-green targets are the strict xfails in tests/test_filter_audit.py:
-test_missed_phrasing, test_not_a_requirement,
-test_an_additional_years_clause_is_not_the_requirement,
-test_a_narrow_skill_does_not_override_the_requirement and both PhD tests.
-test_tiered_routes_take_the_lowest_today must stay green (Q1).
-
-MEASURE against the stored descriptions (read-only, offline), as SP4b did:
-verdict changes by source and direction, separating rows in the current
-export. Report every change from excluded to kept. A false negative outranks
-a false positive, so a change that keeps fewer wanted jobs needs the owner.
-The 11 `review`-labelled rows SP4b found rejected on correctly read years
-stay rejected under Q2. They are not evidence against the new reading.
-
-Stored rows: Layer 5 never re-runs on a stored row (SP4b F13). Propose, and do
-not run, a read-only report of which 'new' rows the new reading would exclude,
-for the owner to act on with `review`.
-
-DOCS. Test count. docs/DECISIONS.md: the reading rule, and why min() went.
-
-Branch sp4e-years-reading. Commit, do not push. Update this plan file.
-```
-
-**SP4f — Where is a job whose location field does not say?** (approved). Root
-cause: Layer 0 and Layer 5 have no policy for a role that is not in a place.
-Home-based, worldwide and regional fields defer and fail closed (F3), while an
-empty field on a readable source is admitted unread (F5). **Waits on Q3 and
-Q4.** Opus 5, `think hard`, 2.5 hr. It reopens WP8d and WP8f, both recorded
-decisions.
-
-```
-think hard
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4f
-only. SP4c should be merged first (see the stop-and-ask below). The owner's
-answers (2026-10-01, docs/DECISIONS.md):
-- Q3a: a home-based or worldwide role counts as remote and is admitted.
-- Q3b: a home-based role across a region that includes where the owner
-  lives counts as remote and is admitted. Which regions those are is
-  private: it belongs in rules.json beside `locations`, never in tracked
-  prose, a docstring or a test (use invented regions, as SP3c did).
-- Q3c: a field offering both a home-based region (as in Q3b) and an office
-  city is admitted through the home-based option.
-- Q4: an empty location is no longer admitted unread. It is deferred to the
-  description, and dropped if the description names none of the listed
-  locations: fail-closed, like "N Locations".
-This revises WP8d and WP8f: amend those DECISIONS entries, do not contradict
-them silently.
-
-SP4b found two opposite failures of the same question. (F3) A home-based,
-worldwide or regional location is deferred to Layer 5 and fails closed,
-because its description rarely names a listed city: 83 stored rejections of
-that shape, and 6 gold-set `review` rows rejected through the deferred state.
-(F5) An empty location is admitted outright, even on sources whose detail page
-is read in full anyway: 12 of impactpool's 13 empty-location export rows name
-no listed place in their description.
-
-Implement the owner's answers inside the existing layers. Layer 0 decides
-what a field means. Layer 5 settles what Layer 0 deferred. No new layer and
-no new rule pass. If remote work is to count, prefer extending what
-remote_keywords and _GENERIC_LOCATION_TOKENS already mean over a new list.
-Consider whether `;` should separate segments, now that SP4b showed it
-changes nothing on its own (test_a_home_based_region_beside_an_office_city_is_dropped).
-Measure with `python -m job_scraper.eval` and against the stored rows
-(read-only). Report the detail-fetch cost of anything that newly defers, as
-WP8d did. Every new job is detail-fetched already, so deferring an empty
-field should cost nothing extra; check that, and check jobs with no URL.
-
-STOP AND ASK, before implementing Q4. Q4 (an empty location fails closed) and
-Q6 (an unreadable job is kept, marked) collide on a job whose location is
-empty AND whose page cannot be read. Under SP4c that job is unverified, so it
-is dropped for the run and never stored, and the owner never sees it, on
-every run. Count how many such jobs the store and the last run hold, and put
-the case to the owner. Do not choose quietly.
-
-DOCS. Test count. In tests/test_filter_audit.py,
-test_a_home_based_or_worldwide_field_is_admitted_as_remote (strict xfail)
-goes green, and test_a_home_based_region_beside_an_office_city_is_dropped
-flips to expect an admission (Q3c), with a region from your new config key.
-docs/DECISIONS.md.
-
-Branch sp4f-location-policy. Commit, do not push. Update this plan file.
-```
-
-**SP4g — The re-filter pass sees what a run sees** (approved). Root cause:
-`refilter_stored_jobs` judges stored rows without the fields or the layer a
-run uses (F13). Lower priority, because it is latent today. It becomes
-necessary once SP4e lands, since a better years rule should reach stored
-rows. Sonnet 5, `think`, 2 hr.
-
-```
-think
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4g
-only.
-
-SP4b (F13): the re-filter pass judges stored rows without `raw_snippet` and
-`department`, which Layer 0's remote-keyword check reads in a run. Today that
-flips no verdict, and it would once include/exclude keywords are configured.
-It never re-applies Layer 5, although the description is stored. And
-tools/retrofilter.py throws away its drop rows, so its rejections never reach
-run_exclusions.
-
-1. Decide, with the owner, between storing the two fields (a schema change,
-   which needs the migration care WP4/WP5 took) and documenting the pass as
-   title-and-location only. Ask; do not choose quietly.
-2. Let the pass re-judge Layer 5 from the stored description_text for 'new'
-   rows only (never 'seen', per the WP5 rule), with no HTTP. An unreadable
-   description (SP4c) is left alone.
-3. retrofilter records its drops under the `refilter/` prefix, in a run of
-   its own, so they are logged like every other exclusion (WP8a).
-
-DOCS. README's maintenance-commands entry for retrofilter, test count,
-docs/DECISIONS.md.
-
-Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
-```
-
-**SP4h — Title keywords that match compounds** (approved). Root
-cause: `prefix` anchors at the start of a word, and German and Swedish put the
-family word at the end (F9). Small: 8 stored rows, none exported. It also
-carries the owner's Q7 answer: remove `donor`. Sonnet 5, `think`, 1 hr.
-
-```
-think
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4h
-only. config/title_exclude_keywords.csv is one of the two areas CLAUDE.md says
-to redesign rather than patch: read the whole file first.
-
-SP4b (F9): `prefix` matches at the start of a word, so a family word at the
-end of a compound never matches (techniker, utvecklare, ingenjör, chaufför,
-mekaniker, therapist). Add a match type that matches a word's end, or say why
-an existing one should carry it. Measure every change with eval --compare,
-marginally, per the WP8 method. Also remove `donor`, the owner's Q7 answer
-(2026-10-01). SP4b measured it at 1 wanted job kept out for 1 unwanted; confirm
-with eval --compare and quote the diff. `AI`, `Student` and seniority `Director`
-stay, by the same answer. Never prune from the printed attribution table.
-
-DOCS. Test count. docs/DECISIONS.md if a match type is added.
-
-Branch sp4h-keyword-compounds. Commit, do not push. Update this plan file.
-```
+| SP | Root cause | Fixes |
+|---|---|---|
+| [4c](#sp4c--layer-5-learns-to-say-i-could-not-read-this) | Layer 5 cannot tell an unread page from a read one | F1, F2 (loud), Q5 revival |
+| [4d](#sp4d--feed-layer-5-the-text-the-starved-readers-can-reach) | five readers hand Layer 5 a JS shell | F2 (at the source) |
+| [4e](#sp4e--read-the-years-requirement-not-the-smallest-number) | the years reading is five patterns and a `min()` | F4, F6, F7, F14 |
+| [4f](#sp4f--where-is-a-job-whose-location-field-does-not-say) | no policy for a role that is not in one place | F3, F5 |
+| [4g](#sp4g--the-re-filter-pass-sees-what-a-run-sees) | the re-filter pass judges different inputs from a run | F13 |
+| [4h](#sp4h--title-keywords-that-match-compounds) | `prefix` cannot match a compound's tail | F9, Q7 |
 
 #### Questions for the owner — answered 2026-10-01
 
-The answers are recorded in `docs/DECISIONS.md` and written into the prompts above.
+The answers are recorded in `docs/DECISIONS.md` and written into the prompts of
+SP4c–SP4h, below.
 
 1. **Tiered routes (Q1).** When a posting offers alternative routes (an
    advanced degree and 2 years, or a first degree and 4), should the lowest
@@ -2481,6 +2204,365 @@ The answers are recorded in `docs/DECISIONS.md` and written into the prompts abo
       landed** (your Q8 answer).
 - [ ] Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
       `kognity`, `monday_com` or `simprints` as **not experience-checked**.
+
+---
+
+## SP4c — Layer 5 learns to say "I could not read this"
+
+Approved by the owner on 2026-10-01, from SP4b's findings (see SP4b's result
+for the F-numbers and Q-numbers cited here). Root cause: Layer 5 has two
+outcomes, "fetch failed" and "read", and a shell is "read". Fixes F1 and F2
+and makes them loud. **Not a new layer**: it is a third outcome of Layer 5,
+`unreadable`, beside fetch-failed and read, plus a source-level warning in
+SP7's style. Sonnet 5, `think`, 2.5 hr.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4c
+only. Do not add a filter layer. This adds an outcome to Layer 5.
+
+PROBLEM (SP4b, F1 and F2). A client-rendered detail page reaches Layer 5 as a
+title and a "please enable JavaScript" notice. Layer 5 records that as
+`unspecified`, the same value as a posting read in full that states no
+requirement. Worse, the two fail-closed deferred states (hybrid, unresolvable
+location) read the shell as "checked and found lacking", not unverified, so
+the job is stored 'rejected' permanently. 24 rows were lost that way.
+
+1. An `unreadable` outcome in experience_filter._fetch_and_analyze, decided on
+   the stripped text: below a length threshold, or matching a JS-shell
+   marker. Measure the threshold against the store read-only. SP4b found
+   every unreadable description at 159 characters or fewer, and every
+   readable one at 2,060 or more, so there is a wide gap. Report the gap you choose. Also
+   consider the tetrapak signature (the same text on several different
+   postings of one source in one run). Say whether it is cheap enough to
+   include, and stop and ask if it is not.
+2. For both deferred states, unreadable is unverified: UNVERIFIED_KEY set,
+   never stored 'rejected'. The xfails in tests/test_filter_audit.py
+   (test_a_js_shell_cannot_settle_a_deferred_location) go green.
+3. A kept unreadable job gets its own experience_level (say
+   "unchecked (page unreadable)"), not `unspecified`, and it shows in the
+   sheet. test_a_js_shell_is_not_reported_as_no_requirement goes green.
+   Fail OPEN for years and PhD, as today. The owner decided this
+   (2026-10-01, SP4b Q6): keep an unreadable job, clearly marked.
+4. Re-check on the next run. Today a stored job is never detail-fetched
+   again, so a fetch that failed or read a shell is final. A stored row whose
+   description is empty or unreadable is re-fetched (Layer 1d still runs
+   first, so a rejected row costs nothing). Pin with a test that counts
+   requests, like test_logging_costs_no_extra_http_request.
+5. One warning per source in the run summary, in the style of the
+   source-health and empty-source blocks: "<source>: N of M detail pages
+   unreadable — those jobs are not experience-checked". Printed through
+   run.py's summary path, not logging. If SP7 has landed, sit beside its
+   blocks. If not, add the block yourself in the same shape.
+6. REVIVE, as the owner authorised on 2026-10-01 (SP4b Q5), once 1-4 work:
+   the 24 rows rejected against a shell (experience_level
+   unresolvable_location or non_hybrid_conditional_location, description
+   under the threshold, sources undp, simprints, kognity) and the 5 further
+   rows labelled `review` in data/curated/labels.csv that Layer 5 rejected
+   through the deferred location state (29 in all; the sixth `review` row is
+   one of the 24). Select them by query, not by a hand-typed key list. Print
+   the selection by source and count, and the owner confirms the number
+   before the write. Set them to 'new' and clear their stored
+   description and experience_level, so the next run re-fetches and re-judges
+   them under step 4. One transaction, a copy of jobs.sqlite3 made first
+   outside data/, and nothing else in the store touched. Report what the next
+   run made of them.
+
+DOCS. README "Reading the run summary" shows the new block exactly as
+rendered, with illustrative counts. Update the test count.
+docs/DECISIONS.md: unreadable is a Layer 5 outcome, not a layer, and why
+unverified is the right failure direction for it.
+
+Branch sp4c-layer5-unreadable. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] Confirm the count of rows to revive when the session prints its
+      selection (expect 29: 24 rejected against a JS shell plus 5 further
+      `review`-labelled rows). Nothing is written before you confirm.
+- [ ] After the next real run, look at the revived rows in the sheet. They
+      should be re-checked, or marked unchecked, not shown as "unspecified".
+
+---
+
+## SP4d — Feed Layer 5 the text the starved readers can reach
+
+Approved by the owner on 2026-10-01, from SP4b's findings (see SP4b's result
+for the F-numbers and Q-numbers cited here). Root cause: five readers hand
+Layer 5 a URL whose static fetch is a shell. Fixes F2 at the source and
+removes most of SP4c's warnings. Needs SP4c merged, so that the before and
+after are visible. Sonnet 5, `think`, 3 hr, in two halves if the captures take
+long.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4d
+only. SP4c must be merged.
+
+Five sources reach Layer 5 as a JS shell (SP4b): jobsinlund, kognity and
+monday_com (Ashby), simprints (Workable), undp (Oracle HCM detail pages).
+strava and nutrition_international share the Ashby and Workable readers.
+
+1. JOBSINLUND FIRST, no capture needed. The listing API it already reads
+   carries the full `description` per posting (SP4b: 759 of 759, none under
+   420 characters). Let an extractor supply `description_text` itself, and
+   let Layer 5 read that instead of fetching when it is present. That is one
+   rule in apply_detail_filter, not a per-source branch, and it saves a
+   request per job. Config over code: no new module. Pin with the existing
+   jobsinlund pattern. That reader has no fixture (SP6's list), so capture
+   one first with scripts/capture_fixtures.py. The capture is live, so ask the
+   owner before running it.
+2. ASHBY, WORKABLE, UNDP: CAPTURE FIRST, THEN DECIDE. Capture one detail page
+   per reader, static and rendered. For each, report the cheapest route that
+   yields the posting text: text embedded in the static HTML's own data,
+   the platform's own posting JSON, or `strategy: dynamic`. Prefer a route
+   that needs no browser. Remember that `strategy` also picks the listing's
+   fetcher (DECISIONS, SP3b). Put the choice to the owner before
+   implementing it. An undocumented endpoint is rung 3 of the CU2 ladder, and
+   that is a judgement call.
+3. Ashby's reader returns [] when window.__appData is missing (a silent
+   empty list, priority 2). Make it raise, as personio.py now does (SP4), and
+   pin it.
+4. Re-measure SP4b's coverage matrix for these sources, read-only, and report
+   it. Then remind the owner of their SP4b Q8 answer: label a handful of
+   undp, simprints and monday_com rows now that they can be read.
+
+DOCS. Test count; README's uncovered-reader sentence if a fixture is added.
+docs/DECISIONS.md: a reader may supply description_text, and when Layer 5
+reads that rather than fetching.
+
+Branch sp4d-feed-layer5. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] Approve each live capture before it runs (jobsinlund, then one detail
+      page each for Ashby, Workable and undp).
+- [ ] Choose the route for Ashby, Workable and undp when the session puts the
+      options to you: an undocumented endpoint is a judgement call.
+- [ ] Afterwards, label a handful of undp, simprints and monday_com rows
+      (your SP4b Q8 answer).
+
+---
+
+## SP4e — Read the years requirement, not the smallest number
+
+Approved by the owner on 2026-10-01, from SP4b's findings (see SP4b's result
+for the F-numbers and Q-numbers cited here). Root cause: `_extract_min_years`
+is five patterns and a `min()`. Fixes F4, F6, F7 and F14, as one redesign,
+because they interact: F7 measured broader phrasing making lowest-number-wins
+worse. **Waits on Q1 and Q2.** Opus 5, `think hard`, 3 hr. It is the WP8 shape
+again, a rule redesigned against measurements, with a false-negative edge.
+
+```
+think hard
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4e
+only. The owner's answers (2026-10-01, docs/DECISIONS.md):
+- Q1: where a posting offers alternative routes (an advanced degree and 2
+  years, or a first degree and 4), the LOWEST route decides.
+- Q2: the threshold stays: more than 2 years is excluded.
+Lowest-wins is right across ROUTES. It is still wrong across UNRELATED
+figures (a narrow secondary skill, an additive "in lieu of" clause, an age,
+the employer's own history). Telling those apart is the core of the design.
+
+Redesign how Layer 5 reads an experience requirement. Do not append regexes
+to _EXPERIENCE_PATTERNS. SP4b measured that broader phrasing on its own makes
+lowest-number-wins worse (20 rows flipped from excluded to kept on additive
+"in lieu of" clauses). Design the reading as a whole: which figures are
+requirements (a number tied to experience or a minimum), which are not (a
+minimum age, the employer's own history, an "additional N years" clause), and
+how several requirements combine (Q1's answer). Compile once, per CLAUDE.md.
+
+The red-to-green targets are the strict xfails in tests/test_filter_audit.py:
+test_missed_phrasing, test_not_a_requirement,
+test_an_additional_years_clause_is_not_the_requirement,
+test_a_narrow_skill_does_not_override_the_requirement and both PhD tests.
+test_tiered_routes_take_the_lowest_today must stay green (Q1).
+
+MEASURE against the stored descriptions (read-only, offline), as SP4b did:
+verdict changes by source and direction, separating rows in the current
+export. Report every change from excluded to kept. A false negative outranks
+a false positive, so a change that keeps fewer wanted jobs needs the owner.
+The 11 `review`-labelled rows SP4b found rejected on correctly read years
+stay rejected under Q2. They are not evidence against the new reading.
+
+Stored rows: Layer 5 never re-runs on a stored row (SP4b F13). Propose, and do
+not run, a read-only report of which 'new' rows the new reading would exclude,
+for the owner to act on with `review`.
+
+DOCS. Test count. docs/DECISIONS.md: the reading rule, and why min() went.
+
+Branch sp4e-years-reading. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] Read every change from excluded to kept that the session reports, and
+      approve or reject the reading on that evidence.
+- [ ] Act with `review` on the read-only list of 'new' rows the new reading
+      would exclude. The session does not change their status.
+
+---
+
+## SP4f — Where is a job whose location field does not say?
+
+Approved by the owner on 2026-10-01, from SP4b's findings (see SP4b's result
+for the F-numbers and Q-numbers cited here). Root cause: Layer 0 and Layer 5
+have no policy for a role that is not in a place. Home-based, worldwide and
+regional fields defer and fail closed (F3), while an empty field on a readable
+source is admitted unread (F5). **Waits on Q3 and Q4.** Opus 5, `think hard`,
+2.5 hr. It reopens WP8d and WP8f, both recorded decisions.
+
+```
+think hard
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4f
+only. SP4c should be merged first (see the stop-and-ask below). The owner's
+answers (2026-10-01, docs/DECISIONS.md):
+- Q3a: a home-based or worldwide role counts as remote and is admitted.
+- Q3b: a home-based role across a region that includes where the owner
+  lives counts as remote and is admitted. Which regions those are is
+  private: it belongs in rules.json beside `locations`, never in tracked
+  prose, a docstring or a test (use invented regions, as SP3c did).
+  rules.json is never-touch for a session. Add the key, with invented
+  values, to rules.example.json, make a rules.json without it behave as
+  today, and give the owner the one hand edit (the WP8 precedent).
+- Q3c: a field offering both a home-based region (as in Q3b) and an office
+  city is admitted through the home-based option.
+- Q4: an empty location is no longer admitted unread. It is deferred to the
+  description, and dropped if the description names none of the listed
+  locations: fail-closed, like "N Locations".
+This revises WP8d and WP8f: amend those DECISIONS entries, do not contradict
+them silently.
+
+SP4b found two opposite failures of the same question. (F3) A home-based,
+worldwide or regional location is deferred to Layer 5 and fails closed,
+because its description rarely names a listed city: 83 stored rejections of
+that shape, and 6 gold-set `review` rows rejected through the deferred state.
+(F5) An empty location is admitted outright, even on sources whose detail page
+is read in full anyway: 12 of impactpool's 13 empty-location export rows name
+no listed place in their description.
+
+Implement the owner's answers inside the existing layers. Layer 0 decides
+what a field means. Layer 5 settles what Layer 0 deferred. No new layer and
+no new rule pass. If remote work is to count, prefer extending what
+remote_keywords and _GENERIC_LOCATION_TOKENS already mean over a new list.
+Consider whether `;` should separate segments, now that SP4b showed it
+changes nothing on its own (test_a_home_based_region_beside_an_office_city_is_dropped).
+Measure with `python -m job_scraper.eval` and against the stored rows
+(read-only). Report the detail-fetch cost of anything that newly defers, as
+WP8d did. Every new job is detail-fetched already, so deferring an empty
+field should cost nothing extra; check that, and check jobs with no URL.
+
+STOP AND ASK, before implementing Q4. Q4 (an empty location fails closed) and
+Q6 (an unreadable job is kept, marked) collide on a job whose location is
+empty AND whose page cannot be read. Under SP4c that job is unverified, so it
+is dropped for the run and never stored, and the owner never sees it, on
+every run. Count how many such jobs the store and the last run hold, and put
+the case to the owner. Do not choose quietly.
+
+DOCS. Test count. In tests/test_filter_audit.py,
+test_a_home_based_or_worldwide_field_is_admitted_as_remote (strict xfail)
+goes green, and test_a_home_based_region_beside_an_office_city_is_dropped
+flips to expect an admission (Q3c), with a region from your new config key.
+docs/DECISIONS.md.
+
+Branch sp4f-location-policy. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] **Add the regions that include where you live to `rules.json`** under
+      the key the session names. `rules.json` is never-touch for a session,
+      so this is your hand edit. The session puts the key, with invented
+      values, in `rules.example.json`.
+- [ ] Answer the collision the session will raise: a job with an empty
+      location whose page cannot be read (Q4 says drop it, Q6 says keep it
+      marked).
+
+---
+
+## SP4g — The re-filter pass sees what a run sees
+
+Approved by the owner on 2026-10-01, from SP4b's findings (see SP4b's result
+for the F-numbers and Q-numbers cited here). Root cause:
+`refilter_stored_jobs` judges stored rows without the fields or the layer a
+run uses (F13). Lower priority, because it is latent today. It becomes
+necessary once SP4e lands, since a better years rule should reach stored rows.
+Sonnet 5, `think`, 2 hr.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4g
+only.
+
+SP4b (F13): the re-filter pass judges stored rows without `raw_snippet` and
+`department`, which Layer 0's remote-keyword check reads in a run. Today that
+flips no verdict, and it would once include/exclude keywords are configured.
+It never re-applies Layer 5, although the description is stored. And
+tools/retrofilter.py throws away its drop rows, so its rejections never reach
+run_exclusions.
+
+1. Decide, with the owner, between storing the two fields (a schema change,
+   which needs the migration care WP4/WP5 took) and documenting the pass as
+   title-and-location only. Ask; do not choose quietly.
+2. Let the pass re-judge Layer 5 from the stored description_text for 'new'
+   rows only (never 'seen', per the WP5 rule), with no HTTP. An unreadable
+   description (SP4c) is left alone.
+3. retrofilter records its drops under the `refilter/` prefix, in a run of
+   its own, so they are logged like every other exclusion (WP8a).
+
+DOCS. README's maintenance-commands entry for retrofilter, test count,
+docs/DECISIONS.md.
+
+Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] Choose between storing `raw_snippet` and `department` (a schema
+      change) and documenting the re-filter pass as title-and-location only.
+
+---
+
+## SP4h — Title keywords that match compounds
+
+Approved by the owner on 2026-10-01, from SP4b's findings (see SP4b's result
+for the F-numbers and Q-numbers cited here). Root cause: `prefix` anchors at
+the start of a word, and German and Swedish put the family word at the end
+(F9). Small: 8 stored rows, none exported. It also carries the owner's Q7
+answer: remove `donor`. Sonnet 5, `think`, 1 hr.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4h
+only. config/title_exclude_keywords.csv is one of the two areas CLAUDE.md says
+to redesign rather than patch: read the whole file first.
+
+SP4b (F9): `prefix` matches at the start of a word, so a family word at the
+end of a compound never matches (techniker, utvecklare, ingenjör, chaufför,
+mekaniker, therapist). Add a match type that matches a word's end, or say why
+an existing one should carry it. Measure every change with eval --compare,
+marginally, per the WP8 method. Also remove `donor`, the owner's Q7 answer
+(2026-10-01). SP4b measured it at 1 wanted job kept out for 1 unwanted; confirm
+with eval --compare and quote the diff. `AI`, `Student` and seniority `Director`
+stay, by the same answer. Never prune from the printed attribution table.
+
+DOCS. Test count. docs/DECISIONS.md if a match type is added.
+
+Branch sp4h-keyword-compounds. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos
+
+- [ ] Check the `eval --compare` diff the session quotes for removing `donor`
+      and for any new match type.
 
 ---
 
