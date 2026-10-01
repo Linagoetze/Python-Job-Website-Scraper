@@ -99,7 +99,7 @@ the ordering below.
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
-| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | steps 1–5 done, step 6 (revival) awaiting the owner's confirmation | `sp4c-layer5-unreadable` |
+| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done except the post-revival report (needs a real run) | `sp4c-layer5-unreadable` |
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | not started | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
@@ -2279,8 +2279,15 @@ Branch sp4c-layer5-unreadable. Commit, do not push. Update this plan file.
 
 ### Result — steps 1–5 done 2026-10-01, branch `sp4c-layer5-unreadable`
 
-Step 6, the revival, has **not** been written: it waits for the owner to confirm
-the number (see the to-dos). The suite is 1,045 passed and 12 expected failures;
+**Step 6, the revival (2026-10-01, owner's choice: only the rows still listed).**
+Of the 29 selected, 10 were still listed in run 32 and were revived: simprints 4,
+impactpool 2, canonical 2, kognity 2. The other 19 (undp 16, kognity 2, busuu 1)
+stay rejected, untouched. Done in one transaction after a copy made with
+SQLite's backup API at
+`~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4c-20261001-141811`; the
+store went from 1,247 to 1,237 rejected rows and nothing else changed. They are
+`new`, with description and experience_level cleared. **What the next run made of
+them is not yet known**: no real run has been made since. The suite is 1,045 passed and 12 expected failures;
 `ruff check`, `ruff format --check` and `run --help` are clean. SP7 had not
 landed, so the warning block is SP4c's own, in SP7's shape (`!` marker, own
 block, printed by `format_summary`).
