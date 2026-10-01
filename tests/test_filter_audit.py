@@ -10,9 +10,11 @@ Two kinds of test, kept apart on purpose:
   is the red-to-green target its follow-up package inherits. `strict` makes a
   fix that lands without removing the marker fail the suite, so the marker
   cannot outlive the bug.
-- Plain tests: today's behaviour on a question that is the owner's policy, not
-  a correctness bug. They pass, and they say what changes if the owner decides
-  otherwise.
+- Plain tests: behaviour that is the owner's policy, not a correctness bug.
+  The owner answered SP4b's questions on 2026-10-01 (docs/DECISIONS.md). One
+  of these pins an answer that matches today. The other pins today's
+  behaviour that SP4f is to change, because it needs a config key that does
+  not exist yet.
 
 The audit's vocabulary (docs/DECISIONS.md, SP4b): a filter is STARVED when it
 is handed input that cannot support a decision, and WRONG when the input is
@@ -186,11 +188,12 @@ def test_a_narrow_skill_does_not_override_the_requirement() -> None:
 
 
 def test_tiered_routes_take_the_lowest_today() -> None:
-    """Policy, not a bug: the owner decides whether the lowest route decides.
+    """Policy, decided: where a posting offers alternative routes, the lowest decides.
 
-    Where a posting offers alternative routes to the same role, the lowest
-    number is arguably the honest reading, since the owner qualifies through
-    that route. If the owner rules otherwise, this test changes with the rule.
+    The owner's answer to SP4b Q1 (2026-10-01): they qualify through that
+    route, so it is the honest reading. SP4e redesigns the years reading and
+    must keep this green. Lowest-wins is right across routes, and still wrong
+    across unrelated figures (the xfails above).
     """
     text = (
         "An advanced degree and 2 years of experience, or a first-level degree "
@@ -218,7 +221,7 @@ def test_a_required_doctoral_degree_is_required() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Layer 0: home-based and worldwide fields. Policy, not a bug.
+# Layer 0: home-based and worldwide fields. Policy, decided 2026-10-01 (SP4b Q3).
 # ---------------------------------------------------------------------------
 
 
@@ -231,17 +234,23 @@ def _layer0(location: str) -> tuple[bool, list[str]]:
     )
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="SP4b Q3a: a home-based or worldwide role is remote, but is deferred to "
+    "Layer 5 and fails closed there",
+)
 @pytest.mark.parametrize("location", ["Home based - Worldwide", "Home Based"])
-def test_a_home_based_field_is_deferred_not_admitted(location: str) -> None:
-    """Today a home-based role is deferred to Layer 5, which fails closed.
+def test_a_home_based_or_worldwide_field_is_admitted_as_remote(location: str) -> None:
+    """The owner decided (2026-10-01) that these count as remote.
 
-    Layer 5 then needs the description to name a listed place, which a role
-    that is not in any place rarely does: 83 stored rows of this shape were
-    rejected that way, 16 of them against a JS shell. Whether "home based"
-    and "worldwide" should count as remote is the owner's question (SP4b). If
-    they should, this test flips to expect an admission.
+    Today they are deferred to Layer 5, which needs the description to name a
+    listed place. A role that is not in any place rarely does: 83 stored rows
+    of this shape were rejected that way, 16 of them against a JS shell.
+    SP4f turns this green.
     """
-    assert _layer0(location) == (True, [_UNRESOLVED_PENDING_REASON])
+    ok, reasons = _layer0(location)
+    assert ok is True
+    assert _UNRESOLVED_PENDING_REASON not in reasons
 
 
 def test_a_home_based_region_beside_an_office_city_is_dropped() -> None:
@@ -249,8 +258,10 @@ def test_a_home_based_region_beside_an_office_city_is_dropped() -> None:
 
     `;` is not a segment separator, but splitting on it would not change this:
     the office segment names a place, so the field is a city not on the list.
-    Whether a home-based option in a region should admit the job is the
-    owner's question (SP4b).
+    The owner decided (SP4b Q3b and Q3c, 2026-10-01) that a home-based option
+    across a region they live in should admit the job. Nothing tells the
+    filter which regions those are yet. That is a private config key SP4f
+    adds, and this test then flips to expect an admission.
     """
     ok, _ = _layer0("Home based - EMEA; Office Based - Fabrikam Harbour")
     assert ok is False

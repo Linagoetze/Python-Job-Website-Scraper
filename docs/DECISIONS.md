@@ -1029,3 +1029,45 @@ session — see `CLAUDE.md`.
   row by itself. And `tools/retrofilter.py` discards the drop rows the pass
   returns, which makes its rejections the one exclusion missing from
   `run_exclusions`.
+- **The owner's answers to SP4b's eight questions, 2026-10-01.** These are
+  policy. Each prompt in `docs/SOURCES-PLAN.md` carries the answer it needs.
+  - **Tiered routes: the lowest route decides** (Q1). A posting offering "an
+    advanced degree and 2 years, or a first degree and 4" counts as 2 years,
+    because the owner qualifies through that route. This does not bless
+    `min()` in general: across *unrelated* figures (a narrow secondary skill,
+    an additive "in lieu of" clause, an age, the employer's history) the
+    lowest number is still wrong. SP4e has to tell the two apart.
+    `test_tiered_routes_take_the_lowest_today` pins the answer.
+  - **The years threshold stays at "more than 2 is excluded"** (Q2). The 11
+    jobs labelled `review` that Layer 5 rejected on correctly read years stay
+    rejected. They are not evidence against the years rule, so do not
+    re-propose the threshold on their strength.
+  - **A role that is not in one place counts as remote** (Q3). That covers
+    home-based and worldwide roles (a), and home-based roles across a region
+    that includes where the owner lives (b). A field that offers such a
+    home-based option beside an office city is admitted through the
+    home-based option (c). This revises WP8d's deferral for those shapes.
+    "N Locations" placeholders and bare countries still defer. Which regions
+    include the owner is private, like the chosen country (SP3c). It goes in
+    `rules.json`, never in tracked prose.
+  - **An empty location is no longer admitted unread** (Q4). It defers to the
+    description and fails closed, as a placeholder does. This revises WP8f,
+    whose premise (no page to read a place off) SP4b found false for sources
+    whose detail pages are read anyway. It collides with Q6 on a job whose
+    page is also unreadable: such a job would be dropped every run and never
+    seen. SP4f must put that case to the owner, not settle it.
+  - **Revive the rows lost to unread pages** (Q5). That is the 24 rejected
+    against a JS shell, plus the 5 further `review`-labelled rows the
+    deferred location state rejected, 29 in all. SP4c does it after its
+    `unreadable` state exists, so they come back marked and re-checked rather
+    than looking checked. It is a status write the owner authorised for those
+    rows only, not a precedent for un-rejecting anything automatically.
+  - **An unreadable job is kept, clearly marked** (Q6). That is fail-open for
+    years and PhD, as today, but never presented as checked.
+  - **`donor` leaves the title keywords; `AI`, `Student` and `Director`
+    stay** (Q7). These were measured marginally in SP4b. SP4h makes the edit
+    and confirms it with `eval --compare`.
+  - **Label undp, simprints and monday_com after SP4d, not before** (Q8). Until
+    their pages can be read, a label would measure the starvation, not the
+    filters.
+  - SP4c–SP4h were approved as a set and are in the Status table.
