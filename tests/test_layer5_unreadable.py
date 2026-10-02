@@ -23,6 +23,7 @@ from job_scraper import pipeline as pipeline_mod
 from job_scraper.experience_filter import (
     EXPERIENCE_UNREADABLE,
     MIN_READABLE_CHARS,
+    PAGE_READ,
     PAGE_STATE_KEY,
     PAGE_UNREADABLE,
     UNVERIFIED_KEY,
@@ -34,6 +35,7 @@ from job_scraper.pipeline import UnreadablePages, count_unreadable_pages, run_pi
 from job_scraper.run import format_summary
 from job_scraper.storage.db import JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
+from tests.fixture_cases import parse_fixture
 from tests.pages import posting
 from tests.test_run_summary import _summary
 
@@ -415,8 +417,8 @@ def test_marking_unlabelled_never_overwrites_a_level(tmp_path: Path) -> None:
 
 # --- a description the reader supplied (SP4d) --------------------------------
 
-# jobsinlund's shortest posting was about 420 characters (SP4b): a real posting,
-# under the threshold a fetched page is held to.
+# jobsinlund's shortest posting was about 420 characters of HTML (SP4b), 397 once
+# stripped (SP4d): a real posting, under the threshold a fetched page is held to.
 _SUPPLIED = ("A short posting for an analyst role in our team. " * 9)[:420]
 
 
@@ -495,3 +497,16 @@ def test_a_skipped_stored_job_keeps_the_description_it_was_judged_on(
     env["extracted"][0]["description_text"] = _SUPPLIED
     _run(tmp_path)
     assert _stored(tmp_path)[_URL]["description_text"] == before["description_text"]
+
+
+def test_every_jobsinlund_posting_is_read_from_its_own_description() -> None:
+    """The real page 1 of jobsinlund's walk (SP4d). Its detail pages are Vue
+    shells, so before SP4d every one of these was unreadable. Now none is fetched
+    and none is unreadable, the short ones included.
+    """
+    jobs = parse_fixture("jobsinlund")
+    assert any(len(j["description_text"]) < MIN_READABLE_CHARS for j in jobs)
+    kept, excluded = apply_detail_filter(jobs, _boom)
+    judged = [*kept, *excluded]
+    assert len(judged) == len(jobs)
+    assert all(j[PAGE_STATE_KEY] == PAGE_READ for j in judged)

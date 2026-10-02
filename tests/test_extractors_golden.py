@@ -501,6 +501,39 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "7.004 Expert Communication institutionelle Tunisia",
         },
     },
+    "jobsinlund": {
+        # SP4d (2026-10-02): first fixture for this reader, page 1 of a 34-page
+        # walk (see fixture_cases.py). It now supplies each posting's own
+        # description to Layer 5, stripped of its HTML. This one is 464
+        # characters, under the 500 a fetched page is held to, and is read.
+        "count": 25,
+        "first_job": {
+            "source_name": "jobsinlund",
+            "title": "Global Cleantech Marketing Coordinator (12-Month Temp)",
+            "company": "Radeptus",
+            "location": "Lund, Sweden",
+            "department": "",
+            "listing_url": "https://jobsinlund.com/?language[]=en&location.address=Lund",
+            "detail_url": (
+                "https://jobsinnetwork.com/jobs/global-cleantech-marketing-coordinator-"
+                "12month-temp/ba0b629f47cabfb96a6af6ecf7d6fff5"
+            ),
+            "apply_url": (
+                "https://click.appcast.io/t/"
+                "GO16tXR_0PhMSkais7ddlbpRhxaRHaeY2cTyQcuiWD9Et5ORdzPM0eeLCHbhCIKo"
+            ),
+            "raw_snippet": "Global Cleantech Marketing Coordinator (12-Month Temp) Lund, Sweden",
+            "description_text": (
+                "Comsys AB in Lund, Sweden seeks a Marketing Coordinator for a 12\u2011month "
+                "parental leave cover. This full\u2011time temporary role involves coordinating "
+                "brand communication, creating content, and supporting product launches across "
+                "digital channels. You will work with product management and sales, publish "
+                "materials, manage WordPress, and help optimize campaigns using Google Ads and "
+                "analytics. English proficiency and a marketing background are essential. "
+                "#J-18808-Ljbffr"
+            ),
+        },
+    },
     "unops": {
         # WP11 review (2026-09-02): UNOPS had no fixture at all, which is how a
         # crash in its total-reader survived — the reader was only ever run

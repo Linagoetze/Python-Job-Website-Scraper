@@ -5,6 +5,10 @@ not the local /api/jobs endpoint. The API requires provider UUIDs specific to
 the Lund board (extracted from the page's globalVariables / queryParams) and
 country filtering to avoid Norwegian Lund results.
 Pagination follows hydra:view.hydra:next relative paths.
+
+Each posting carries its full description, as HTML, and the reader supplies
+it to Layer 5 as plain text (SP4d). The detail page is a Vue shell whose
+visible text is its title, so fetching it read nothing (SP4b).
 """
 
 from __future__ import annotations
@@ -13,6 +17,8 @@ import json
 from collections.abc import Callable
 from datetime import date, datetime, timezone
 from typing import Any
+
+from bs4 import BeautifulSoup
 
 _STALE_DAYS = 30
 
@@ -54,57 +60,81 @@ def extract(
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     next_url: str | None = _FIRST_PAGE
+    today = date.today()
 
     while next_url:
         data = json.loads(fetch_text(next_url))
-        for job in data.get("hydra:member", []):
-            title = (job.get("title") or "").strip()
-            if not title:
-                continue
-
-            detail_url = (job.get("view_url") or "").strip()
-            if not detail_url or detail_url in seen:
-                continue
-            seen.add(detail_url)
-
-            raw_date = (job.get("published_at") or "").strip()
-            if raw_date:
-                try:
-                    posted = (
-                        datetime.fromisoformat(raw_date.rstrip("Z"))
-                        .replace(tzinfo=timezone.utc)
-                        .date()
-                    )
-                    if (date.today() - posted).days > _STALE_DAYS:
-                        continue
-                except ValueError:
-                    pass
-
-            loc = job.get("location") or {}
-            city = (loc.get("city") or "Lund").strip().title()
-            country = (loc.get("country") or "").strip()
-            location = f"{city}, {country}" if country else city
-
-            dept = (job.get("functions") or "").strip()
-            company = ((job.get("company") or {}).get("name") or "").strip()
-            apply_url = (job.get("application_url") or job.get("url") or detail_url).strip()
-            raw_snippet = " ".join(x for x in [title, dept, location] if x)
-
-            out.append(
-                {
-                    "source_name": source_name,
-                    "title": title,
-                    "company": company,
-                    "location": location,
-                    "department": dept,
-                    "listing_url": listing_url,
-                    "detail_url": detail_url,
-                    "apply_url": apply_url,
-                    "raw_snippet": raw_snippet,
-                }
-            )
-
+        out += _parse_page(data, listing_url, source_name, seen, today)
         raw_next = data.get("hydra:view", {}).get("hydra:next")
         next_url = (_SEARCH_BASE + raw_next) if raw_next else None
 
+    return out
+
+
+def _description_text(html: str) -> str:
+    # Stripped the way Layer 5 strips a fetched page, so the years and
+    # location patterns meet the same kind of text from either route.
+    if not html.strip():
+        return ""
+    return BeautifulSoup(html, "lxml").get_text(" ", strip=True)
+
+
+def _parse_page(
+    data: dict[str, Any],
+    listing_url: str,
+    source_name: str,
+    seen: set[str],
+    today: date,
+) -> list[dict[str, Any]]:
+    """The postings on one page of the search API's walk.
+
+    `today` is passed in, not read, because postings older than _STALE_DAYS are
+    skipped: a saved page must parse the same way next month (SP4d).
+    """
+    out: list[dict[str, Any]] = []
+    for job in data.get("hydra:member", []):
+        title = (job.get("title") or "").strip()
+        if not title:
+            continue
+
+        detail_url = (job.get("view_url") or "").strip()
+        if not detail_url or detail_url in seen:
+            continue
+        seen.add(detail_url)
+
+        raw_date = (job.get("published_at") or "").strip()
+        if raw_date:
+            try:
+                posted = (
+                    datetime.fromisoformat(raw_date.rstrip("Z")).replace(tzinfo=timezone.utc).date()
+                )
+                if (today - posted).days > _STALE_DAYS:
+                    continue
+            except ValueError:
+                pass
+
+        loc = job.get("location") or {}
+        city = (loc.get("city") or "Lund").strip().title()
+        country = (loc.get("country") or "").strip()
+        location = f"{city}, {country}" if country else city
+
+        dept = (job.get("functions") or "").strip()
+        company = ((job.get("company") or {}).get("name") or "").strip()
+        apply_url = (job.get("application_url") or job.get("url") or detail_url).strip()
+        raw_snippet = " ".join(x for x in [title, dept, location] if x)
+
+        out.append(
+            {
+                "source_name": source_name,
+                "title": title,
+                "company": company,
+                "location": location,
+                "department": dept,
+                "listing_url": listing_url,
+                "detail_url": detail_url,
+                "apply_url": apply_url,
+                "raw_snippet": raw_snippet,
+                "description_text": _description_text(job.get("description") or ""),
+            }
+        )
     return out
