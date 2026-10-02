@@ -35,14 +35,15 @@ from job_scraper.experience_filter import (
 )
 from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
+    _EMPTY_PENDING_REASON,
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
-    _LOCATION_EMPTY_ADMITTED_REASON,
     _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
     build_hybrid_pattern,
     build_location_pattern,
     build_non_place_pattern,
+    build_remote_region_pattern,
     load_title_exclude_keywords,
     matches_rules,
 )
@@ -142,11 +143,16 @@ class UnreadablePages:
 
     `fetched` counts the pages that came back, readable or not, so "3 of 40" is
     a share of what was actually reached rather than of what was attempted.
+    `held_back` counts the unreadable ones whose job was dropped for the run
+    because a deferred location or hybrid check could not be made (SP4f, the
+    owner's answer to the Q4/Q6 collision): those jobs are not in the sheet at
+    all, unlike the rest, which are kept and marked.
     """
 
     source_name: str
     unreadable: int
     fetched: int
+    held_back: int = 0
 
 
 def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]:
@@ -157,6 +163,7 @@ def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]
     """
     fetched: dict[str, int] = {}
     unreadable: dict[str, int] = {}
+    held_back: dict[str, int] = {}
     for job in jobs:
         state = job.get(PAGE_STATE_KEY)
         if state is None or state == PAGE_FAILED:
@@ -165,7 +172,12 @@ def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]
         fetched[name] = fetched.get(name, 0) + 1
         if state == PAGE_UNREADABLE:
             unreadable[name] = unreadable.get(name, 0) + 1
-    return tuple(UnreadablePages(n, unreadable[n], fetched[n]) for n in sorted(unreadable))
+            if job.get(UNVERIFIED_KEY):
+                held_back[name] = held_back.get(name, 0) + 1
+    return tuple(
+        UnreadablePages(n, unreadable[n], fetched[n], held_back.get(n, 0))
+        for n in sorted(unreadable)
+    )
 
 
 @dataclass
@@ -228,6 +240,8 @@ def refilter_stored_jobs(
     title_keywords: list[tuple[str, str]],
     hybrid_pattern: Any = None,
     non_place_pattern: Any = None,
+    *,
+    remote_region_pattern: Any = None,
 ) -> tuple[dict[str, int], list[dict[str, Any]]]:
     """Re-apply the filter layers to stored unreviewed jobs, marking failures.
 
@@ -254,10 +268,16 @@ def refilter_stored_jobs(
         # A stored conditional-city job re-enters matches_rules without its
         # matched_reasons; the pending reason it gets passes, so the persisted
         # hybrid_confirmed flag is not needed here — Layer 5 owns that check.
-        # A stored job with an unresolvable location field passes the same way,
-        # and for the same reason: Layer 5 already settled it once, and a
-        # re-filter pass has no description to settle it against.
-        ok, reasons = matches_rules(job, rules, hybrid_pattern, non_place_pattern=non_place_pattern)
+        # A stored job with an unresolvable or empty location field passes the
+        # same way, and for the same reason: Layer 5 already settled it once,
+        # and a re-filter pass has no description to settle it against.
+        ok, reasons = matches_rules(
+            job,
+            rules,
+            hybrid_pattern,
+            non_place_pattern=non_place_pattern,
+            remote_region_pattern=remote_region_pattern,
+        )
         if ok:
             kept.append(job)
         else:
@@ -402,6 +422,7 @@ def _run_pipeline(
     # Compiled once for the whole run and passed down — never rebuilt per job.
     hybrid_pattern = build_hybrid_pattern(rules)
     non_place_pattern = build_non_place_pattern(rules)
+    remote_region_pattern = build_remote_region_pattern(rules)
     location_pattern = build_location_pattern(rules)
 
     jobs_extracted = 0
@@ -510,7 +531,11 @@ def _run_pipeline(
 
         for job in rows:
             ok, reason_list = matches_rules(
-                job, rules, hybrid_pattern, non_place_pattern=non_place_pattern
+                job,
+                rules,
+                hybrid_pattern,
+                non_place_pattern=non_place_pattern,
+                remote_region_pattern=remote_region_pattern,
             )
             if not ok:
                 # The reason names the specific case — which keyword, or which
@@ -559,16 +584,18 @@ def _run_pipeline(
             layer_short(LAYER_DETAIL),
         )
     empty_location_admits = sum(
-        1 for j in kept_rows if _LOCATION_EMPTY_ADMITTED_REASON in (j.get("matched_reasons") or [])
+        1 for j in kept_rows if _EMPTY_PENDING_REASON in (j.get("matched_reasons") or [])
     )
     if empty_location_admits:
-        # Unlike the two counts above, this is not a Layer 5 cost — see
-        # _LOCATION_EMPTY_ADMITTED_REASON's comment in filtering.py. Logged
-        # anyway, so the volume WP8f admits is as visible as what WP8d defers.
+        # Unlike the count above, not an extra fetch: these jobs reached Layer 5
+        # before SP4f too, admitted outright (WP8f). What changed is that the
+        # description now has to name a listed place (the owner's Q4).
         logger.debug(
-            "%s (rules): %d jobs admitted with no location given at all",
+            "%s (rules): %d jobs admitted with no location given, pending a %s read "
+            "of the description",
             layer_short(LAYER_RULES),
             empty_location_admits,
+            layer_short(LAYER_DETAIL),
         )
 
     sources_csv_path = out_db_path.parent / "jobs_sources.csv"
@@ -852,7 +879,12 @@ def _run_pipeline(
         # Re-filter stored unreviewed rows against the current rules (the old
         # clean_existing_rows, minus the deletions).
         refilter_counts, refilter_drops = refilter_stored_jobs(
-            store, rules, title_keywords, hybrid_pattern, non_place_pattern
+            store,
+            rules,
+            title_keywords,
+            hybrid_pattern,
+            non_place_pattern,
+            remote_region_pattern=remote_region_pattern,
         )
         drops += refilter_drops
         for filter_name, count in refilter_counts.items():

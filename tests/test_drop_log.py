@@ -31,8 +31,9 @@ from job_scraper.drops import (
     REFILTER_PREFIX,
     rule_counts,
 )
+from job_scraper.experience_filter import RULE_LOCATION_EMPTY_NOT_LISTED
 from job_scraper.filtering import (
-    _LOCATION_EMPTY_ADMITTED_REASON,
+    _EMPTY_PENDING_REASON,
     RULE_LOC_CONDITIONAL_UNGATED,
     RULE_LOC_REMOTE_OVERRIDDEN,
     RULE_LOC_UNLISTED_CITY,
@@ -185,14 +186,15 @@ class TestLocationDropRules:
         assert not ok
         return reasons[0]
 
-    def test_missing_location_field_is_admitted_not_rejected(self) -> None:
-        # WP8f: an empty field is not a place that failed to match — it is
-        # settled outright at Layer 0, permanently, with its own reason.
+    def test_missing_location_field_is_deferred_not_rejected(self) -> None:
+        # WP8f: an empty field is not a place that failed to match, so it is not
+        # a Layer 0 drop. Since SP4f (the owner's Q4) it is deferred to Layer 5,
+        # which drops it there if the description names no listed place.
         job = _job("Analyst", location="", slug="x", snippet="Analyst")
         hybrid_pattern = build_hybrid_pattern(self._RULES_WITH_GATE)
         ok, reasons = matches_rules(job, self._RULES_WITH_GATE, hybrid_pattern)
         assert ok
-        assert reasons == [_LOCATION_EMPTY_ADMITTED_REASON]
+        assert reasons == [_EMPTY_PENDING_REASON]
 
     def test_city_not_on_the_list(self) -> None:
         assert self._reason("Lisbon", self._RULES_WITH_GATE) == RULE_LOC_UNLISTED_CITY
@@ -226,12 +228,13 @@ def test_every_layer_records_its_exclusions(env: Path) -> None:
     for row in rows:
         by_layer[str(row["layer"])] = by_layer.get(str(row["layer"]), 0) + 1
 
-    # Two location cases: 'no-location' (WP8f) is now admitted, not dropped.
+    # Two location cases at Layer 0: 'no-location' passes it (WP8f) and, since
+    # SP4f, is settled at Layer 5, whose page names no listed place.
     assert by_layer[LAYER_RULES] == 2
     assert by_layer[LAYER_TITLE_KEYWORD] == 1
     assert by_layer[LAYER_SENIORITY] == 1
     assert by_layer[LAYER_REVIEW_STATUS] == 1
-    assert by_layer[LAYER_DETAIL] == 3  # years, PhD, not-hybrid
+    assert by_layer[LAYER_DETAIL] == 4  # years, PhD, not-hybrid, no location
 
     # Nothing is logged twice, and nothing kept is logged at all.
     assert summary.exclusions_logged == len(rows)
@@ -243,9 +246,9 @@ def test_each_rule_names_the_specific_thing_that_fired(env: Path) -> None:
     rules = _rules_by_slug(_logged(env))
 
     assert rules["unlisted-city"] == RULE_LOC_UNLISTED_CITY
-    # 'no-location' is no longer in this table at all — WP8f admits it, so it
-    # is never dropped and never logged.
-    assert "no-location" not in rules
+    # 'no-location' passes Layer 0 (WP8f) and is dropped at Layer 5 (SP4f, Q4),
+    # under its own rule rather than the placeholder's.
+    assert rules["no-location"] == RULE_LOCATION_EMPTY_NOT_LISTED
     assert rules["remote-overridden"] == RULE_LOC_REMOTE_OVERRIDDEN
     # The keyword and its match type, not just "a title keyword matched".
     assert rules["keyword"] == "title_keyword: 'marketing' (word)"
@@ -366,11 +369,11 @@ def test_filters_narrow_both_the_listing_and_the_counts(env: Path) -> None:
         detail = store.exclusions(run_id, layer="2-detail")
         elsewhere = store.exclusions(run_id, source="nothing-like-this")
 
-    # Two, since WP8f: 'no-location' is admitted, not dropped, so it no longer
-    # contributes a "locations: ..." row here.
+    # Two, since WP8f: 'no-location' is not a Layer 0 drop, so it contributes
+    # no "locations: ..." row here. It is a Layer 5 one since SP4f.
     assert len(located) == 2
     assert all("locations" in r["rule"] for r in located)
-    assert len(detail) == 3
+    assert len(detail) == 4
     assert elsewhere == []
     assert sum(n for _, _, n in rule_counts(located)) == len(located)
 

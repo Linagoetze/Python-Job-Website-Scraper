@@ -393,6 +393,8 @@ def test_failed_hybrid_check_is_not_permanently_rejected(env: dict[str, Any]) ->
 # Unresolvable locations, end to end (WP8d)
 # ---------------------------------------------------------------------------
 
+# "2 Locations" is the placeholder these tests defer. It was "Home based -
+# Worldwide" until SP4f made a worldwide field remote (the owner's Q3a).
 _UNRESOLVABLE_RULES = {
     "locations": ["Berlin"],
     "non_place_locations": ["Worldwide"],
@@ -411,7 +413,7 @@ def test_resolved_unresolvable_location_is_not_refetched_next_run(
     """
     tmp_path = env["tmp_path"]
     (tmp_path / "rules.json").write_text(json.dumps(_UNRESOLVABLE_RULES), encoding="utf-8")
-    job = _job("Data Analyst", location="Home based - Worldwide", slug="unresolvable")
+    job = _job("Data Analyst", location="2 Locations", slug="unresolvable")
     env["extracted"][:] = [job]
     url = job["detail_url"]
 
@@ -440,7 +442,7 @@ def test_unresolvable_location_dropped_at_layer_2_is_not_refetched_either(
     so Layer 1d catches it next run and Layer 2 never pays for it twice."""
     tmp_path = env["tmp_path"]
     (tmp_path / "rules.json").write_text(json.dumps(_UNRESOLVABLE_RULES), encoding="utf-8")
-    job = _job("Data Analyst", location="Home based - Worldwide", slug="unresolvable")
+    job = _job("Data Analyst", location="2 Locations", slug="unresolvable")
     env["extracted"][:] = [job]
     url = job["detail_url"]
 
@@ -463,13 +465,49 @@ def test_unresolvable_location_dropped_at_layer_2_is_not_refetched_either(
     assert env["fetches"][url] == 1, "judged once, then skipped as any rejected job is"
 
 
+@pytest.mark.parametrize(
+    ("page", "status"),
+    [
+        ("You will work from our Berlin office. No experience required.", "new"),
+        ("You will work from our Nairobi office. No experience required.", "rejected"),
+    ],
+)
+def test_an_empty_location_costs_no_fetch_it_did_not_cost_before(
+    env: dict[str, Any], page: str, status: str
+) -> None:
+    """SP4f defers an empty field (the owner's Q4); WP8f used to admit it.
+
+    Either way a new job is fetched once, for its years, so the deferral adds
+    no request: the page already in hand answers the location too. And once
+    judged, kept or rejected, the job is stored and never fetched again.
+    """
+    tmp_path = env["tmp_path"]
+    job = _job("Data Analyst", location="", slug="empty")
+    env["extracted"][:] = [job]
+    url = job["detail_url"]
+
+    def fake_fetch(u: str, *a: Any, **k: Any) -> str:
+        env["fetches"][u] += 1
+        return posting(page)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", fake_fetch)
+        _run(tmp_path)
+        assert env["fetches"][url] == 1
+        assert _db_jobs(tmp_path)[url]["status"] == status
+        _run(tmp_path)
+
+    assert env["fetches"][url] == 1, "judged once, then skipped as any stored job is"
+
+
 def test_unverified_unresolvable_location_is_retried_not_permanently_dropped(
     env: dict[str, Any],
 ) -> None:
     """A network hiccup must not read as "checked and found lacking"."""
     tmp_path = env["tmp_path"]
     (tmp_path / "rules.json").write_text(json.dumps(_UNRESOLVABLE_RULES), encoding="utf-8")
-    job = _job("Data Analyst", location="Home based - Worldwide", slug="unresolvable")
+    job = _job("Data Analyst", location="2 Locations", slug="unresolvable")
     env["extracted"][:] = [job]
     url = job["detail_url"]
     fetches = env["fetches"]

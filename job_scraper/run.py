@@ -217,6 +217,16 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
                 f"!  {page.source_name}: {page.unreadable:,} of {page.fetched:,} detail pages "
                 "unreadable — those jobs are not experience-checked"
             )
+            if page.held_back:
+                # The owner's answer to the Q4/Q6 collision (SP4f): a job whose
+                # location could only be settled by its page is dropped for the
+                # run when the page is unreadable, never stored and never in
+                # the sheet. Said here, so that "kept and marked" above is not
+                # read as covering it.
+                lines.append(
+                    f"!    {page.held_back:,} of them held back this run: the location "
+                    "could not be checked"
+                )
     if summary.dry_run:
         lines.append(_RULE)
         lines.extend(

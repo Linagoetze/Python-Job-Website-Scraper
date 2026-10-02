@@ -335,7 +335,7 @@ def test_report_names_every_false_negative(gold, config) -> None:
     # rather than the raw stored id.
     assert f"{layer_display(LAYER_REVIEW_STATUS)} not replayed" in text
     assert f"{layer_display(LAYER_DETAIL)} not replayed" in text
-    assert "unresolvable location field" in text
+    assert "unresolvable or empty location field" in text
     assert "ceiling on the recall this buys" in text
 
 

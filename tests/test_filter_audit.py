@@ -13,9 +13,9 @@ Two kinds of test, kept apart on purpose:
   green in SP4e and lost their markers; the tests stay as the audit's record.
 - Plain tests: behaviour that is the owner's policy, not a correctness bug.
   The owner answered SP4b's questions on 2026-10-01 (docs/DECISIONS.md). One
-  of these pins an answer that matches today. The other pins today's
-  behaviour that SP4f is to change, because it needs a config key that does
-  not exist yet.
+  of these pins an answer that matched the code then. The other pinned the
+  code's answer to Q3c until SP4f added the config key it needed, and now
+  pins the owner's.
 
 The audit's vocabulary (docs/DECISIONS.md, SP4b): a filter is STARVED when it
 is handed input that cannot support a decision, and WRONG when the input is
@@ -35,10 +35,12 @@ from job_scraper.experience_filter import (
 )
 from job_scraper.filtering import (
     _HYBRID_PENDING_REASON,
+    _REMOTE_REGION_REASON,
     _UNRESOLVED_PENDING_REASON,
     build_hybrid_pattern,
     build_location_pattern,
     build_non_place_pattern,
+    build_remote_region_pattern,
     matches_rules,
 )
 
@@ -55,7 +57,9 @@ _RULES = {
     "locations": ["Northwind"],
     "conditional_locations": ["Fabrikam City"],
     "conditional_location_keywords": ["hybrid"],
-    "non_place_locations": ["EMEA", "Worldwide"],
+    "non_place_locations": ["EMEA", "Worldwide", "Wingtip Region"],
+    # An invented region: which real ones include the owner is private (SP4f).
+    "remote_regions": ["Wingtip Region"],
     "remote_keywords": ["remote", "anywhere"],
     "match_in": "title_and_description",
 }
@@ -203,37 +207,43 @@ def _layer0(location: str) -> tuple[bool, list[str]]:
         _RULES,
         build_hybrid_pattern(_RULES),
         non_place_pattern=build_non_place_pattern(_RULES),
+        remote_region_pattern=build_remote_region_pattern(_RULES),
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SP4b Q3a: a home-based or worldwide role is remote, but is deferred to "
-    "Layer 5 and fails closed there",
-)
 @pytest.mark.parametrize("location", ["Home based - Worldwide", "Home Based"])
 def test_a_home_based_or_worldwide_field_is_admitted_as_remote(location: str) -> None:
-    """The owner decided (2026-10-01) that these count as remote.
+    """The owner decided (2026-10-01) that these count as remote (Q3a).
 
-    Today they are deferred to Layer 5, which needs the description to name a
-    listed place. A role that is not in any place rarely does: 83 stored rows
-    of this shape were rejected that way, 16 of them against a JS shell.
-    SP4f turns this green.
+    Until SP4f they were deferred to Layer 5, which needs the description to
+    name a listed place. A role that is not in any place rarely does: 83 stored
+    rows of this shape were rejected that way, 16 of them against a JS shell.
+    A strict xfail here was SP4f's red-to-green target.
     """
     ok, reasons = _layer0(location)
     assert ok is True
     assert _UNRESOLVED_PENDING_REASON not in reasons
 
 
-def test_a_home_based_region_beside_an_office_city_is_dropped() -> None:
-    """Today one named city decides a field that also offers home-based work.
+def test_a_home_based_region_beside_an_office_city_is_admitted() -> None:
+    """A home-based option across a region the owner lives in admits the job (Q3c).
 
-    `;` is not a segment separator, but splitting on it would not change this:
-    the office segment names a place, so the field is a city not on the list.
-    The owner decided (SP4b Q3b and Q3c, 2026-10-01) that a home-based option
-    across a region they live in should admit the job. Nothing tells the
-    filter which regions those are yet. That is a private config key SP4f
-    adds, and this test then flips to expect an admission.
+    Until SP4f one named city decided this field, and it was dropped as a city
+    not on the list. `;` now separates the options, and the home-based one is
+    read on its own against `remote_regions`, the private key SP4f added. The
+    office city beside it no longer decides, as the owner answered (SP4b Q3b
+    and Q3c, 2026-10-01). The region here is invented.
     """
-    ok, _ = _layer0("Home based - EMEA; Office Based - Fabrikam Harbour")
-    assert ok is False
+    ok, reasons = _layer0("Home based - Wingtip Region; Office Based - Fabrikam Harbour")
+    assert ok is True
+    assert reasons == [_REMOTE_REGION_REASON]
+
+
+def test_a_home_based_region_that_excludes_the_owner_still_defers() -> None:
+    """Q3b's qualifier: a region not in `remote_regions` is not remote for the owner.
+
+    It is deferred to Layer 5, as every regional field was before SP4f.
+    """
+    ok, reasons = _layer0("Home based - EMEA")
+    assert ok is True
+    assert reasons == [_UNRESOLVED_PENDING_REASON]

@@ -31,6 +31,9 @@
     "Germany", "France", "United Kingdom", "United States", "India"
   ],
 
+  "_remote_regions_comment": "Regions that include where you live, as your sources write them. A remote or home-based role across one of these (\"Home based - <region>\", \"Remote | <region>\") is admitted as remote, even when the field also offers an office city. A region alone, with no remote or home-based wording anywhere in the job, is still deferred like a bare country. Home-based with no region, and worldwide, are admitted without this key. Leave it empty and every regional field is deferred to Layer 5. The value below is invented: replace it.",
+  "remote_regions": ["Wingtip Region"],
+
   "remote_keywords": ["remote", "anywhere"],
 
   "match_in": "title_and_description",

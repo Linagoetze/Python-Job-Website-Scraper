@@ -3,6 +3,8 @@
 import pytest
 
 from job_scraper.experience_filter import (
+    RULE_LOCATION_EMPTY_NOT_LISTED,
+    RULE_LOCATION_EMPTY_UNVERIFIED,
     RULE_LOCATION_NOT_LISTED,
     RULE_LOCATION_UNVERIFIED,
     UNVERIFIED_KEY,
@@ -13,6 +15,8 @@ from job_scraper.experience_filter import (
     apply_title_filter,
 )
 from job_scraper.filtering import (
+    _EMPTY_CONFIRMED_REASON,
+    _EMPTY_PENDING_REASON,
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
     _UNRESOLVED_CONFIRMED_REASON,
@@ -550,3 +554,71 @@ class TestUnresolvableLocationResolution:
             _HYBRID_CONFIRMED_REASON,
             _UNRESOLVED_CONFIRMED_REASON,
         ]
+
+
+# ---------------------------------------------------------------------------
+# apply_detail_filter — empty locations (SP4f, the owner's Q4)
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyLocationResolution:
+    """An empty field is settled as a placeholder is, under rules of its own.
+
+    Same state and failure direction as TestUnresolvableLocationResolution. What
+    differs is the drop rule, so the log tells an empty field (an extractor or
+    listing gap) from a placeholder (a listing that will not say).
+    """
+
+    _PATTERN = build_location_pattern({"locations": ["Malmö", "Lund", "Copenhagen"]})
+
+    @staticmethod
+    def _job(url="https://example.com/job"):
+        return {
+            "source_name": "test",
+            "title": "Analyst",
+            "location": "",
+            "detail_url": url,
+            "apply_url": "",
+            "raw_snippet": "Analyst",
+            "matched_reasons": [_EMPTY_PENDING_REASON],
+        }
+
+    def test_listed_place_in_description_confirms(self):
+        kept, excluded = apply_detail_filter(
+            [self._job()],
+            lambda _url: posting("You will be based in our Lund office."),
+            location_pattern=self._PATTERN,
+        )
+        assert not excluded
+        assert kept[0]["matched_reasons"] == [_EMPTY_CONFIRMED_REASON]
+
+    def test_no_listed_place_is_dropped_under_its_own_rule(self):
+        kept, excluded = apply_detail_filter(
+            [self._job()],
+            lambda _url: posting("The role is based in Nairobi."),
+            location_pattern=self._PATTERN,
+        )
+        assert not kept
+        assert excluded[0]["experience_level"] == "unresolvable_location"
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_EMPTY_NOT_LISTED
+        assert not excluded[0].get(UNVERIFIED_KEY)
+
+    def test_an_unreadable_page_holds_it_back_unverified(self):
+        # The Q4/Q6 collision, as the owner answered it (SP4f): Q4 wins, so the
+        # job is dropped for the run, but never stored as rejected.
+        kept, excluded = apply_detail_filter(
+            [self._job()],
+            lambda _url: "<html><body>You need to enable JavaScript.</body></html>",
+            location_pattern=self._PATTERN,
+        )
+        assert not kept
+        assert excluded[0][UNVERIFIED_KEY] is True
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_EMPTY_UNVERIFIED
+
+    def test_no_url_is_unverified(self):
+        kept, excluded = apply_detail_filter(
+            [self._job(url="")], lambda _url: "", location_pattern=self._PATTERN
+        )
+        assert not kept
+        assert excluded[0][UNVERIFIED_KEY] is True
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_EMPTY_UNVERIFIED

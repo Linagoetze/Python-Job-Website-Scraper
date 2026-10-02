@@ -190,6 +190,29 @@ def test_the_block_renders_beside_the_other_warnings() -> None:
     ) in text
 
 
+def test_a_source_with_jobs_held_back_says_so() -> None:
+    # The owner's answer to the Q4/Q6 collision (SP4f): a job whose location
+    # only its page could settle is dropped for the run when the page cannot be
+    # read. It is not in the sheet, so "kept and marked" must not cover it.
+    text = format_summary(
+        _summary(unreadable_pages=(UnreadablePages("contoso", 3, 5, held_back=2),))
+    )
+    assert (
+        "!  contoso: 3 of 5 detail pages unreadable — those jobs are not experience-checked\n"
+        "!    2 of them held back this run: the location could not be checked"
+    ) in text
+
+
+def test_held_back_counts_only_unverified_drops_on_unreadable_pages() -> None:
+    jobs = [
+        {"source_name": "contoso", PAGE_STATE_KEY: "unreadable", UNVERIFIED_KEY: True},
+        {"source_name": "contoso", PAGE_STATE_KEY: "unreadable"},
+        {"source_name": "contoso", PAGE_STATE_KEY: "failed", UNVERIFIED_KEY: True},
+        {"source_name": "contoso", PAGE_STATE_KEY: "read"},
+    ]
+    assert count_unreadable_pages(jobs) == (UnreadablePages("contoso", 2, 3, held_back=1),)
+
+
 def test_no_block_when_every_page_was_read() -> None:
     assert "Unreadable pages" not in format_summary(_summary())
 
@@ -346,11 +369,14 @@ def test_a_rejected_unreadable_row_costs_no_request(env: dict[str, Any]) -> None
 
 
 def test_a_deferred_job_against_a_shell_is_not_stored_rejected(env: dict[str, Any]) -> None:
-    env["extracted"][0]["location"] = "Home based - Worldwide"
+    # A placeholder: "Home based - Worldwide" is remote since SP4f, not deferred.
+    env["extracted"][0]["location"] = "2 Locations"
     site, tmp_path = env["site"], env["tmp_path"]
     summary = _run(tmp_path)
     assert _URL not in _stored(tmp_path), "unverified: dropped this run, never rejected"
-    assert summary.unreadable_pages == (UnreadablePages(_SOURCE, 1, 1),)
+    # Held back, and the summary says so (SP4f, the owner's answer to the
+    # Q4/Q6 collision): unlike the kept unreadable jobs, this one is not shown.
+    assert summary.unreadable_pages == (UnreadablePages(_SOURCE, 1, 1, held_back=1),)
 
     env["site"].page = posting("You will work from our Berlin office.")
     _run(tmp_path)
@@ -394,7 +420,8 @@ def test_a_stored_job_dropped_as_unverified_shows_as_unchecked_not_blank(
     _run(tmp_path)  # stored, unchecked
     with JobStore(tmp_path / "jobs.sqlite3") as store:
         store._c().execute("UPDATE jobs SET experience_level = ''")  # as after a revival
-    env["extracted"][0]["location"] = "Home based - Worldwide"
+    # A placeholder: "Home based - Worldwide" is remote since SP4f, not deferred.
+    env["extracted"][0]["location"] = "2 Locations"
     _run(tmp_path)
     job = _stored(tmp_path)[_URL]
     assert (job["status"], job["experience_level"]) == ("new", EXPERIENCE_UNREADABLE)
