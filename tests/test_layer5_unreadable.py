@@ -499,14 +499,19 @@ def test_a_skipped_stored_job_keeps_the_description_it_was_judged_on(
     assert _stored(tmp_path)[_URL]["description_text"] == before["description_text"]
 
 
-def test_every_jobsinlund_posting_is_read_from_its_own_description() -> None:
-    """The real page 1 of jobsinlund's walk (SP4d). Its detail pages are Vue
-    shells, so before SP4d every one of these was unreadable. Now none is fetched
-    and none is unreadable, the short ones included.
+@pytest.mark.parametrize("source", ["jobsinlund", "kognity"])
+def test_every_posting_is_read_from_its_own_description(source: str) -> None:
+    """Real fixtures of the two readers that supply a description (SP4d). Their
+    detail pages are shells to a static fetch, so before SP4d every one of these
+    was unreadable. Now none is fetched and none is unreadable, jobsinlund's
+    short ones included.
     """
-    jobs = parse_fixture("jobsinlund")
-    assert any(len(j["description_text"]) < MIN_READABLE_CHARS for j in jobs)
+    jobs = parse_fixture(source)
     kept, excluded = apply_detail_filter(jobs, _boom)
     judged = [*kept, *excluded]
     assert len(judged) == len(jobs)
     assert all(j[PAGE_STATE_KEY] == PAGE_READ for j in judged)
+
+
+def test_the_jobsinlund_fixture_holds_a_short_posting() -> None:
+    assert any(len(j["description_text"]) < MIN_READABLE_CHARS for j in parse_fixture("jobsinlund"))

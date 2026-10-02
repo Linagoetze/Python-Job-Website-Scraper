@@ -76,7 +76,7 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: greenhouse.extract(url, fetch, source_name="givewell"),
     ),
     "kognity": (
-        "kognity.html",
+        "kognity.json",
         "https://jobs.ashbyhq.com/kognity",
         lambda url, fetch: ashby.extract(url, fetch, source_name="kognity"),
     ),

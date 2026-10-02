@@ -42,6 +42,8 @@ PROBE_DIR = FIXTURES_DIR / "probe"
 UA = "job-scraper/0.1 (+https://owner.example; contact=owner@example.org)"
 
 KOGNITY = "https://jobs.ashbyhq.com/kognity"
+# What the Ashby reader reads since SP4d: the board's public posting API.
+KOGNITY_API = "https://api.ashbyhq.com/posting-api/job-board/kognity"
 STORYTEL = "https://jobs.storytel.com/jobs"
 PATH_PROBED = "https://path.wd1.myworkdayjobs.com/en-US/External"
 PATH_BOARD = "https://path.wd1.myworkdayjobs.com/External"
@@ -202,7 +204,9 @@ def run_probe(
 
 
 def kognity(log: list[str]) -> StubFetcher:
-    return StubFetcher(log, static={KOGNITY: fixture("kognity.html")})
+    return StubFetcher(
+        log, static={KOGNITY: fixture("kognity.listing.html"), KOGNITY_API: fixture("kognity.json")}
+    )
 
 
 PATH_API = "https://path.wd1.myworkdayjobs.com/wday/cxs/path/External/jobs"
@@ -508,7 +512,7 @@ class TestPage:
     def test_the_redirect_chain_is_printed(self, curated_dir: Path, tmp_path: Path) -> None:
         fetcher = StubFetcher(
             [],
-            static={KOGNITY: fixture("kognity.html")},
+            static={KOGNITY: fixture("kognity.listing.html"), KOGNITY_API: fixture("kognity.json")},
             redirects={CONTOSO: (KOGNITY, (CONTOSO,))},
         )
         _, report = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
@@ -525,7 +529,7 @@ class TestFingerprint:
     ) -> None:
         fetcher = StubFetcher(
             [],
-            static={KOGNITY: fixture("kognity.html")},
+            static={KOGNITY: fixture("kognity.listing.html"), KOGNITY_API: fixture("kognity.json")},
             redirects={CONTOSO: (KOGNITY, (CONTOSO,))},
         )
         result, report = run_probe(CONTOSO, fetcher, curated_dir, tmp_path)
@@ -659,12 +663,12 @@ class TestReaders:
         _, report = run_probe(KOGNITY, kognity([]), curated_dir, tmp_path)
 
         assert "ashby on https://jobs.ashbyhq.com/kognity (static)" in report
-        assert "5 row(s)" in report
+        assert "4 row(s)" in report
         assert report.count("- title:") == probe.SAMPLE_ROWS
-        assert "title:      Delivery Manager - 12 months fixed-term contract" in report
-        assert "location:   Sweden" in report
+        assert "title:      VP of Customer Success" in report
+        assert "location:   Stockholm" in report
         assert (
-            "detail_url: https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"
+            "detail_url: https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"
             in report
         )
 

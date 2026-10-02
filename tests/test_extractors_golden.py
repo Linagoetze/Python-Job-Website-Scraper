@@ -20,6 +20,7 @@ the change matches what the site now serves, and paste the new values in.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from urllib.parse import urlparse
 
@@ -245,17 +246,26 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "kognity": {
-        "count": 5,
+        # SP4d (2026-10-02): the reader moved from the board page's
+        # window.__appData to Ashby's public posting API (the owner's choice),
+        # because the board page carries no description and the detail page is a
+        # JS shell. The API's location matched the stored one on every posting
+        # stored, and it adds a real department. The board page itself lives on
+        # as kognity.listing.html, for the probe. 5 -> 4 is the board, which now
+        # lists four postings, not the move.
+        "count": 4,
         "first_job": {
             "source_name": "kognity",
-            "title": "Delivery Manager - 12 months fixed-term contract",
-            "department": "",
-            "location": "Sweden",
+            "title": "VP of Customer Success",
+            "location": "Stockholm",
+            "department": "Commercial",
             "listing_url": "https://jobs.ashbyhq.com/kognity",
-            "detail_url": ("https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"),
-            "apply_url": ("https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"),
-            "raw_snippet": "Delivery Manager - 12 months fixed-term contract Sweden",
+            "detail_url": ("https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"),
+            "apply_url": ("https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"),
+            "raw_snippet": "VP of Customer Success Commercial Stockholm",
         },
+        # Too long to inline, so pinned by length and opening words.
+        "description": (3308, "This is not a typical Customer Success role."),
     },
     "storytel": {
         # WP8e (2026-08-20): fixed. The page had been redesigned since WP2 pinned
@@ -730,7 +740,12 @@ def test_extractor_output_matches_golden(name: str) -> None:
         f"{name}: expected {expected['count']} jobs, got {len(jobs)}. "
         "Either a selector drifted or the fixture was refreshed."
     )
-    assert jobs[0] == expected["first_job"]
+    first = dict(jobs[0])
+    if "description" in expected:
+        chars, opening = expected["description"]
+        text = first.pop("description_text")
+        assert (len(text), text[: len(opening)]) == (chars, opening)
+    assert first == expected["first_job"]
 
 
 def test_coloplast_keeps_sub_brand_postings() -> None:
@@ -847,16 +862,37 @@ def test_workable_refuses_a_fetcher_that_cannot_post() -> None:
 
 
 @pytest.mark.parametrize(
-    "page",
+    "body",
     [
-        pytest.param("<html><body>Something went wrong</body></html>", id="no-app-data"),
-        pytest.param("<script>window.__appData = {broken</script>", id="unparseable"),
+        pytest.param("<html><body>Something went wrong</body></html>", id="not-json"),
+        pytest.param('{"apiVersion": "1"}', id="no-jobs-list"),
+        pytest.param("[]", id="not-an-object"),
     ],
 )
-def test_ashby_fails_loudly_without_its_app_data(page: str) -> None:
-    """A page without readable `window.__appData` is a broken read, not an empty
-    board (SP4d, found in SP4b). ashby.py returned `[]` for both, the silent
-    "no vacancies" that personio.py was cured of in SP4.
+def test_ashby_fails_loudly_on_a_body_it_cannot_read(body: str) -> None:
+    """A body without a `jobs` list is a broken read, not an empty board (SP4d,
+    found in SP4b). ashby.py returned `[]` when the board page had no readable
+    `window.__appData`, the silent "no vacancies" personio.py was cured of in
+    SP4. It now reads the posting API, and keeps the rule.
     """
-    with pytest.raises(ValueError, match="window.__appData"):
-        ashby.extract("https://jobs.ashbyhq.com/kognity", lambda url, *a, **k: page, "kognity")
+    with pytest.raises(ValueError, match="Ashby posting API"):
+        ashby.extract("https://jobs.ashbyhq.com/kognity", lambda url, *a, **k: body, "kognity")
+
+
+def test_ashby_reads_an_empty_board_as_empty() -> None:
+    """The other half: a board with nothing open says so, and that is not an error."""
+    assert (
+        ashby.extract(
+            "https://jobs.ashbyhq.com/kognity", lambda url, *a, **k: '{"jobs": []}', "kognity"
+        )
+        == []
+    )
+
+
+def test_ashby_detail_urls_are_the_stored_keys() -> None:
+    """The dedupe-key rule: built from the board and id, and equal to the API's
+    own jobUrl on every captured posting, so no stored row looks new.
+    """
+    raw = json.loads((FIXTURES_DIR / "kognity.json").read_text(encoding="utf-8"))
+    built = [j["detail_url"] for j in parse_fixture("kognity")]
+    assert built == [j["jobUrl"] for j in raw["jobs"]]
