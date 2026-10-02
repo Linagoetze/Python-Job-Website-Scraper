@@ -1173,3 +1173,13 @@ session — see `CLAUDE.md`.
   reader's fixture is now the API's JSON, but the probe fingerprints the board
   page itself, so that page lives on as `kognity.listing.html`, a name
   `capture_fixtures._page_of` does not own (the `path.rendered.html` rule).
+- **undp is retired, and its reader removed (owner's decision, 2026-10-02).**
+  Its listing at `jobs.undp.org` is disallowed by robots.txt (SP4d), and every
+  run had skipped it since 2026-08-31. The owner took it out of `sources.yaml`.
+  `extractors/undp.py` and its registry line went with it, because a reader no
+  source uses is code nobody tests: it never had a fixture. Its 18 stored rows
+  stay as they are (16 rejected, 2 delisted), since a stored row is history, not
+  config. If UNDP comes back, it comes back as a new source through `sources
+  probe`, most likely its Oracle careers site, not through this reader. The
+  old reader read link anchors off a page that is now closed to us, and it is in
+  git history if it is ever wanted.

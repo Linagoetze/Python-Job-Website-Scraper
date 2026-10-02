@@ -29,7 +29,6 @@ from job_scraper.extractors import (
     smartrecruiters,
     successfactors_html,
     teamtailor,
-    undp,
     unops,
     workable,
     workday,
@@ -131,8 +130,6 @@ REGISTRY: dict[str, ExtractorFn] = {
     "jobsinlund": partial(jobsinlund.extract, source_name="jobsinlund"),
     # --- Impactpool (NGO/UN aggregator) ---
     "impactpool": partial(impactpool.extract, source_name="impactpool"),
-    # --- UNDP ---
-    "undp": partial(undp.extract, source_name="undp"),
     # --- OECD (SmartRecruiters) ---
     "oecd": partial(smartrecruiters.extract, source_name="oecd", org_slug="OECD"),
     # --- Sida ---

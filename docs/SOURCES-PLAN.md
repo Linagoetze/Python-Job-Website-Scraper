@@ -2201,7 +2201,8 @@ SP4c–SP4h, below.
 - [x] **Approve, reorder or reject each proposed follow-up package** before it
       goes into the Status table. All six approved 2026-10-01.
 - [ ] **Label a handful of undp, simprints and monday_com rows once SP4d has
-      landed** (your Q8 answer).
+      landed** (your Q8 answer). undp has been retired since; see SP4d's
+      to-dos for the rest.
 - [ ] Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
       `kognity`, `monday_com` or `simprints` as **not experience-checked**.
 
@@ -2538,11 +2539,13 @@ description. What the next run makes of them is the owner's run to show.
       judged, not unchecked. kognity's need this branch merged first.
 - [ ] After the next real run, check the "Unreadable pages" block: jobsinlund,
       kognity and simprints should be gone from it.
-- [ ] **undp:** retire it, or probe its Oracle careers site as a new listing.
-      robots.txt has disallowed the old listing since about 2026-08-31.
-- [ ] Afterwards, label a handful of undp, simprints and monday_com rows
-      (your SP4b Q8 answer). undp has nothing new to label until it has a
-      listing.
+- [x] **undp:** retired 2026-10-02. You took it out of `sources.yaml`, and its
+      reader and registry line were removed (see `docs/DECISIONS.md`).
+- [ ] Afterwards, label a handful of simprints and monday_com rows (your SP4b
+      Q8 answer). **simprints done 2026-10-02:** all 9 were already labelled
+      `Discard`, and you re-judged the four now read in full. They stay
+      `Discard`, on location. monday_com's 10 unlabelled rows are still to
+      do.
 ---
 
 ## SP4e — Read the years requirement, not the smallest number
@@ -2853,9 +2856,9 @@ per company: verdict, extractor reused, rows captured.
 ## SP6 — Fixtures for the remaining eight readers
 
 `asana`, `coefficient`, `jobsinlund`, `mammut`, `norrsken`, `oatly`, `sida`,
-`undp`. **Seven now:** SP4d covered `jobsinlund` (page 1 of its walk, through
-its parser). `undp` cannot be captured while its robots.txt disallows the
-listing (SP4d), and waits on the owner's call about the source. Same method
+`undp`. **Six now:** SP4d covered `jobsinlund` (page 1 of its walk, through
+its parser), and `undp` was retired with its reader on 2026-10-02 (its
+robots.txt disallows the listing). Same method
 as SP4, lower stakes: each serves one source, so a bug is
 contained rather than inherited. On the bug rate SP4 actually measured (one
 reader bug in five, not the three-of-five the same section estimated going
@@ -2874,7 +2877,7 @@ think
 Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP6 only.
 
 Capture fixtures for these uncovered readers and fix what that reveals:
-<PICK TWO OR THREE: asana, coefficient, mammut, norrsken, oatly, sida, undp>
+<PICK TWO OR THREE: asana, coefficient, mammut, norrsken, oatly, sida>
 
 Same method as SP4: capture first, then read the extractor, then compare against
 the page, then pin the golden. Do not reason about the layout before capturing.
