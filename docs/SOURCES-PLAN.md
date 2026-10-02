@@ -2762,7 +2762,7 @@ chat names them.
       description was kept. These pages were read in full, so nothing needs
       fetching, and the row is consistent whether or not this branch is
       merged first.
-- [ ] **3 held back, waiting for your answer.** Two impactpool rows were last
+- [x] **3 held back: left rejected, your decision 2026-10-02.** Two impactpool rows were last
       seen 2026-09-08 with 13 misses, so the postings are closed. Revived,
       they sit in the sheet until the next impactpool scrape delists them. The
       third is a run-30 leftover with shifted fields: its title is an employer
