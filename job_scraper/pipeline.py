@@ -31,6 +31,7 @@ from job_scraper.experience_filter import (
     UNVERIFIED_KEY,
     apply_combined_title_filter,
     apply_detail_filter,
+    supplied_description,
 )
 from job_scraper.extractors.registry import get_extractor
 from job_scraper.filtering import (
@@ -668,7 +669,19 @@ def _run_pipeline(
             # never detail-fetched again. Layer 4 has already removed the
             # rejected rows, so this costs a request only for jobs still wanted.
             entry = stored.get(dedupe_key_for_job(job))
-            return entry is not None and entry["description_chars"] < MIN_READABLE_CHARS
+            if entry is None:
+                return False
+            supplied = supplied_description(job)
+            if supplied:
+                # A description the reader supplied is read whatever its length
+                # (SP4d), so the threshold would re-judge a short posting every
+                # run. The stored job has been judged on it when the stored
+                # description is it. Otherwise (an old shell stored before the
+                # reader supplied one, or a posting since edited) it goes back
+                # through Layer 5, which reads the supplied text and fetches
+                # nothing.
+                return entry["description_chars"] != len(supplied)
+            return entry["description_chars"] < MIN_READABLE_CHARS
 
         def _needs_detail(job: JobRecord) -> bool:
             return not _is_stored(job) or _is_hybrid_pending(job) or _is_unread(job)
@@ -747,9 +760,19 @@ def _run_pipeline(
                 return dict(job, experience_level="")
             return job
 
+        def _unjudged(job: JobRecord) -> JobRecord:
+            # A stored job that skipped Layer 5 keeps the description it was
+            # judged on: a supplied description must not slip into the store
+            # beside a level it was never judged against (SP4d). An empty one
+            # never overwrites a stored one.
+            return dict(job, description_text="") if job.get("description_text") else job
+
         upserts = [
             r
-            for j in [*(_keep_stored_level(j) for j in kept_new), *cached_jobs, *blocked_jobs]
+            for j in [
+                *(_keep_stored_level(j) for j in kept_new),
+                *(_unjudged(j) for j in [*cached_jobs, *blocked_jobs]),
+            ]
             if (r := _row(j))
         ]
         rows_written, refreshed = store.upsert_jobs(upserts, run_id)

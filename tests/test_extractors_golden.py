@@ -20,12 +20,13 @@ the change matches what the site now serves, and paste the new values in.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import personio, workable
+from job_scraper.extractors import ashby, personio, workable
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
@@ -245,17 +246,26 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "kognity": {
-        "count": 5,
+        # SP4d (2026-10-02): the reader moved from the board page's
+        # window.__appData to Ashby's public posting API (the owner's choice),
+        # because the board page carries no description and the detail page is a
+        # JS shell. The API's location matched the stored one on every posting
+        # stored, and it adds a real department. The board page itself lives on
+        # as kognity.listing.html, for the probe. 5 -> 4 is the board, which now
+        # lists four postings, not the move.
+        "count": 4,
         "first_job": {
             "source_name": "kognity",
-            "title": "Delivery Manager - 12 months fixed-term contract",
-            "department": "",
-            "location": "Sweden",
+            "title": "VP of Customer Success",
+            "location": "Stockholm",
+            "department": "Commercial",
             "listing_url": "https://jobs.ashbyhq.com/kognity",
-            "detail_url": ("https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"),
-            "apply_url": ("https://jobs.ashbyhq.com/kognity/bc514f8b-3ee3-4b5b-8917-2166fdf769fd"),
-            "raw_snippet": "Delivery Manager - 12 months fixed-term contract Sweden",
+            "detail_url": ("https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"),
+            "apply_url": ("https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"),
+            "raw_snippet": "VP of Customer Success Commercial Stockholm",
         },
+        # Too long to inline, so pinned by length and opening words.
+        "description": (3308, "This is not a typical Customer Success role."),
     },
     "storytel": {
         # WP8e (2026-08-20): fixed. The page had been redesigned since WP2 pinned
@@ -501,6 +511,39 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "7.004 Expert Communication institutionelle Tunisia",
         },
     },
+    "jobsinlund": {
+        # SP4d (2026-10-02): first fixture for this reader, page 1 of a 34-page
+        # walk (see fixture_cases.py). It now supplies each posting's own
+        # description to Layer 5, stripped of its HTML. This one is 464
+        # characters, under the 500 a fetched page is held to, and is read.
+        "count": 25,
+        "first_job": {
+            "source_name": "jobsinlund",
+            "title": "Global Cleantech Marketing Coordinator (12-Month Temp)",
+            "company": "Radeptus",
+            "location": "Lund, Sweden",
+            "department": "",
+            "listing_url": "https://jobsinlund.com/?language[]=en&location.address=Lund",
+            "detail_url": (
+                "https://jobsinnetwork.com/jobs/global-cleantech-marketing-coordinator-"
+                "12month-temp/ba0b629f47cabfb96a6af6ecf7d6fff5"
+            ),
+            "apply_url": (
+                "https://click.appcast.io/t/"
+                "GO16tXR_0PhMSkais7ddlbpRhxaRHaeY2cTyQcuiWD9Et5ORdzPM0eeLCHbhCIKo"
+            ),
+            "raw_snippet": "Global Cleantech Marketing Coordinator (12-Month Temp) Lund, Sweden",
+            "description_text": (
+                "Comsys AB in Lund, Sweden seeks a Marketing Coordinator for a 12\u2011month "
+                "parental leave cover. This full\u2011time temporary role involves coordinating "
+                "brand communication, creating content, and supporting product launches across "
+                "digital channels. You will work with product management and sales, publish "
+                "materials, manage WordPress, and help optimize campaigns using Google Ads and "
+                "analytics. English proficiency and a marketing background are essential. "
+                "#J-18808-Ljbffr"
+            ),
+        },
+    },
     "unops": {
         # WP11 review (2026-09-02): UNOPS had no fixture at all, which is how a
         # crash in its total-reader survived — the reader was only ever run
@@ -697,7 +740,12 @@ def test_extractor_output_matches_golden(name: str) -> None:
         f"{name}: expected {expected['count']} jobs, got {len(jobs)}. "
         "Either a selector drifted or the fixture was refreshed."
     )
-    assert jobs[0] == expected["first_job"]
+    first = dict(jobs[0])
+    if "description" in expected:
+        chars, opening = expected["description"]
+        text = first.pop("description_text")
+        assert (len(text), text[: len(opening)]) == (chars, opening)
+    assert first == expected["first_job"]
 
 
 def test_coloplast_keeps_sub_brand_postings() -> None:
@@ -811,3 +859,40 @@ def test_workable_refuses_a_fetcher_that_cannot_post() -> None:
         workable.extract(
             "https://apply.workable.com/simprints/", lambda url, *a, **k: "", "simprints"
         )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("<html><body>Something went wrong</body></html>", id="not-json"),
+        pytest.param('{"apiVersion": "1"}', id="no-jobs-list"),
+        pytest.param("[]", id="not-an-object"),
+    ],
+)
+def test_ashby_fails_loudly_on_a_body_it_cannot_read(body: str) -> None:
+    """A body without a `jobs` list is a broken read, not an empty board (SP4d,
+    found in SP4b). ashby.py returned `[]` when the board page had no readable
+    `window.__appData`, the silent "no vacancies" personio.py was cured of in
+    SP4. It now reads the posting API, and keeps the rule.
+    """
+    with pytest.raises(ValueError, match="Ashby posting API"):
+        ashby.extract("https://jobs.ashbyhq.com/kognity", lambda url, *a, **k: body, "kognity")
+
+
+def test_ashby_reads_an_empty_board_as_empty() -> None:
+    """The other half: a board with nothing open says so, and that is not an error."""
+    assert (
+        ashby.extract(
+            "https://jobs.ashbyhq.com/kognity", lambda url, *a, **k: '{"jobs": []}', "kognity"
+        )
+        == []
+    )
+
+
+def test_ashby_detail_urls_are_the_stored_keys() -> None:
+    """The dedupe-key rule: built from the board and id, and equal to the API's
+    own jobUrl on every captured posting, so no stored row looks new.
+    """
+    raw = json.loads((FIXTURES_DIR / "kognity.json").read_text(encoding="utf-8"))
+    built = [j["detail_url"] for j in parse_fixture("kognity")]
+    assert built == [j["jobUrl"] for j in raw["jobs"]]

@@ -16,9 +16,11 @@ is nothing to hoist if there is only one import.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,7 @@ from job_scraper.extractors import (  # noqa: E402
     giving_what_we_can,
     greenhouse,
     impactpool,
+    jobsinlund,
     jpal,
     lever,
     niras,
@@ -73,7 +76,7 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: greenhouse.extract(url, fetch, source_name="givewell"),
     ),
     "kognity": (
-        "kognity.html",
+        "kognity.json",
         "https://jobs.ashbyhq.com/kognity",
         lambda url, fetch: ashby.extract(url, fetch, source_name="kognity"),
     ),
@@ -113,6 +116,16 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         # three instances do not have.
         lambda url, fetch: successfactors_html._parse_page(
             BeautifulSoup(fetch(url), "lxml"), "https://jobs.issworld.com/search/", "iss"
+        ),
+    ),
+    "jobsinlund": (
+        "jobsinlund.json",
+        "https://jobsinlund.com/?language[]=en&location.address=Lund",
+        # The parser, not the walk, as with dsv: the whole walk was 34 pages and
+        # 5.5 MB on 2026-10-02, most of it posting descriptions. The day is the
+        # capture's, because the reader skips postings over 30 days old.
+        lambda url, fetch: jobsinlund._parse_page(
+            json.loads(fetch(url)), url, "jobsinlund", set(), date(2026, 10, 2)
         ),
     ),
     "novo_nordisk": (
