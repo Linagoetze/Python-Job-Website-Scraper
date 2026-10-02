@@ -950,10 +950,11 @@ failed capture rather than a crash.
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit — except a
 response recognised as XML, which is saved as-is: an HTML parser corrupts it
-(SP4, found capturing Personio's feed). Not every source has one yet — seven
-of the twenty-six extractors are uncovered, down from thirteen after SP4
+(SP4, found capturing Personio's feed). Not every source has one yet — six
+of the twenty-five extractors are uncovered, down from thirteen after SP4
 covered the five generic ATS readers (Breezy, Lever, Personio, SmartRecruiters,
-Workable) and SP4d covered jobsinlund. Closing the rest is planned as SP6 of
+Workable), SP4d covered jobsinlund, and undp's reader was removed with the
+source. Closing the rest is planned as SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.
 

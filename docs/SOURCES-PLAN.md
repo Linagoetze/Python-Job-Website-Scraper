@@ -2201,7 +2201,8 @@ SP4c–SP4h, below.
 - [x] **Approve, reorder or reject each proposed follow-up package** before it
       goes into the Status table. All six approved 2026-10-01.
 - [ ] **Label a handful of undp, simprints and monday_com rows once SP4d has
-      landed** (your Q8 answer).
+      landed** (your Q8 answer). undp has been retired since; see SP4d's
+      to-dos for the rest.
 - [ ] Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
       `kognity`, `monday_com` or `simprints` as **not experience-checked**.
 
@@ -2538,11 +2539,13 @@ description. What the next run makes of them is the owner's run to show.
       judged, not unchecked. kognity's need this branch merged first.
 - [ ] After the next real run, check the "Unreadable pages" block: jobsinlund,
       kognity and simprints should be gone from it.
-- [ ] **undp:** retire it, or probe its Oracle careers site as a new listing.
-      robots.txt has disallowed the old listing since about 2026-08-31.
-- [ ] Afterwards, label a handful of undp, simprints and monday_com rows
-      (your SP4b Q8 answer). undp has nothing new to label until it has a
-      listing.
+- [x] **undp:** retired 2026-10-02. You took it out of `sources.yaml`, and its
+      reader and registry line were removed (see `docs/DECISIONS.md`).
+- [ ] Afterwards, label a handful of simprints and monday_com rows (your SP4b
+      Q8 answer). **simprints done 2026-10-02:** all 9 were already labelled
+      `Discard`, and you re-judged the four now read in full. They stay
+      `Discard`, on location. monday_com's 10 unlabelled rows are still to
+      do.
 ---
 
 ## SP4e — Read the years requirement, not the smallest number
@@ -2587,9 +2590,20 @@ a false positive, so a change that keeps fewer wanted jobs needs the owner.
 The 11 `review`-labelled rows SP4b found rejected on correctly read years
 stay rejected under Q2. They are not evidence against the new reading.
 
-Stored rows: Layer 5 never re-runs on a stored row (SP4b F13). Propose, and do
-not run, a read-only report of which 'new' rows the new reading would exclude,
-for the owner to act on with `review`.
+SINCE SP4d (amended 2026-10-02). Layer 5 now also reads descriptions that
+readers supply (jobsinlund, and Ashby through its posting API) and rendered
+Workable pages. Measure against those as well. The reading must not
+special-case supplied text. jobsinlund's are aggregator texts, some of them
+short summaries (the shortest is 397 characters), so "no requirement" there
+can mean the summary left it out. Report how many jobsinlund rows read as
+`unspecified`, and do not tune the rule to them.
+
+Stored rows: a row read in full is never judged again (SP4b F13). Two kinds are
+re-judged on the next run: a row whose page was never read is fetched again
+(SP4c), and a row whose supplied description differs from the stored one is
+judged again, with no fetch (SP4d). Propose, and do not run, a read-only report
+of which 'new' rows the new reading would exclude, for the owner to act on with
+`review`.
 
 DOCS. Test count. docs/DECISIONS.md: the reading rule, and why min() went.
 
@@ -2655,6 +2669,23 @@ Measure with `python -m job_scraper.eval` and against the stored rows
 WP8d did. Every new job is detail-fetched already, so deferring an empty
 field should cost nothing extra; check that, and check jobs with no URL.
 
+SINCE SP4d (amended 2026-10-02): THE PLATFORMS SAY WHAT THE DESCRIPTION
+DOES NOT, and the readers throw it away. Ashby's posting API gives
+`workplaceType` (OnSite, Hybrid or Remote), `isRemote` and
+`secondaryLocations`. Workable's listing JSON gives `remote`, `workplace` and a
+`locations` list, some marked hidden. jobsinlund's API gives `remote_type`.
+Run 34 shows the cost. A kognity posting in a hybrid-gated city was rejected
+as "non-hybrid" because its description never says hybrid, while Ashby's own
+field says Hybrid: a false negative from a starved input, not a wrong rule.
+simprints' four rows, rejected because their description names no listed place,
+are `remote: true` in Workable's data, which is Q3a's case. Consider having
+these readers carry the platform's own field into what Layer 0 and the hybrid
+gate already read. That is a field a reader sets, not a new layer or a new
+pass. Say which field each reader maps, and measure against the stored rows.
+Rows already rejected on this (kognity 1 on hybrid, simprints 4 on location,
+as of run 34) need the owner's revival, by SP4c's method. Propose it; do not
+write it.
+
 STOP AND ASK, before implementing Q4. Q4 (an empty location fails closed) and
 Q6 (an unreadable job is kept, marked) collide on a job whose location is
 empty AND whose page cannot be read. Under SP4c that job is unverified, so it
@@ -2666,7 +2697,9 @@ touched, so it stays in the review sheet (SP4c's revived simprints rows did,
 and the owner had them put back to rejected); a brand-new job dropped as
 unverified is never stored and is never seen. And "unchecked (page
 unreadable)" now marks every kept job whose page could not be read, so the
-population is countable from experience_level.
+population is countable from experience_level. After SP4d it was 0 stored rows
+as of run 34, because no source's pages were unreadable. Count it again rather
+than assume it.
 
 DOCS. Test count. In tests/test_filter_audit.py,
 test_a_home_based_or_worldwide_field_is_admitted_as_remote (strict xfail)
@@ -2717,7 +2750,12 @@ run_exclusions.
 2. Let the pass re-judge Layer 5 from the stored description_text for 'new'
    rows only (never 'seen', per the WP5 rule), with no HTTP. A row with no
    stored description, or whose experience_level is "unchecked (page
-   unreadable)" (SP4c), has nothing to judge and is left alone.
+   unreadable)" (SP4c), has nothing to judge and is left alone. Decide that
+   from experience_level, NOT from the description's length (SP4d): the store
+   cannot tell a description a reader supplied from a page that was fetched,
+   and a supplied one can be under 500 characters (jobsinlund's run from 397)
+   while being a real posting. `is_unreadable` without `supplied=True` would
+   call those shells.
 3. retrofilter records its drops under the `refilter/` prefix, in a run of
    its own, so they are logged like every other exclusion (WP8a).
 
@@ -2784,6 +2822,21 @@ SP3 must be merged; SP4 too if any of these companies runs on Breezy, Lever, Per
 SmartRecruiters or Workable; SP3b too if any runs on Workday.
 
 Add the following companies to the scraper: <OWNER FILLS IN NAMES AND URLS>
+
+TWO PLATFORM RULES FROM SP4d (amended 2026-10-02):
+- An Ashby board reads through Ashby's public posting API, descriptions
+  included. Its sources.yaml url is the board page,
+  https://jobs.ashbyhq.com/<board>, with `strategy: static`.
+- A Workable board needs `strategy: dynamic`: the listing still comes from
+  Workable's JSON, but each posting's page is a JS shell to a static fetch, so
+  Layer 5 reads nothing. The probe still suggests `static` for Workable
+  (`probe.py`'s Platform entry). Correct the entry you paste, and say so in
+  the plan. Fixing the probe's suggestion is its own small change, because
+  the probe also uses that strategy to run the reader. Propose it; do not
+  fold it in.
+After the pipeline run below, read its "Unreadable pages" block. A new source
+named there is starved at Layer 5 from its first run. Stop and report it, as
+SP4b would have.
 
 For each, in order, and stop at the first rung that fails:
 1. `sources check <url>` — if it is tombstoned, stop and report. If it is an
@@ -2853,9 +2906,9 @@ per company: verdict, extractor reused, rows captured.
 ## SP6 — Fixtures for the remaining eight readers
 
 `asana`, `coefficient`, `jobsinlund`, `mammut`, `norrsken`, `oatly`, `sida`,
-`undp`. **Seven now:** SP4d covered `jobsinlund` (page 1 of its walk, through
-its parser). `undp` cannot be captured while its robots.txt disallows the
-listing (SP4d), and waits on the owner's call about the source. Same method
+`undp`. **Six now:** SP4d covered `jobsinlund` (page 1 of its walk, through
+its parser), and `undp` was retired with its reader on 2026-10-02 (its
+robots.txt disallows the listing). Same method
 as SP4, lower stakes: each serves one source, so a bug is
 contained rather than inherited. On the bug rate SP4 actually measured (one
 reader bug in five, not the three-of-five the same section estimated going
@@ -2874,7 +2927,7 @@ think
 Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP6 only.
 
 Capture fixtures for these uncovered readers and fix what that reveals:
-<PICK TWO OR THREE: asana, coefficient, mammut, norrsken, oatly, sida, undp>
+<PICK TWO OR THREE: asana, coefficient, mammut, norrsken, oatly, sida>
 
 Same method as SP4: capture first, then read the extractor, then compare against
 the page, then pin the golden. Do not reason about the layout before capturing.
@@ -2953,7 +3006,17 @@ per warning.
    delisted. Split the Sources line so a failure is not counted as a skip.
    Build the block from the pipeline's in-memory source_health list, not
    from the store, so a --dry-run shows it too. The dry run is where this
-   was found. airbus stopped failing with SP3c, so reproduce a failure with
+   was found.
+   ROBOTS REFUSALS TOO (amended 2026-10-02, from SP4d). A source whose
+   listing robots.txt refuses is skipped before extraction, with no
+   source_health row and only a WARNING log line. undp was skipped that way
+   in every run from 2026-08-31 (run 17) to its retirement on 2026-10-02, and
+   nothing in the summary said so for a month. It is not a reader failure,
+   but the source is unread all the same. Name it in the summary, in this
+   block or one beside it, with the robots.txt line that refused it, and
+   keep it out of the plain skip count. Decide with the owner whether it
+   gets a source_health row (it never reached the site, which is why it has
+   none today). airbus stopped failing with SP3c, so reproduce a failure with
    a stubbed extractor in the tests, not by waiting for a live one.
 
 2. ONE PAGE, EVERY RUN. Warn when a source's last N successful runs in

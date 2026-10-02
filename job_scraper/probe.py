@@ -254,7 +254,7 @@ PLATFORMS: tuple[Platform, ...] = (
         boards=(_p(r"jobs\.ashbyhq\.com/" + _SLUG),),
         board_url=lambda m: f"https://jobs.ashbyhq.com/{m.group('slug')}",
         strategy="static",
-        walk="reads the whole board from the data embedded in the board page",
+        walk="reads the whole board, descriptions included, from Ashby's public posting API",
         not_slugs=frozenset({"api"}),
     ),
     Platform(

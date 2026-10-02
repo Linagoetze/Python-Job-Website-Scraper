@@ -1173,3 +1173,30 @@ session — see `CLAUDE.md`.
   reader's fixture is now the API's JSON, but the probe fingerprints the board
   page itself, so that page lives on as `kognity.listing.html`, a name
   `capture_fixtures._page_of` does not own (the `path.rendered.html` rule).
+- **undp is retired, and its reader removed (owner's decision, 2026-10-02).**
+  Its listing at `jobs.undp.org` is disallowed by robots.txt (SP4d), and every
+  run had skipped it since 2026-08-31. The owner took it out of `sources.yaml`.
+  `extractors/undp.py` and its registry line went with it, because a reader no
+  source uses is code nobody tests: it never had a fixture. Its 18 stored rows
+  stay as they are (16 rejected, 2 delisted), since a stored row is history, not
+  config. If UNDP comes back, it comes back as a new source through `sources
+  probe`, most likely its Oracle careers site, not through this reader. The
+  old reader read link anchors off a page that is now closed to us, and it is in
+  git history if it is ever wanted. It is also on the tombstone
+  (`excluded_sources.yaml`, 2026-10-02), so `sources check` and the probe say
+  so if its listing URL is proposed again. The tombstone matches by board, so
+  UNDP's Oracle careers site, a different board, would not be flagged.
+- **The platforms state the workplace that descriptions leave out, and the
+  readers discard it (found after SP4d, run 34, 2026-10-02).** Ashby's posting
+  API carries `workplaceType`, `isRemote` and `secondaryLocations`. Workable's
+  JSON carries `remote`, `workplace` and a `locations` list. jobsinlund's
+  carries `remote_type`. The hybrid gate and the deferred location state read
+  only the description. So a kognity posting in a hybrid-gated city that Ashby
+  marks `Hybrid` was rejected as non-hybrid, because its text never says the
+  word. That is a starved input, not a wrong rule: the fix is in the reader,
+  not in the hybrid pattern. It is written into SP4f's prompt.
+- **The probe still suggests `strategy: static` for a Workable board (SP4d).**
+  Pasting its block as printed gives a source whose detail pages Layer 5
+  cannot read. SP5's prompt says to correct the pasted entry. Changing the
+  probe is its own change, because the probe also runs the reader with that
+  strategy.
