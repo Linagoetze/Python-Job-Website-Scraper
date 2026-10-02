@@ -57,7 +57,7 @@ _RULES = {
     "locations": ["Northwind"],
     "conditional_locations": ["Fabrikam City"],
     "conditional_location_keywords": ["hybrid"],
-    "non_place_locations": ["EMEA", "Worldwide", "Wingtip Region"],
+    "non_place_locations": ["EMEA", "Worldwide", "Wingtip Region", "Contoso Basin"],
     # An invented region: which real ones include the owner is private (SP4f).
     "remote_regions": ["Wingtip Region"],
     "remote_keywords": ["remote", "anywhere"],
@@ -244,6 +244,6 @@ def test_a_home_based_region_that_excludes_the_owner_still_defers() -> None:
 
     It is deferred to Layer 5, as every regional field was before SP4f.
     """
-    ok, reasons = _layer0("Home based - EMEA")
+    ok, reasons = _layer0("Home based - Contoso Basin")
     assert ok is True
     assert reasons == [_UNRESOLVED_PENDING_REASON]
