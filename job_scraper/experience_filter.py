@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
@@ -296,11 +296,12 @@ _NUMBER = (
     + r")"
 )
 # One figure. A range is one figure read at its lower bound, so "3–5 years"
-# never yields a separate 5. The lookbehind keeps a year such as 2026, or a
-# grade such as P-2, from lending its digits.
+# never yields a separate 5. A number restated in brackets ("five (5) years",
+# "5 (five) years") is one figure, read by its first form. The lookbehind
+# keeps a year such as 2026, or a grade such as P-2, from lending its digits.
 _FIGURE = re.compile(
-    rf"(?<![\w,/-])(?<!\d\.)(?P<n>{_NUMBER})(?:\s*\(\s*\d{{1,2}}\s*\))?"
-    rf"(?P<range>\s*(?:-|–|—|to|till|until)\s*{_NUMBER}(?:\s*\(\s*\d{{1,2}}\s*\))?)?"
+    rf"(?<![\w,/-])(?<!\d\.)(?P<n>{_NUMBER})(?:\s*\(\s*{_NUMBER}\s*\))?"
+    rf"(?P<range>\s*(?:-|–|—|to|till|until)\s*{_NUMBER}(?:\s*\(\s*{_NUMBER}\s*\))?)?"
     r"\s*(?P<plus>\+)?\s*"
     r"(?P<unit>years?|yrs?|års?|jahren?|months?|månad(?:er|ers)?|måned(?:er)?)\b"
     r"(?P<plus_after>\s*\+)?",
@@ -327,6 +328,11 @@ _MINIMUM_BEFORE = re.compile(
     r"|\bminst|\bmindst|\bmindestens)\s*[(:]?\s*$",
     re.IGNORECASE,
 )
+_MINIMUM_WORD_BEFORE = re.compile(
+    r"(?:\bminimum(?:\s+of)?|\bmin\.|\bat\s+least|\bno\s+less\s+than|\bnot\s+less\s+than|\bminst"
+    r"|\bmindst|\bmindestens)\s*[(:]?\s*$",
+    re.IGNORECASE,
+)
 _MINIMUM_AFTER = re.compile(r"^\s*(?:minimum|min\.?)\b", re.IGNORECASE)
 # A range or a "+" reads as a requirement when a field follows it ("3–5 years
 # in customer support"), but not when a full stop or a comma does ("Duration:
@@ -346,6 +352,14 @@ _VETO_BEFORE = re.compile(
     # not, which is why the colon is allowed only here.
     r"|(?:\bage(?:\s+of)?|\bduration(?:\s+of)?|\bperiod(?:\s+of)?|\bterm(?:\s+of)?"
     r"|\bcommitment(?:\s+of)?|\bcontract(?:\s+of)?|\blength(?:\s+of\s+\w+)?)\s*[(:]?)\s*$",
+    re.IGNORECASE,
+)
+# "You have worked in finance for 5+ years": a "for" after work is a career,
+# not a contract ("working days for 12 months" is not work in this sense). It
+# lifts the "for" veto and ties the figure to experience.
+_WORKED_FOR = re.compile(
+    r"\b(?:worked|been\s+working|been\s+employed|served)\b[^.;:]{0,60}?"
+    r"\bfor(?:\s+(?:over|more\s+than|about|around|some))?\s*$",
     re.IGNORECASE,
 )
 # "Age: interns must be at least 18 years" names the age before the figure.
@@ -372,9 +386,41 @@ _PREFERENCE_BEFORE = re.compile(
     r"|\bnice\s+to\s+have:|\bmeriterande:?|\bhelst)\s*(?:\w+\s+){0,2}?$",
     re.IGNORECASE,
 )
+# A heading opens a section, and every figure under it until the next heading
+# of the other kind belongs to it ("Minimum qualifications: 1+ years ...
+# Preferred qualifications: 4+ years ..."). Only a capitalised heading word
+# counts, because "a related field preferred Experience: ..." ends an item; the
+# exceptions are phrases that are only ever a heading or a preference.
+_PREFERENCE_HEADING = re.compile(
+    r"(?<![\w-])(?:Preferred|Desired|Desirable|Bonus|Optional|PREFERRED|DESIRED|DESIRABLE|BONUS)"
+    r"(?i:\s+(?:qualifications?|skills?|experience|requirements?|points?|criteria|competenc\w*"
+    r"|profile|background))\b"
+    r"|(?<![\w-])(?:Preferred|Desired|Desirable|PREFERRED|DESIRED|DESIRABLE)\s*:"
+    r"|(?i:\b(?:nice|good)[-\s]to[-\s]haves?\b|\bbonus\s+points?\b|\bit\s+would\s+be\s+(?:great|nice)"
+    r"\s+if\b|\b(?:det\s+är\s+)?meriterande\b|\bextra\s+plus\b)"
+)
+_REQUIREMENT_HEADING = re.compile(
+    r"(?<![\w-])(?:Minimum|Basic|Required|Essential|Mandatory|Key|MINIMUM|BASIC|REQUIRED|ESSENTIAL)"
+    r"(?i:\s+(?:qualifications?|requirements?|skills?|experience|criteria|competenc\w*))\b"
+    r"|(?<!Preferred\s)(?<!Desired\s)(?<!Desirable\s)(?<!Bonus\s)(?<!Optional\s)(?<!PREFERRED\s)"
+    r"(?<!DESIRED\s)(?<!DESIRABLE\s)(?<!BONUS\s)(?<![\w-])"
+    r"(?:Requirements|REQUIREMENTS|Qualifications|QUALIFICATIONS|Must[-\s]haves?|MUST[-\s]HAVES?"
+    r"|Krav|KRAV)\b"
+    r"|(?i:\bwhat\s+you(?:['’]ll|\s+will)?\s+(?:need|bring)\b|\bwe(?:['’]re|\s+are)\s+looking\s+for\b"
+    r"|\b(?:other|additional|general)\s+requirements\b|\bwe\s+believe\s+you\s+(?:have|are|bring)\b"
+    r"|\b(?:essential|required)\s*:)"
+)
 _PREFERENCE_AFTER = re.compile(
     r"\b(?:preferred|preferable|desirable|desired|advantageous|an?\s+(?:additional\s+|added\s+)?"
     r"(?:asset|plus|advantage|bonus)|nice\s+to\s+have|meriterande|önskvärt|ett\s+plus)\b",
+    re.IGNORECASE,
+)
+# "5+ years of sales experience, knowledge of Salesforce is a plus": after a
+# comma, a preference whose subject is another qualification is about that.
+_OTHER_SUBJECT = re.compile(
+    r"[,;]\s*(?:and\s+|but\s+)?(?:[\w’'-]+\s+){0,2}?(?:knowledge|familiarity|proficiency|fluency"
+    r"|understanding|exposure|certifications?|certificates?|degrees?|background|skills?|ability"
+    r"|interest|languages?|command|competence|qualifications?)\b[^,;]*$",
     re.IGNORECASE,
 )
 # A preference after the figure is read to the end of its sentence or list item
@@ -447,6 +493,20 @@ _LEVEL_BEFORE = re.compile(
     r"(?:at\s+least|minimum(?:\s+of)?)?\s*$",
     re.IGNORECASE,
 )
+# The same, labelled loosely: "Junior: 0–2 years. Mid: 3–5 years.", "0–2 years
+# (junior)", "2 years for junior candidates". A bare level word counts only
+# in these places, so "experience with senior stakeholders" is no route.
+_LEVEL_WORD = r"(?:junior|mid|mid[-\s]?level|intermediate|senior|entry(?:[-\s]?level)?|graduate)"
+_LEVEL_HEADING_BEFORE = re.compile(
+    rf"(?:^|[\s.;•(])(?:for\s+)?{_LEVEL_WORD}(?:\s+(?:level|roles?|positions?|candidates?|profiles?))?"
+    r"\s*:\s*(?:at\s+least|minimum(?:\s+of)?|min\.?)?\s*$",
+    re.IGNORECASE,
+)
+_LEVEL_WORD_AFTER = re.compile(
+    rf"^[^.;•\n]{{0,60}}?(?:\(\s*{_LEVEL_WORD}\b[^)]{{0,20}}\)"
+    rf"|\bfor\s+(?:the\s+)?{_LEVEL_WORD}\s+(?:level|roles?|positions?|candidates?|profiles?)\b)",
+    re.IGNORECASE,
+)
 # "... 3 years of X, or 5 years of Y": alternatives with no qualification named.
 _OR_BEFORE = re.compile(
     r"\b(?:or|eller|alternatively)\s+(?:an?\s+)?(?:minimum\s+(?:of\s+)?|at\s+least\s+)?$",
@@ -502,27 +562,47 @@ class _Figure:
     kind: _Kind
 
 
-# The PhD rule (SP4e, F14). A doctorate decides only when it is required in its
-# own clause, and it is not required when it is offered beside another degree
-# ("a Master's or PhD") or as a preference.
-_DOCTORATE = r"(?:ph\.?\s?d\b|d\.?phil\b|doctorate|doctoral\s+degree|doktorsexamen|doktorgrad)"
-# A mention that names a doctoral *position* is the job, not a requirement of it:
-# "PhD students", "mandatory PhD courses", "doctoral studies".
+# The PhD rule (SP4e, F14). A doctorate decides only when the text requires it
+# in so many words: a requiring verb or a requirement heading just before the
+# mention ("must hold a PhD", "Requirements: PhD in ..."), or a requiring
+# predicate just after it ("A Ph.D. in economics is required"). A "must" or a
+# "need" elsewhere in the clause is not enough ("a team of PhD economists ...
+# must be fluent in English"). It is not required when it is offered beside
+# another degree ("a Master's or PhD") or as a preference.
+# "Ph.D." keeps its own full stop, which would otherwise end the clause.
+_DOCTORATE = (
+    r"(?:ph\.\s?d\.|ph\.?\s?d\b|d\.?phil\b|doctorate|doctoral\s+degree|doktorsexamen|doktorgrad)"
+)
+# A mention that names the job or the people rather than a qualification is not
+# one: "PhD students", "mandatory PhD courses", "PhD economists",
+# "PhD-holding researchers".
 _DOCTORATE_MENTION = re.compile(
-    rf"{_DOCTORATE}(?!\.?[\s‑-]*(?:students?|stud(?:y|ies)|courses?|candidates?|positions?|projects?"
-    r"|programmes?|programs?|thesis|level|supervis\w*|education|fellows?|researchers?))",
+    rf"{_DOCTORATE}(?![\s‑-]*(?:students?|stud(?:y|ies)|courses?|candidates?|positions?|projects?"
+    r"|programmes?|programs?|thesis|level|supervis\w*|education|fellows?|researchers?|economists?"
+    r"|scientists?|holders?|holding|staff|teams?|colleagues?|graduates?|peers?|experts?))"
+    r"(?![‑-]\w)",
     re.IGNORECASE,
 )
 _DOCTORATE_ALTERNATIVE = re.compile(
     rf"(?:degree|master\S*|m\.?sc|mba|bachelor\S*|equivalent)\s*,?\s*(?:or|and/or|/)\s*"
     rf"(?:an?\s+)?(?:{_DOCTORATE})"
-    rf"|(?:{_DOCTORATE})\s*[,(]?\s*(?:or|and/or|/)\s*(?:an?\s+)?(?:[\w-]+\s+){{0,3}}?"
+    rf"|(?:{_DOCTORATE})(?:\s+in\s+[\w\s,&-]{{0,50}}?)?\s*[,(]?\s*(?:or|and/or|/)\s*"
+    rf"(?:an?\s+|the\s+)?(?:[\w-]+\s+){{0,3}}?"
     rf"(?:degree|master\S*|m\.?sc|mba|bachelor\S*|equivalent|corresponding|comparable|similar)",
     re.IGNORECASE,
 )
-_DOCTORATE_REQUIRED = re.compile(
-    r"\b(?:required|mandatory|essential|necessary|requires?|must|need|needed|holding|hold"
-    r"|prerequisites?|requirements?)\b",
+_DOCTORATE_REQUIRED_BEFORE = re.compile(
+    r"(?:\b(?:require[sd]?|requiring|must\s+(?:hold|have|possess|be\s+awarded)"
+    r"|should\s+(?:hold|have|possess)|needs?\s+(?:to\s+(?:hold|have)\s+)?|to\s+(?:hold|have)"
+    r"|holds?|holding|possess(?:es|ing)?|(?:has|have)\s+(?:obtained|completed|earned|been\s+awarded)"
+    r"|requires?\s+that\s+(?:the\s+)?\w+\s+(?:has|have|holds?))\s+(?:[\w’'-]+\s+){0,3}?"
+    r"|\b(?:qualifications?|requirements?|criteria|experience|education)\s*(?:required\s*)?"
+    r"(?:for\s+the\s+(?:position|role)\s+)?(?:includes?\s*)?:?\s*(?:an?\s+)?(?:completed\s+)?)$",
+    re.IGNORECASE,
+)
+_DOCTORATE_REQUIRED_AFTER = re.compile(
+    r"^[^.;:!?]{0,80}?\b(?:is|are|will\s+be)\s+(?:an?\s+)?(?:absolute\s+)?"
+    r"(?:required|mandatory|essential|necessary|requirements?|prerequisites?|must)\b",
     re.IGNORECASE,
 )
 _DOCTORATE_PREFERRED = re.compile(
@@ -639,11 +719,46 @@ def _preferred_after(text: str, end: int) -> bool:
     between = tail[: preference.start()]
     own_tie = _TIE_AFTER.match(between)
     rest = between[own_tie.end() :] if own_tie else between
-    return not (_FIGURE.search(rest) or _EXPERIENCE_NOUN.search(rest))
+    return not (
+        _FIGURE.search(rest) or _EXPERIENCE_NOUN.search(rest) or _OTHER_SUBJECT.search(rest)
+    )
 
 
-def _read_figure(text: str, match: re.Match[str], previous_end: int) -> _Figure | None:
-    """Step 2 for one figure: the requirement it states, or None when it states none."""
+def _preference_sections(text: str) -> list[tuple[int, int]]:
+    """Where the text is under a preference heading, as (start, end) spans.
+
+    A section runs from a preference heading to the next requirement heading,
+    or to the end of the text. Reaching too far only drops figures, which keeps
+    a job, so the end of the text is the safe default.
+    """
+    headings = sorted(
+        [(m.start(), True) for m in _PREFERENCE_HEADING.finditer(text)]
+        + [(m.start(), False) for m in _REQUIREMENT_HEADING.finditer(text)]
+    )
+    sections: list[tuple[int, int]] = []
+    open_at: int | None = None
+    for position, preference in headings:
+        if preference and open_at is None:
+            open_at = position
+        elif not preference and open_at is not None:
+            sections.append((open_at, position))
+            open_at = None
+    if open_at is not None:
+        sections.append((open_at, len(text)))
+    return sections
+
+
+def _read_figure(
+    text: str,
+    match: re.Match[str],
+    previous_end: int,
+    preferences: Sequence[tuple[int, int]] = (),
+) -> _Figure | None:
+    """Step 2 for one figure: the requirement it states, or None when it states none.
+
+    `preferences` are the text's preference sections (`_preference_sections`),
+    passed in so they are found once per text rather than once per figure.
+    """
     years = _figure_years(match)
     if years is None or years > _MAX_PLAUSIBLE_YEARS:
         return None
@@ -652,7 +767,14 @@ def _read_figure(text: str, match: re.Match[str], previous_end: int) -> _Figure 
     after = text[end : end + _CONTEXT_CHARS]
     sentence = _sentence(text, start, end)
 
-    if _VETO_BEFORE.search(before) or _VETO_AFTER.match(after) or _AGE_BEFORE.search(before):
+    # Under a preference heading only a figure stated as a minimum in words
+    # still binds: some boards put their whole list of requirements under
+    # "Desired qualifications", "Minimum of 5 years" among them.
+    if any(lo <= start < hi for lo, hi in preferences) and not _MINIMUM_WORD_BEFORE.search(before):
+        return None
+    worked_for = bool(_WORKED_FOR.search(before))
+    vetoed_before = _VETO_BEFORE.search(before) and not worked_for
+    if vetoed_before or _VETO_AFTER.match(after) or _AGE_BEFORE.search(before):
         return None
     if _PREFERENCE_BEFORE.search(before):
         return None
@@ -667,9 +789,11 @@ def _read_figure(text: str, match: re.Match[str], previous_end: int) -> _Figure 
     route = bool(
         _ROUTE_BEFORE.search(own_before)
         or _LEVEL_BEFORE.search(own_before)
+        or _LEVEL_HEADING_BEFORE.search(own_before)
         or _ROUTE_AFTER.match(text[end : end + _ROUTE_CHARS])
+        or _LEVEL_WORD_AFTER.match(after)
     )
-    tied = bool(_TIE_AFTER.match(after))
+    tied = bool(_TIE_AFTER.match(after)) or worked_for
     minimum = bool(
         _MINIMUM_BEFORE.search(before)
         or _MINIMUM_AFTER.match(after)
@@ -697,8 +821,9 @@ def _requirement_figures(text: str) -> list[_Figure]:
     """
     figures: list[_Figure] = []
     previous_end = 0
+    preferences = _preference_sections(text)
     for match in _FIGURE.finditer(text):
-        figure = _read_figure(text, match, previous_end)
+        figure = _read_figure(text, match, previous_end, preferences)
         if figure is not None and figures and figures[-1].kind is _Kind.REQUIREMENT:
             between = text[previous_end : match.start()]
             near = len(between) < _CONTEXT_CHARS
@@ -748,8 +873,9 @@ def _has_phd_required(text: str) -> bool:
     """True only when the text requires a doctorate in so many words.
 
     Each mention is judged in its own clause. One offered beside another degree
-    ("a Master's or PhD") or as a preference does not count, and neither does a
-    clause that names no requirement at all.
+    ("a Master's or PhD") or as a preference does not count. One that counts
+    must be what the clause requires: see `_DOCTORATE_REQUIRED_BEFORE` and
+    `_DOCTORATE_REQUIRED_AFTER`.
     """
     for mention in _DOCTORATE_MENTION.finditer(text):
         start, end = mention.span()
@@ -769,7 +895,9 @@ def _has_phd_required(text: str) -> bool:
         )
         if alternative or _DOCTORATE_PREFERRED.search(clause):
             continue
-        if _DOCTORATE_REQUIRED.search(clause):
+        if _DOCTORATE_REQUIRED_BEFORE.search(head) or _DOCTORATE_REQUIRED_AFTER.match(
+            tail[end - start :]
+        ):
             return True
     return False
 

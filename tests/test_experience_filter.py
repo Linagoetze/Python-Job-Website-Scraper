@@ -143,6 +143,69 @@ class TestWhatIsARequirement:
         assert _read_years_requirement(text) == 3
 
 
+class TestReviewFindings:
+    """Cases from the review of SP4e (2026-10-02), invented like the rest.
+
+    The first three kept a wanted job under the old reading and dropped it
+    under SP4e's first version. The rest are smaller misses, and the guards
+    found while fixing them.
+    """
+
+    def test_a_preferred_qualifications_heading_marks_its_section(self):
+        text = (
+            "Minimum qualifications: 1+ years of experience in analytics. "
+            "Preferred qualifications: 4+ years of experience in analytics."
+        )
+        assert _read_years_requirement(text) == 1
+
+    def test_bonus_points_heading(self):
+        text = "Requirements: 2+ years of experience in sales. Bonus points: 5+ years in SaaS."
+        assert _read_years_requirement(text) == 2
+
+    def test_a_requirement_heading_closes_the_preference_section(self):
+        text = (
+            "Nice to have: 6+ years in fintech. Requirements: 4+ years of experience in payments."
+        )
+        assert _read_years_requirement(text) == 4
+
+    def test_a_minimum_in_words_still_binds_under_a_desired_heading(self):
+        # Some boards list every requirement under "Desired qualifications".
+        text = (
+            "Desired Qualifications: A Master's degree in economics. "
+            "Minimum of 4 years of relevant experience."
+        )
+        assert _read_years_requirement(text) == 4
+
+    def test_levels_labelled_loosely_are_routes(self):
+        text = "Junior: 0–2 years of experience. Mid: 3–5 years of experience."
+        assert _read_years_requirement(text) == 0
+
+    def test_a_level_in_brackets_is_a_route(self):
+        text = "1–2 years of experience (junior) or 4–6 years of experience (senior)."
+        assert _read_years_requirement(text) == 1
+
+    def test_working_with_senior_people_is_no_route(self):
+        text = (
+            "5 years of experience working with senior stakeholders. "
+            "A Master's degree with 2 years of experience."
+        )
+        assert _read_years_requirement(text) == 5
+
+    def test_a_plus_about_another_qualification_leaves_the_figure_alone(self):
+        text = "5+ years of sales experience, knowledge of Salesforce is a plus"
+        assert _read_years_requirement(text) == 5
+
+    def test_worked_for_n_years(self):
+        assert _read_years_requirement("You have worked in finance for 5+ years.") == 5
+
+    def test_working_days_for_n_months_is_a_contract(self):
+        text = "Duration: a maximum of 120 working days for 12 months."
+        assert _read_years_requirement(text) is None
+
+    def test_a_number_restated_in_words(self):
+        assert _read_years_requirement("5 (five) years of experience in finance.") == 5
+
+
 class TestHowRequirementsCombine:
     """Step 3 of the reading (SP4e): the largest requirement, the lowest route."""
 
@@ -213,6 +276,8 @@ class TestDoctorate:
             "Applicants should hold a PhD in geology.",
             "A doctorate is a prerequisite for this post.",
             "The post requires a PhD, or a foreign degree judged equivalent to a PhD.",
+            # Its own full stops must not end the clause (review).
+            "A Ph.D. in economics is required.",
         ],
     )
     def test_required(self, text):
@@ -229,6 +294,11 @@ class TestDoctorate:
             "A doctoral degree (or equivalent) in law is required.",
             # Preferred, not required.
             "A PhD is preferred but not required.",
+            # A doctorate nearby, but what is required is something else (review).
+            "You will join a team of PhD economists and must be fluent in English.",
+            "Our PhD economists need support with data cleaning.",
+            "You will work with PhD-holding researchers.",
+            "A doctoral degree in philosophy or the corresponding research competence.",
         ],
     )
     def test_not_required(self, text):
