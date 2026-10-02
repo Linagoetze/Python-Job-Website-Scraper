@@ -314,7 +314,7 @@ _TIE_AFTER = re.compile(
     r"^\s*(?:['’]s?\s*)?(?:of|av|af|in|i)?\s*(?:[\w’'/&-]+,?\s+){0,5}?"
     r"(?:experience|expertise|erfarenhet|erfaring|erfahrung|berufserfahrung"
     r"|arbetslivserfarenhet|working\b|worked\b|as\s+an?\s)"
-    # "3–6 years selling scientific software", "5 years leading teams", but not
+    # "3–5 years selling medical devices", "5 years leading teams", but not
     # "2 years following graduation".
     r"|^\s*(?!(?:during|following|starting|beginning|including|according|remaining)\b)[a-z]+ing\b",
     re.IGNORECASE,
@@ -349,7 +349,7 @@ _VETO_BEFORE = re.compile(
     re.IGNORECASE,
 )
 # "Age: interns must be at least 18 years" names the age before the figure.
-_AGE_BEFORE = re.compile(r"\bage\b[^.;]{0,40}$", re.IGNORECASE)
+_AGE_BEFORE = re.compile(r"\bage\b[^.;]{0,60}$", re.IGNORECASE)
 _VETO_AFTER = re.compile(
     r"^\s*(?:old\b|of\s+age|or\s+(?:older|over|above)|ago\b|from\s+now|later\b|gammal|gamle?\b"
     r"|before\b|prior\s+to\b"
@@ -358,7 +358,7 @@ _VETO_AFTER = re.compile(
     r"|(?!of\b)(?:\w+\s+)?(?:contract|duration|commitment|appointment|fixed[-\s]term|renewable"
     r"|horizon|warranty|history|track\s+record|anniversary|validity)\b"
     r"|valid\b|in\s+(?:business|operation|existence)"
-    # Years of study, not of work: "minst tre års heltidsstudier".
+    # Years of study, not of work: "minst två års högskolestudier".
     r"|\w*studier\b|\w*utbildning\b|\w*uddannelse\b)",
     re.IGNORECASE,
 )
@@ -378,11 +378,11 @@ _PREFERENCE_AFTER = re.compile(
     re.IGNORECASE,
 )
 # A preference after the figure is read to the end of its sentence or list item
-# ("Candidates with 5 years and above of relevant experience in ... are
+# ("Applicants with 4 years or more of relevant experience in ... are
 # preferred"). A stripped page shows a new list item only as a capital letter
-# after a lower-case word ("... administrative operations Proficient in ERP"),
-# except after a word that cannot end an item ("in the context of Data
-# engineering").
+# after a lower-case word ("... payroll administration Fluent in Spanish"),
+# except after a word that cannot end an item ("the delivery of Cloud
+# services").
 _PREFERENCE_REACH = 250
 _NAMED_PARENTHETICAL = re.compile(
     r"\((?!\s*(?:is\s+|are\s+|would\s+be\s+)?(?:an?\s+)?(?:added\s+|additional\s+)?"
@@ -420,8 +420,8 @@ _QUALIFICATION = (
 )
 # "<qualification> ... with|and|plus <figure>": the qualification and its years
 # are one route. Nothing between them may be another figure, or the link word
-# belongs to that figure instead ("a degree. 5 years of experience, with at
-# least 2 years in a senior role" is not a route of 2).
+# belongs to that figure instead ("a degree. 6 years of experience, including
+# at least 1 year leading a team" is not a route of 1).
 _ROUTE_BEFORE = re.compile(
     rf"\b{_QUALIFICATION}[^.;:•\n]{{0,300}}?"
     r"(?:\bwith|\band|\bplus|\+|\bfollowed\s+by|\bcombined\s+with|\bin\s+combination\s+with"
@@ -430,7 +430,7 @@ _ROUTE_BEFORE = re.compile(
 )
 # "<figure> (with a bachelor's degree)", "<figure> of experience with a Master's".
 # A posting that hires at several levels at once states one figure per level
-# ("1 year for category C, 5 years for category B", "Entry-Level: 2-7 years").
+# ("two years for level C, five for level B", "Entry level: 1-4 years").
 # Each level is a route in, exactly as each degree is.
 _LEVEL = (
     r"(?:(?:category|band|level|grade|tier)\s+[A-Z0-9]\b|[PGD]-?\d\b|(?:entry|junior|mid|senior)"
@@ -454,14 +454,14 @@ _OR_BEFORE = re.compile(
 )
 # "... OR a Master's degree": the figure before it was one route of two.
 _OR_QUALIFICATION = re.compile(rf"\b(?:or|eller)\b[^.;]{{0,40}}?\b{_QUALIFICATION}", re.IGNORECASE)
-# A route offered instead of the main requirement ("a bachelor's degree combined
-# with seven years will be considered in lieu of the above").
+# A route offered instead of the main requirement ("a first degree with six
+# years may be accepted in lieu of the above").
 _SUBSTITUTE = re.compile(
     r"\bin\s+lieu\b|\binstead\s+of\b|\bin\s+place\s+of\b|\bmay\s+be\s+(?:accepted|considered)"
     r"|\bwill\s+be\s+(?:accepted|considered)|\bsubstitut\w*",
     re.IGNORECASE,
 )
-# The years a qualification stands in for ("a degree may be considered in lieu
+# The years a qualification stands in for ("a relevant degree can count in place
 # of two years of experience"): not a requirement, a reduction of one.
 _DEDUCTION_BEFORE = re.compile(
     r"(?:\bin\s+lieu\s+of|\binstead\s+of|\bin\s+place\s+of|\bsubstitut\w*\s+for)\s*$",
@@ -473,11 +473,11 @@ _DEDUCTION_BEFORE = re.compile(
 _CONTEXT_CHARS = 100
 # How far back a qualification may name the route a figure belongs to. UN
 # postings list a whole field of study between the degree and its years ("an
-# advanced university degree in statistics, demography, economics or a closely
-# related quantitative social science discipline, with a minimum of two years").
+# advanced degree in economics, statistics, public policy, or a closely related
+# field of the social sciences, with a minimum of two years").
 _ROUTE_CHARS = 320
 # No posting asks for more years than this. A larger figure is the employer's
-# history ("has spent nearly 70 years working to ...") or an age.
+# history ("the charity has spent nearly 60 years helping ...") or an age.
 _MAX_PLAUSIBLE_YEARS = 25
 
 
@@ -530,8 +530,8 @@ _DOCTORATE_PREFERRED = re.compile(
     r"|beneficial|nice\s+to\s+have|bonus|advantageous|meriterande|preference)\b",
     re.IGNORECASE,
 )
-# "a PhD, or an international degree deemed equivalent to a PhD" offers no way
-# in without a doctorate.
+# "a PhD, or a foreign degree judged equivalent to a PhD" offers no way in
+# without a doctorate.
 _DOCTORATE_EQUIVALENT = re.compile(rf"equivalent\s+to\s+(?:an?\s+)?{_DOCTORATE}", re.IGNORECASE)
 # A doctorate's clause: its sentence, cut to this many characters either side so
 # that one long stripped list does not lend it a "required" from elsewhere.
@@ -622,15 +622,15 @@ def _preferred_after(text: str, end: int) -> bool:
     """True when a preference later in the figure's sentence is about this figure.
 
     It is not when another figure, or a second mention of experience, comes
-    between them: "6+ years of sales experience, ... Retailer-facing experience
-    preferred" prefers the second experience, not the six years.
+    between them: "5+ years of account management experience, ... and agency
+    experience preferred" prefers the agency experience, not the five years.
     """
     tail = text[end : end + _PREFERENCE_REACH]
     for boundary in (_SENTENCE_END, _ITEM_START):
         stop = boundary.search(tail)
         if stop:
             tail = tail[: stop.start()]
-    # "(desirable)" marks the whole item; "(B2B SaaS preferred)" marks only
+    # "(desirable)" marks the whole item; "(fintech preferred)" marks only
     # what it names.
     tail = _NAMED_PARENTHETICAL.sub(" ", tail)
     preference = _PREFERENCE_AFTER.search(tail)
@@ -692,7 +692,7 @@ def _requirement_figures(text: str) -> list[_Figure]:
 
     A requirement joined to the one before it by "or" makes both of them
     routes: "3 years of X, or 5 years of Y" offers two ways in, as a pair of
-    degrees does. So does "... with 9 years. OR a Master's degree with 7
+    degrees does. So does "... with 8 years. OR a Master's degree with 6
     years", where the first degree sits too far back to be read as its own.
     """
     figures: list[_Figure] = []
@@ -723,7 +723,7 @@ def _read_years_requirement(text: str) -> int | None:
     the smallest, and that route joins the requirements. A route offered *in
     lieu of* the posting's main requirement is an alternative to all of that,
     so it can only lower the answer. A qualification standing in for some years
-    ("a degree may be considered in lieu of two years") takes them off.
+    ("a relevant degree can count in place of two years") takes them off.
 
     min() over every number in the text went in SP4e: it let a narrow skill ("at
     least 2 years with survey software") or an additive clause decide a role

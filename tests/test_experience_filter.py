@@ -67,8 +67,9 @@ class TestReadYearsRequirement:
 class TestWhatIsARequirement:
     """Step 2 of the reading (SP4e): which figures are requirements at all.
 
-    Every text is invented, in the shape of a phrasing found in the stored
-    descriptions during SP4e's measurement.
+    Every text is invented. Each has the *shape* of a phrasing found in the
+    stored descriptions during SP4e's measurement, never its words: the store
+    is private (SP4b).
     """
 
     @pytest.mark.parametrize(
@@ -78,11 +79,11 @@ class TestWhatIsARequirement:
             ("2 to 4 years of experience in logistics.", 2),
             ("You have 3 yrs of hands-on experience.", 3),
             ("Approximately 4 years' experience as an analyst.", 4),
-            ("3–6 years selling software into laboratories.", 3),
-            ("What We Are Looking For: 6–8 years’ experience in sales.", 6),
+            ("3–5 years selling medical devices to hospitals.", 3),
+            ("Who we are looking for: 4–6 years’ experience in marketing.", 4),
             ("Requirements:\n - 4+ years of experience in operations.", 4),
             ("Du har 4 års erfarenhet av redovisning.", 4),
-            ("Minimum 3–5 års relevant erfaring med procesudstyr.", 3),
+            ("Du har mindst 3 års erfaring med kvalitetssikring.", 3),
             ("Du hast mindestens 3 Jahre Erfahrung im Controlling.", 3),
             ("18 months of experience in a similar role.", 1),
             ("Seven years of relevant professional experience.", 7),
@@ -95,27 +96,27 @@ class TestWhatIsARequirement:
         "text",
         [
             # A cap, not a floor.
-            "This role is ideal for early career professionals with up to 6 years of experience.",
+            "Suited to people early in their career, with up to 6 years of experience.",
             # A contract's length, as a header.
             "Duration: 2–3 years, subject to funding.",
-            "Length of commitment: 1-2 Years.",
+            "Contract length: 1–2 years of service.",
             # A window and a time ago.
-            "Have you graduated within the last 1-2 years?",
-            "If you graduated three years ago, count those three years.",
+            "Only open to people who finished their studies within the past 1-2 years.",
+            "Someone who left university three years ago counts three years.",
             # An age, after the figure and as a header before it.
             "Applicants must be 18 years or older.",
-            "Age: interns must be at least 18 years at the start date.",
+            "Age requirement: volunteers must be at least 21 years on the first day.",
             # The employer's history, in the third person, past any plausible
             # requirement.
-            "The fund has spent nearly 70 years working with communities.",
+            "The charity has spent nearly 60 years working with families.",
             # A roadmap, not a career.
-            "You will shape 3–5 year roadmaps for the platform.",
+            "You will own the 2–4 year product roadmap.",
             # Years of study.
-            "Akademisk utbildning motsvarande minst tre års heltidsstudier.",
+            "Du har en examen motsvarande minst två års högskolestudier.",
             # A preference, marked as such for the whole item.
             "Minimum 5 years of experience in emergency response (desirable).",
-            "Candidates with 5 years and above of relevant experience in data "
-            "engineering and web application solutions are preferred.",
+            "Applicants with 4 years or more of relevant experience in cloud "
+            "migration projects are preferred.",
         ],
     )
     def test_a_figure_that_is_not_a_requirement(self, text):
@@ -127,20 +128,18 @@ class TestWhatIsARequirement:
 
     def test_a_preference_for_something_else_leaves_the_figure_alone(self):
         text = (
-            "6+ years of sales experience, with an emphasis on category management, "
-            "and retailer-facing experience preferred."
+            "5+ years of account management experience, ideally in logistics, "
+            "and agency experience preferred."
         )
-        assert _read_years_requirement(text) == 6
+        assert _read_years_requirement(text) == 5
 
     def test_a_named_preference_in_brackets_leaves_the_figure_alone(self):
-        text = "7+ years of experience in revenue operations (B2B SaaS preferred)."
-        assert _read_years_requirement(text) == 7
+        text = "6+ years of experience in payments operations (fintech preferred)."
+        assert _read_years_requirement(text) == 6
 
     def test_a_preference_in_the_next_list_item_is_not_this_ones(self):
         # A stripped list shows its items only as a capital after a lower-case word.
-        text = (
-            "Minimum 3 years of experience in administrative operations Proficient in ERP Desirable"
-        )
+        text = "Minimum 3 years of experience in payroll administration Fluent in Spanish Desirable"
         assert _read_years_requirement(text) == 3
 
 
@@ -155,8 +154,8 @@ class TestHowRequirementsCombine:
         assert _read_years_requirement(text) == 5
 
     def test_a_subset_does_not_lower_the_whole(self):
-        text = "Minimum of 5 years of relevant experience, with at least 2 years in a senior role."
-        assert _read_years_requirement(text) == 5
+        text = "At least 6 years of relevant experience, including at least 1 year leading a team."
+        assert _read_years_requirement(text) == 6
 
     def test_routes_by_degree_take_the_lowest(self):
         text = (
@@ -167,16 +166,19 @@ class TestHowRequirementsCombine:
         assert _read_years_requirement(text) == 2
 
     def test_routes_tagged_after_the_figure(self):
-        text = "Minimum of 7 years (with secondary education) or 4 years (with bachelor's degree)."
-        assert _read_years_requirement(text) == 4
+        text = (
+            "At least 6 years (with a secondary school diploma) or 3 years "
+            "(with a bachelor's degree) of relevant experience."
+        )
+        assert _read_years_requirement(text) == 3
 
     def test_routes_by_level_take_the_lowest(self):
-        text = "At least 1 year for category C, 5 years for category B, 10 years for category A."
-        assert _read_years_requirement(text) == 1
+        text = "At least two years for level C, five years for level B and eight years for level A."
+        assert _read_years_requirement(text) == 2
 
     def test_routes_joined_by_or(self):
-        text = "Minimum 5 years of relevant experience or 10 years of military experience."
-        assert _read_years_requirement(text) == 5
+        text = "At least 4 years of relevant experience or 8 years of military experience."
+        assert _read_years_requirement(text) == 4
 
     def test_a_route_still_meets_every_other_requirement(self):
         text = (
@@ -195,10 +197,10 @@ class TestHowRequirementsCombine:
 
     def test_a_degree_in_lieu_of_years_takes_them_off(self):
         text = (
-            "A minimum of four years of relevant experience is required. A university "
-            "degree may be considered in lieu of two years of experience."
+            "At least five years of experience are needed. A relevant degree can "
+            "count in place of two years of experience."
         )
-        assert _read_years_requirement(text) == 2
+        assert _read_years_requirement(text) == 3
 
 
 class TestDoctorate:
@@ -207,10 +209,10 @@ class TestDoctorate:
     @pytest.mark.parametrize(
         "text",
         [
-            "Required qualifications include a PhD in a relevant field.",
-            "The candidate should hold a PhD in experimental physics.",
-            "A PhD and fluent English are prerequisites for application.",
-            "Requires a PhD, or an international degree deemed equivalent to a PhD.",
+            "Qualifications required: a PhD in chemistry.",
+            "Applicants should hold a PhD in geology.",
+            "A doctorate is a prerequisite for this post.",
+            "The post requires a PhD, or a foreign degree judged equivalent to a PhD.",
         ],
     )
     def test_required(self, text):
@@ -220,11 +222,11 @@ class TestDoctorate:
         "text",
         [
             # The job is the doctorate.
-            "The doctoral education includes mandatory PhD courses.",
-            "You must have experience supervising PhD-students.",
+            "The programme has compulsory PhD courses in the first year.",
+            "You must be used to supervising PhD-students.",
             # Offered beside another way in.
-            "You hold a doctoral degree or have corresponding research expertise.",
-            "A doctoral degree (or equivalent) in business administration is required.",
+            "You hold a doctoral degree or have comparable research merits.",
+            "A doctoral degree (or equivalent) in law is required.",
             # Preferred, not required.
             "A PhD is preferred but not required.",
         ],
