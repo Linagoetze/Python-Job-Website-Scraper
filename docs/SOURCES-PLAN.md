@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4e are done** (as of 2026-10-02); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4f are done** (as of 2026-10-02); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -102,7 +102,7 @@ the ordering below.
 | 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done | `sp4c-layer5-unreadable` |
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | done | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | done | `sp4e-years-reading` |
-| 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
+| 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | done | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | not started | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | not started | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
@@ -2897,15 +2897,171 @@ docs/DECISIONS.md.
 Branch sp4f-location-policy. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-02, branch `sp4f-location-policy`
+
+**The collision, answered first (2026-10-02).** Before Q4 was built, the
+session counted the jobs Q4 and Q6 both claim: an empty location on a page that
+cannot be read. **Zero live ones.** The store held one such row, a run-2 row
+already rejected, and run 34 dropped no job as unverified. Every empty-location
+row still listed had been read in full, and no stored row lacks a URL. Put to
+you with SP4c's two facts, and you chose **"Q4, but say so"**. Such a job is
+unverified, so it is dropped for the run, never stored and retried next run. Its
+source's "Unreadable pages" line now adds `N of them held back this run: the
+location could not be checked`. The count covers any unverified deferred drop
+on an unreadable page (an empty field, a placeholder, a conditional city), since
+none of those jobs reaches the sheet.
+
+**What was built, inside the existing layers.** No new layer, no new pass.
+
+- **Layer 0, Q3.** `filtering._remote_admission` reads each option of the
+  field once the remote wording is struck out of it. A bare home base, or a
+  worldwide or global field, is admitted as remote (Q3a). A home-based or
+  remote option across a region in the new `remote_regions` key is admitted
+  (Q3b), even beside an office city (Q3c). A region with no remote wording
+  anywhere in the job still defers, as a bare country does. So does a region
+  that is not in the key. A bare "Home Based" beside a city is the city, as
+  Impactpool's "Remote | <duty station>" always was. `;` now separates options.
+  The everywhere words are English, so they live in code, and Q3a needs no
+  configuration.
+- **Layer 0 and 5, Q4.** An empty field is deferred under its own pending
+  reason and settled by Layer 5 exactly as a placeholder is, failing closed. It
+  has its own two drop rules, so the drop log can tell the two apart. With no
+  `locations` configured there is nothing to settle against, and it is admitted
+  as before.
+- **The readers.** Ashby's `workplaceType` and Workable's `workplace` go into
+  `raw_snippet`, where the remote keywords and the hybrid gate already look.
+  Ashby's `secondaryLocations` and Workable's shown `locations` join the field
+  as options. Not mapped: Ashby's `isRemote` (true on all 119 Hybrid postings
+  cached), Workable's `remote` (it repeats `workplace`), and jobsinlund's
+  `remote_type` (`no` on all 829 cached postings, with the city already pinned
+  by the API query, so it could change no verdict).
+- **`rules.example.json`** has `remote_regions`, with an invented value. A
+  rules.json without the key defers every regional field, as before.
+
+**Measured, read-only** against scratch copies of the store and the HTTP cache
+(run 34). Q3b was measured twice: with the live rules.json, which has no
+`remote_regions`, and with a scratch copy holding the region and country terms
+from `non_place_locations` that contain a listed location (DECISIONS says how).
+Every admission is netted against SP4e's years and PhD reading and today's title
+layers.
+
+| rows rejected on a deferred location that Layer 0 now admits | live rules | with regions |
+|---|---:|---:|
+| admitted | 27 | 51 |
+| of which undp, retired: shells, unlisted | 16 | 16 |
+| of which unlisted (impactpool) | 1 | 1 |
+| listed (all canonical) | 10 | 34 |
+| still excluded on years or a PhD | 2 | 3 |
+| **would reach the sheet** | **8** | **31** |
+
+Of the listed canonical rows, one labelled `review` is still excluded on years
+under both configurations. A second, with regions, would reach the sheet. The
+rest are unlabelled. The remainder of SP4b's 83 home-based or worldwide
+rejections are home-based regions outside the scratch `remote_regions`, and
+they stay deferred.
+
+- **Run 34's Layer 0 drops that are now admitted**: 1 with the live rules and 10
+  with regions, all canonical, all "home-based option beside an office city"
+  (Q3c). Each costs one detail fetch, once, and is then stored. That is the
+  whole new fetch cost. A job that used to be deferred was fetched before and is
+  fetched now. An empty field was fetched before as an admitted new job and is
+  fetched now as a deferred one. This is pinned by
+  `test_an_empty_location_costs_no_fetch_it_did_not_cost_before`. A stored job
+  is not fetched again either way.
+- **Q4 on the stored rows.** All 35 empty-location `new` rows in the sheet
+  (impactpool 24, path 8, irc 3) have descriptions naming no listed place, so
+  Q4 would drop each of them as a new job. They stay in the sheet, because a
+  stored row read in full is not judged again (F13). One of them is a path
+  roster whose page says "Global, Remote", which is Q3a's case. See below. Across
+  the gold set, Q4 would drop 3 `review`-labelled jobs, all already
+  stored `rejected`. A jpal row, unlisted since run 14, names no listed place,
+  and two path rows are, by their own pages, in a city off the list.
+- **`python -m job_scraper.eval`, live rules:** recall 0.808 and precision 0.333,
+  unchanged. The replay counts a deferred job as kept, so only its "deferred"
+  line moved: 15 → 21 jobs, 8 → 10 of them labelled `review` (empty fields now
+  defer, worldwide and home-based ones no longer do). **`eval --compare`, live
+  against the scratch regions copy:** recall 0.808 → 0.822, precision 0.333 →
+  0.337, 1 `review` job recovered (a home-based region beside an office city),
+  none lost.
+- **The readers, over run 34's cached Ashby responses:** kognity 3 of 4
+  postings change. All three are now confirmed hybrid at Layer 0. Two are then
+  dropped by the title layers as before, and one is the row rejected as
+  non-hybrid in run 34. monday_com (91) and strava (31) change nothing. **simprints'
+  four** are remote within the United Kingdom by Workable's own data (shown,
+  not hidden) and by their text. That is Q3b's excluded case, not Q3a's, so
+  under both configurations they defer and fail closed as before.
+- **The loose end from SP4e.** The jobsinlund posting labelled `review` with
+  "Lunds Kommun" was never stored because Layer 1 dropped it on the seniority
+  word "Lead" (two copies), not because of its location. The location matches
+  the listed place by substring at Layer 0. A third unstored `review` row went
+  to the title keyword `Student`, which you kept (Q7). Not this package's.
+
+**Proposed, not written: revivals, for you to confirm.**
+
+- **kognity, 1 row** (rejected `non_hybrid_conditional_location`, listed in run
+  34). Ashby marks it Hybrid, so Layer 0 now confirms it, and SP4e reads its
+  description as **`unspecified`**: no years, no PhD. SP4c's method: back up,
+  one transaction, `new`, description and level cleared. The next run re-judges
+  it from the supplied text with no fetch. **Condition: merge this branch
+  first.** Otherwise the next run rejects it again as non-hybrid. Selected by
+  query: kognity, `rejected`, `non_hybrid_conditional_location`, listed in the
+  latest run.
+- **simprints, 4 rows: not proposed.** They read the same as before (above).
+  They would come back only if you list the United Kingdom in `remote_regions`,
+  and SP4f takes no view on that.
+- **canonical, the Q3 rows: yours to decide, after your hand edit.** These
+  are 8 rows, or 31 once your regions are in, read in full and rejected only on the
+  deferred location, which SP4e's reading would keep. SP4e's method fits:
+  status `new`, description kept, level set to the reading. Selected by query
+  (rejected `unresolvable_location`, listed in the latest run, admitted by
+  today's Layer 0 under your rules.json, kept by SP4e's reading). The count is
+  printed for you to confirm first.
+
+**Questions for you.**
+
+1. **Remote within a segment is admitted anywhere.** "USA - MA - Remote" and
+   "Estonia - Remote" pass today's `remote_keywords` test, because a segment
+   holding a remote keyword counts as "not a city". Two such rows are in the
+   sheet. Q3b says a region that excludes you does not count, which suggests
+   tightening this to the same reading. That is a narrowing, so it is yours to
+   ask for. SP4f left it as it was and pinned it as characterisation.
+2. **Workday's workplace label.** path and irc pages state "remote type Fully
+   Remote" or "Location: Global, Remote", but Workday's listing JSON has no such
+   field, and path's location field is often empty. Under Q4 a worldwide path
+   roster with an empty field is dropped unless its page names a listed place.
+   One is in the sheet now. Options: leave it (Q4 as answered), read the label
+   from Workday's per-job JSON (a request per posting, rung 3), or a follow-up
+   package. Reading "remote" loosely from any description was rejected: five of
+   the 35 texts, all impactpool, speak of travelling to or working in "remote
+   locations".
+
+**Tests.** `test_a_home_based_or_worldwide_field_is_admitted_as_remote` went
+green and lost its marker. `test_a_home_based_region_beside_an_office_city_is_dropped`
+became `..._is_admitted`, with an invented region from `remote_regions`. One
+test pins Q3b's qualifier. The tests that pinned WP8f's admission now pin Q4.
+Five that used "Home based - Worldwide" as their example of a deferred field now
+use "2 Locations". One that pinned `title_only` caught a regression in the first
+draft (a "Remote" field under `title_only` must not count). Suite: **1,177
+passed, no expected failures** (was 1,143 + 2).
+
 ### Your to-dos
 
-- [ ] **Add the regions that include where you live to `rules.json`** under
-      the key the session names. `rules.json` is never-touch for a session,
-      so this is your hand edit. The session puts the key, with invented
-      values, in `rules.example.json`.
-- [ ] Answer the collision the session will raise: a job with an empty
-      location whose page cannot be read (Q4 says drop it, Q6 says keep it
-      marked).
+- [ ] **Add the regions that include where you live to `rules.json`**, under
+      the key `remote_regions`, beside `locations`. Use the region names your
+      sources write ("Home based - <region>"), and keep them in
+      `non_place_locations` too. `rules.json` is never-touch for a session,
+      so this is your hand edit; `rules.example.json` shows the shape with an
+      invented value. Then `python -m job_scraper.eval` should print recall
+      0.822 if your terms match the ones measured.
+- [x] Answer the collision: a job with an empty location whose page cannot be
+      read. **Answered 2026-10-02: Q4 wins, and the summary says so.**
+- [ ] Confirm or decline the kognity revival (1 row), **after merging**.
+- [ ] Decide whether to revive the canonical Q3 rows, after your hand edit.
+- [ ] Decide on the two questions above (loose remote segments, Workday's
+      workplace label).
+- [ ] Optionally, `review --reject` the empty-location `new` rows that Q4
+      would now drop (35, impactpool 24, path 8, irc 3), keeping the path
+      worldwide roster. Otherwise they stay until SP4g re-judges stored rows.
 
 ---
 
@@ -2962,6 +3118,17 @@ not read. Decide whether the pass rewrites a level when the status stays, and
 say which. Any status flip on a store with no run since then means the pass
 reads differently from a run. Find out why before writing anything. It must
 not touch 'rejected' rows.
+
+SINCE SP4f (2026-10-02). An empty location is now deferred to Layer 5 and fails
+closed (the owner's Q4), and a home-based, worldwide or regional one may be
+admitted at Layer 0 (Q3). A stored row is never judged again, so the 35 `new`
+rows in the sheet with an empty location and a description naming no listed
+place (impactpool 24, path 8, irc 3) are still there. If step 2 re-judges Layer
+5, it must settle the two deferred location states as well as the years. The
+re-filter pass calls `matches_rules`, which hands an empty field back as pending.
+The owner may have rejected some of them with `review` already, so count again
+first. The expected dry run above then changes: those rows flip, except one path
+roster whose page says it is worldwide (SP4f's question 2).
 
 DOCS. README's maintenance-commands entry for retrofilter, test count,
 docs/DECISIONS.md.

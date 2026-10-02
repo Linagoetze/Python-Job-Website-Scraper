@@ -333,6 +333,7 @@ the pages behind the listing be read?":
 !  Unreadable pages: 2 sources had detail pages with no posting in them
 !  acme_jobs: 4 of 9 detail pages unreadable — those jobs are not experience-checked
 !  contoso: 1 of 12 detail pages unreadable — those jobs are not experience-checked
+!    1 of them held back this run: the location could not be checked
 ```
 
 Nothing in the funnel looks wrong when a source's detail pages are shells: the
@@ -340,7 +341,11 @@ listing was fine and the jobs were kept. That is exactly why they need a line of
 their own. The count is of pages that came back, so a request that failed is not
 in either number. Those jobs were not checked for years or a PhD; they sit in
 the review sheet marked `unchecked (page unreadable)` and are fetched again each
-run until the page reads.
+run until the page reads. The indented line is the exception: a job whose
+location only its page could settle (an empty field, a placeholder, or a
+conditional city's hybrid check) is held back for the run when the page cannot
+be read. It is not in the sheet, it is not stored as rejected, and it is
+fetched again next run.
 
 ### Why was something dropped?
 
@@ -465,6 +470,7 @@ it.
   "conditional_location_keywords": ["hybrid"],
   "remote_keywords": ["remote", "anywhere"],
   "non_place_locations": ["EMEA", "Worldwide", "home base", "Sweden"],
+  "remote_regions": ["<a region that includes you>"],
   "match_in": "title_and_description",
   "seniority_filter_enabled": true,
   "seniority_exclude_titles": ["Senior", "Lead", "Director"]
@@ -480,6 +486,7 @@ it.
 | `conditional_location_keywords` | What makes a `conditional_locations` job qualify. Matched as word prefixes, so `hybrid` also covers `hybridarbete`. Empty list makes `conditional_locations` inert. |
 | `remote_keywords` | Words that mark a job as location-independent — see the caveat below. |
 | `non_place_locations` | Regions and bare country names that name no specific place — see below. Empty or absent = only the shapes recognised in code. |
+| `remote_regions` | Regions that include where you live. A remote or home-based role across one of them is admitted — see below. Empty or absent = every regional field is settled by layer 5 instead. |
 | `match_in` | `title_and_description` (title, snippet, department and location) or `title_only`. |
 | `seniority_filter_enabled` | Turns layer 3 on or off. |
 | `seniority_exclude_titles` | Whole-word matches against the title. `"Lead"` will not match `"Leadership"`. |
@@ -497,9 +504,9 @@ confirmation earned from a detail page is stored on the posting's own row, so a
 confirmed posting is skipped on later runs like any other stored one; only a
 conditional-city posting that has never been confirmed is re-checked.
 
-**Unresolvable locations.** Plenty of listing pages never name the duty station:
-the field says `2 Locations`, `Multiple locations`, `Home base - EMEA`, or just a
-country. That is not a city that failed to match your list — there is nothing on
+**Unresolvable and empty locations.** Plenty of listing pages never name the
+duty station: the field says `2 Locations`, `Multiple locations`, `Home base -
+EMEA`, just a country, or nothing at all. That is not a city that failed to match your list — there is nothing on
 the page to match — so judging it against `locations` throws the job away
 unread. Such a field is instead admitted provisionally and settled by layer 5
 against the fetched description, exactly as a conditional location is, and it
@@ -512,18 +519,35 @@ like `Home base - EMEA`, needs `EMEA` in the list — the wording alone is not
 enough, because what is left over is still a name this filter has to judge.
 Terms are matched whole-word and case-insensitively against each segment of the
 field, and a segment still counts as a place if anything is left once they are
-struck out — `Barcelona, Spain` is Barcelona, not a placeholder.
+struck out — `Barcelona, Spain` is Barcelona, not a placeholder. An empty field
+is settled the same way, and dropped if the description names none of your
+`locations`. It costs no extra fetch, because every new job's page is read for
+its years anyway.
 
-The price is a detail fetch for jobs that used to cost nothing, mostly on the
-first run after switching it on: a job dropped this way is stored as rejected
-and skipped thereafter, so the load falls back to newly posted jobs.
+The price is a detail fetch for placeholder jobs that used to cost nothing,
+mostly on the first run after switching it on: a job dropped this way is stored
+as rejected and skipped thereafter, so the load falls back to newly posted jobs.
+
+**Home-based, worldwide and regional roles.** A role that is not in one place
+counts as remote. `Home based`, `Worldwide` and `Home based - Worldwide` are
+admitted outright, with no configuration. A home-based or remote role across a
+region in `remote_regions` is admitted too: `Home based - <region>`, or
+`Remote | <region>`, once that region is in the list. So is a field that offers
+such an option beside an office city, like `Home based - <region>; Office Based -
+London`, since the home-based option is open to you whichever office is named. A region
+on its own, with no remote or home-based wording anywhere in the job, is still
+settled by layer 5 like a bare country, because it may just hold an office. So
+is a home-based region that is not in your list. Fields are split into options
+on `|`, `/`, `;` and line breaks, and each option is read on its own.
 
 **The remote caveat.** A `remote_keyword` only admits a job when its location
 field names no specific city. Some job boards tag every single posting
 `Remote | <duty station>`, so treating "remote" as "location doesn't matter" would
 let the entire board through. `Remote` and `Remote | Home Based` pass;
 `Remote | Nairobi` is rejected, because Nairobi is a real duty station and it
-isn't in your `locations`.
+isn't in your `locations`. A bare `Home Based | Nairobi` is read the same way.
+Within one segment the check is looser: `Germany - Remote` passes, wherever the
+country is.
 
 ### `job_scraper/config/title_exclude_keywords.csv`
 
@@ -932,10 +956,10 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1143 tests plus 2 expected failures, about fifteen seconds, no network access
-required. The expected failures are strict `xfail`s in
-`tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
-each pinned so that its fix turns it green. Extractors are
+1177 tests, about fifteen seconds, no network access required.
+`tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
+wrong. Each was pinned as a strict `xfail` and turned green when its fix
+landed; none is left. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
 exact output it produced when it was captured, so a site redesign fails the
