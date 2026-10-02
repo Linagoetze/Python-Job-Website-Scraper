@@ -1276,3 +1276,13 @@ session — see `CLAUDE.md`.
   rows rejected on years that the reading would now keep stay rejected, since
   nothing automatic un-rejects (WP5): 10 of them are SP4b's F4 (an employer's
   history, a minimum age). Reviving any is the owner's call, as Q5 was.
+- **A row revived after a better reading gets that reading, not a re-fetch
+  (SP4e, the owner's request, 2026-10-02).** SP4c and SP4d revived rows by
+  clearing the description, so that the next run fetched and judged them.
+  That was right for those rows, whose pages had never been read. SP4e's 12
+  revived rows were read in full and only misjudged. So they keep their
+  description, and their `experience_level` is the new reading's answer. A
+  re-fetch would cost requests to learn nothing new. On a store whose run
+  still had the old code, it would also have rejected them again. Rows whose
+  posting is closed, or whose fields a reader bug corrupted, are held back and
+  put to the owner. They are not revived as a matter of course.

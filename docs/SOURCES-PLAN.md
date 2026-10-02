@@ -2743,19 +2743,30 @@ chat names them.
 
 ### Your to-dos
 
-- [ ] Read every change from excluded to kept that the session reports, and
-      approve or reject the reading on that evidence. The table above is all
-      32. None is in the export.
+- [x] Read every change from excluded to kept that the session reports, and
+      approve or reject the reading on that evidence. **Approved 2026-10-02**,
+      all 32.
 - [ ] Look at the 5 `review`-labelled texts that the reading now excludes (4
       postings; listed in the session's chat). Each is a correct reading
       under Q2, and none is a `new` row.
-- [ ] Act with `review` on the 13 `new` export rows the reading would
-      exclude (named in the session's chat). The session did not change their
-      status. Or wait for SP4g, which re-judges them.
-- [ ] Decide whether to revive any of the 15 stored rows rejected on years
-      that the reading would now keep (path 8, impactpool 5, irc 2; 10 of
-      them F4). It is a status write, so it is yours, as Q5 was.
-
+- [x] Act with `review` on the 13 `new` export rows the reading would
+      exclude. **Done 2026-10-02**: `review --reject` on all 13, at your
+      request. Each echoed title matched.
+- [x] Decide whether to revive the 15 stored rows rejected on years that the
+      reading would now keep. **Revive, 2026-10-02.** 12 are written. A
+      backup was made first, at
+      `~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4e-20261002-132915`.
+      In one transaction, status went to `'new'` and `experience_level` to
+      the new reading of the stored description: path 8 and irc 2 to
+      `unspecified`, impactpool 2 to `junior (<=2yr)`. Unlike SP4c and SP4d, the
+      description was kept. These pages were read in full, so nothing needs
+      fetching, and the row is consistent whether or not this branch is
+      merged first.
+- [ ] **3 held back, waiting for your answer.** Two impactpool rows were last
+      seen 2026-09-08 with 13 misses, so the postings are closed. Revived,
+      they sit in the sheet until the next impactpool scrape delists them. The
+      third is a run-30 leftover with shifted fields: its title is an employer
+      name, and you rejected those by hand on 2026-09-25.
 ---
 
 ## SP4f — Where is a job whose location field does not say?
