@@ -21,14 +21,19 @@ def extract(
 ) -> list[dict[str, Any]]:
     html = fetch_text(listing_url)
 
+    # Either failure below used to return [], which reads as "no vacancies".
+    # Priority 2 says a page this reader cannot read must fail instead, as
+    # personio.py's unparseable feed does (SP4; found here in SP4b).
     m = _APP_DATA_RE.search(html)
     if not m:
-        return []
+        raise ValueError(f"{source_name}: no window.__appData on {listing_url}")
 
     try:
         data, _ = json.JSONDecoder().raw_decode(html, m.end())
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"{source_name}: could not parse window.__appData on {listing_url}"
+        ) from exc
 
     org_slug = (data.get("organization") or {}).get("hostedJobsPageSlug", "") or ""
 

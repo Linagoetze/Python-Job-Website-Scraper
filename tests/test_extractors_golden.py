@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import personio, workable
+from job_scraper.extractors import ashby, personio, workable
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
@@ -811,3 +811,19 @@ def test_workable_refuses_a_fetcher_that_cannot_post() -> None:
         workable.extract(
             "https://apply.workable.com/simprints/", lambda url, *a, **k: "", "simprints"
         )
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        pytest.param("<html><body>Something went wrong</body></html>", id="no-app-data"),
+        pytest.param("<script>window.__appData = {broken</script>", id="unparseable"),
+    ],
+)
+def test_ashby_fails_loudly_without_its_app_data(page: str) -> None:
+    """A page without readable `window.__appData` is a broken read, not an empty
+    board (SP4d, found in SP4b). ashby.py returned `[]` for both, the silent
+    "no vacancies" that personio.py was cured of in SP4.
+    """
+    with pytest.raises(ValueError, match="window.__appData"):
+        ashby.extract("https://jobs.ashbyhq.com/kognity", lambda url, *a, **k: page, "kognity")
