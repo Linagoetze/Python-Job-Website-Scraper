@@ -1200,3 +1200,79 @@ session — see `CLAUDE.md`.
   cannot read. SP5's prompt says to correct the pasted entry. Changing the
   probe is its own change, because the probe also runs the reader with that
   strategy.
+- **Layer 5 reads the years requirement; `min()` went (SP4e, 2026-10-02).**
+  `_extract_min_years` took the smallest number its five patterns matched
+  anywhere in the text. SP4b measured that as wrong both ways: an age or the
+  employer's own history excluded a job, and a narrow skill or an additive
+  "in lieu of" clause let a senior one through. Broadening the patterns alone
+  made it worse, because more numbers meant more chances for a small wrong one
+  to win. `_read_years_requirement` replaces it, in three steps. (1) Every
+  *figure*: a number with a unit of time, English, Swedish, Danish or German,
+  a range read at its lower bound. (2) Which figures are requirements: tied to
+  experience, stated as a minimum, or tied to a qualification or a level.
+  Which are not: an age, a time ago or a window, a cap, a contract's length,
+  years of study, an additive clause, a preference, the employer speaking
+  about itself, and any figure over 25. (3) How they combine. Every
+  requirement must be met, so the **largest** decides. Routes are
+  alternatives (one per degree, or per level a roster hires at), so the
+  **smallest** route decides, as the owner answered (SP4b Q1), and that route
+  joins the requirements. A route offered in lieu of the main requirement can
+  only lower the answer, and a degree that counts in place of some years takes
+  them off. The rule string and the `experience_level` values did not change
+  (WP8a's contract).
+- **The reading is built so that its errors fall on the kept side (SP4e).**
+  A figure wrongly taken as a route can only lower the answer. A vetoed figure
+  is simply not read. Only a figure wrongly taken as a requirement raises it,
+  which is why step 2 asks for a tie to experience, a minimum or a
+  qualification, and never reads a bare "N years". Two windows follow the same
+  logic and are generous on purpose: a qualification may name its route from
+  320 characters back (UN postings list a whole field of study between the
+  degree and its years), and a preference reaches to the end of its sentence or
+  list item. Under `max()`, a missed veto costs a wanted job, so when a new
+  phrasing turns up, ask first which way its error falls.
+- **A preference is not a requirement (SP4e).** "3 years preferred", "ideally
+  5 years" and an item marked "(desirable)" are not read. Under `max()` they
+  would raise the answer; under the old `min()` "ideally 5" could only lower
+  it. So a posting that only *prefers* some years now reads `unspecified`,
+  where it used to read `junior` or `senior`. One existing test changed with
+  it (`1 year of experience preferred` read 1, now reads nothing; the verdict,
+  kept, is the same). A preference belongs to the figure only when nothing
+  between them is another figure or a second mention of experience, and a
+  bracket that names something ("(fintech preferred)") prefers that thing, not
+  the years. A stripped page has no line breaks, so a new list item shows only
+  as a capital letter after a lower-case word; the reach stops there.
+- **A doctoral position is not a doctorate requirement (SP4e).** The PhD rule
+  judges each mention in its own clause, cut at 70 characters and the sentence.
+  A mention naming the job itself (PhD students, PhD courses, doctoral
+  studies) is skipped, one offered beside another qualification ("a Master's or
+  PhD", "a doctorate or comparable merits", "(or equivalent)") does not
+  decide, and a preference does not. "Equivalent to a PhD" is not an
+  alternative. Over SP4e's corpus the old rule fired on 10 texts and the new
+  one on 29: 26 from jobsinlund's aggregator, nearly all postdoc and research
+  roles, and 3 from impactpool. 3 of the old 10 no longer fire (a PhD offered
+  beside a Master's, PhD students to supervise, a doctorate or equivalent
+  merits).
+- **How SP4e was measured, and how to repeat it.** Offline and read-only: a
+  copy of the store and of the HTTP cache in the session scratchpad, never the
+  live files. The corpus is every stored description that is not unreadable,
+  plus every description a reader supplied in run 34's cached responses
+  (jobsinlund's 34 API pages, Ashby's three boards), replayed through the
+  readers' own parse functions, 1,991 texts in all. Each text was judged by
+  the old functions (a copy of the module from `main`) and the new, and every
+  changed verdict was read by hand. A rule was changed only for a misreading
+  found that way, never to move a count. The reading costs the same as
+  before, about 0.6 ms a posting.
+- **The reading does not special-case supplied text, and jobsinlund's
+  `unspecified` is the summary's silence, not a finding (SP4e).** 579 of the
+  790 jobsinlund descriptions read as `unspecified` (601 under the old
+  reading), and 162 of its 186 descriptions under 500 characters. Some of its
+  aggregator texts are summaries that leave the requirement out. That is
+  recorded, not tuned for: a rule fitted to a summary's silence would invent
+  requirements elsewhere.
+- **A better reading reaches no stored row by itself (SP4e, F13 still
+  holds).** A row read in full is never judged again. So the 13 `new` rows in
+  the export that the reading now excludes stay in the sheet until the owner
+  rejects them with `review` or SP4g re-judges stored rows. And the 15 stored
+  rows rejected on years that the reading would now keep stay rejected, since
+  nothing automatic un-rejects (WP5): 10 of them are SP4b's F4 (an employer's
+  history, a minimum age). Reviving any is the owner's call, as Q5 was.

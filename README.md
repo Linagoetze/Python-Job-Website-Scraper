@@ -75,6 +75,18 @@ posting you have already rejected should never cost a request.
 Layer 5 fails open — if a detail page can't be fetched or parsed, the job is kept
 rather than silently dropped.
 
+Layer 5 reads the requirement rather than grabbing the smallest number on the
+page. A posting must meet every requirement it states, so the largest one
+decides, and a narrow extra ("at least 2 years with a survey tool") cannot lower
+a role that asks for 5. Where a posting offers alternative routes in (a Master's
+and 2 years, or a Bachelor's and 4; or one figure per level it hires at), the
+lowest route decides. Figures that are not requirements are not read: an age, a
+cap ("up to 7 years"), a contract's length, a time window, a preference
+("ideally 5 years", "3 years preferred"), or the employer's own history. A
+posting that only *prefers* some years reads as `unspecified`. A PhD excludes a
+job only when it is required in so many words, not when it is offered beside a
+Master's or when the job is itself a doctoral position.
+
 A page that could not be fetched, or *was* fetched but holds no posting (a client-rendered shell: a title
 and a "please enable JavaScript" notice) is a third case, and is never mistaken
 for a posting that states no requirement. The job is kept, and the review sheet's
@@ -918,7 +930,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1071 tests plus 12 expected failures, about fifteen seconds, no network access
+1127 tests plus 2 expected failures, about fifteen seconds, no network access
 required. The expected failures are strict `xfail`s in
 `tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
 each pinned so that its fix turns it green. Extractors are
