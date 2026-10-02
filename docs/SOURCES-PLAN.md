@@ -2354,10 +2354,10 @@ any other. See the to-dos.
 
 ### Your to-dos
 
-- [ ] Confirm the count of rows to revive when the session prints its
+- [x] Confirm the count of rows to revive when the session prints its
       selection (expect 29: 24 rejected against a JS shell plus 5 further
       `review`-labelled rows). Nothing is written before you confirm.
-- [ ] After the next real run, look at the revived rows in the sheet. They
+- [x] After the next real run, look at the revived rows in the sheet. They
       should be re-checked, or marked unchecked, not shown as "unspecified".
 
 ---
