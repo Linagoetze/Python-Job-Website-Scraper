@@ -2535,13 +2535,13 @@ description. What the next run makes of them is the owner's run to show.
       `sources.yaml`. Done by the owner, 2026-10-02.
 - [x] Confirm the revival: 6 rows (simprints 4, kognity 2). Confirmed and
       written, 2026-10-02.
-- [ ] After the next run, look at the 6 revived rows: each should be read and
+- [x] After the next run, look at the 6 revived rows: each should be read and
       judged, not unchecked. kognity's need this branch merged first.
-- [ ] After the next real run, check the "Unreadable pages" block: jobsinlund,
+- [x] After the next real run, check the "Unreadable pages" block: jobsinlund,
       kognity and simprints should be gone from it.
 - [x] **undp:** retired 2026-10-02. You took it out of `sources.yaml`, and its
       reader and registry line were removed (see `docs/DECISIONS.md`).
-- [ ] Afterwards, label a handful of simprints and monday_com rows (your SP4b
+- [x] Afterwards, label a handful of simprints and monday_com rows (your SP4b
       Q8 answer). **simprints done 2026-10-02:** all 9 were already labelled
       `Discard`, and you re-judged the four now read in full. They stay
       `Discard`, on location. monday_com's 10 unlabelled rows are still to
