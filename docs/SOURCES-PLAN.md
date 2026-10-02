@@ -2293,7 +2293,7 @@ on a real read this time. Six stayed shells (simprints 4, kognity 2): they were
 dropped as unverified, not stored rejected, and remain `new` with an empty
 description and level, to be fetched again each run until SP4d makes their pages
 readable. The run summary's new block named jobsinlund (32 of 32), kognity (2 of
-2) and simprints (4 of 4). Known wrinkle: an unverified deferred drop is counted
+2) and simprints (4 of 4). **2026-10-02, owner's call: the six unreadable ones (simprints 4, kognity 2) were put back to `rejected`**, with their status, level and description restored from the pre-revival copy (one transaction; copy at `~/Documents/job_scraper_backups/jobs.sqlite3.pre-unrevive-20261002-080953`). Left `new` they stayed in the review sheet unchecked while Layer 5 kept dropping them. They need a fresh revival once SP4d makes their pages readable; the four read ones stay rejected. Known wrinkle: an unverified deferred drop is counted
 in the funnel's two L5 location/hybrid lines, which read as judged, and its
 stored row keeps a blank experience level, not the unchecked label. The suite is 1,045 passed and 12 expected failures;
 `ruff check`, `ruff format --check` and `run --help` are clean. SP7 had not
