@@ -1111,3 +1111,65 @@ session — see `CLAUDE.md`.
   group at readable length, tetrapak's four postings sharing 3,612 characters,
   and its cause was a URL shape that has since been fixed. Do not add the
   signature without a rule for what makes a duplicate legitimate.
+- **A reader may supply the posting text itself, and Layer 5 then reads that
+  instead of fetching (SP4d, 2026-10-02).** An extractor puts plain text on the
+  job as `description_text`. When it is non-empty after stripping, Layer 5
+  reads it and fetches nothing (`experience_filter.supplied_description`). An
+  empty one falls back to the detail page. It is one rule in Layer 5, not a
+  per-source branch, and it is the cheapest route there is: no request per
+  job, no browser. Knowing the platform's format is the reader's job, so a
+  reader whose data is HTML strips it (jobsinlund does, the way Layer 5 strips
+  a page). A supplied description is **exempt from the length half of
+  `is_unreadable`** but not from the marker half. The 500-character threshold
+  tests for a page that came back as chrome around nothing, and a description
+  field has no chrome, so a short one is a short posting. jobsinlund's
+  stripped descriptions run from 397 characters, and 186 of 790 are under 500.
+  Without the exemption every one of those would be "unchecked" for ever. The
+  pipeline agrees: a stored job carrying a supplied description has been
+  judged when its stored description *is* that text (compared by length,
+  which `job_index` already carries). Otherwise it is re-judged from the
+  supplied text with no fetch. That catches the shells stored before SP4d and
+  a posting edited since. A stored job that skips Layer 5 (already judged, or
+  rejected) keeps the description it was judged on. A supplied text must not
+  slip into the store beside a level it was never judged against.
+- **Routes chosen for the starved readers (SP4d, the owner's choices,
+  2026-10-02).** One detail page per reader was captured, static and rendered,
+  with the platform's own posting JSON.
+  - **Ashby: the public posting API**
+    (`api.ashbyhq.com/posting-api/job-board/<board>`). Ashby publishes it for
+    career sites, so it is not rung 3. It is one request per board, as the
+    board page was, and returns every listed posting's `descriptionPlain`,
+    which the reader supplies. The board page's `window.__appData` has no
+    description. Its detail page is a shell to Layer 5, though the static
+    HTML embeds the posting as schema.org JSON-LD. Reading JSON-LD in Layer 5
+    was the other no-browser route, rejected because it would change what
+    Layer 5 reads for every source whose pages carry it. The detail URL is
+    still built from board and id: it equalled the API's `jobUrl` on every
+    captured posting, and the API's location equalled the stored one on every
+    stored posting.
+  - **Workable: `strategy: dynamic`**, a `sources.yaml` change and no code.
+    The listing still comes from the v3 POST, because `fetch_rendered` carries
+    `post_json`. Only new or unread jobs are rendered. The static detail page is
+    a 43-character shell whose meta description is cut at 255 characters. The
+    front end's per-job v2 JSON has the full text, but it is undocumented
+    (rung 3), and from the reader it would cost a request per listed posting
+    per run, stored and Layer-0-dropped ones included.
+  - **undp: no route, because there is no listing.** `jobs.undp.org/robots.txt`
+    is `User-agent: *` / `Disallow: /`, checked 2026-10-02. Every run since
+    run 16 (2026-08-31) has skipped undp before extraction. A robots skip writes
+    no `source_health` row and no failure line, so nothing said so for a month.
+    The captured requisition was closed: the API had no item for it, and the
+    rendered page was 1,547 characters of site chrome with no JS marker. Over
+    the threshold, such a page would read as a posting. Whether to retire undp
+    or probe its Oracle careers site as a new listing is the owner's call.
+- **A reader whose whole walk is too heavy to store is pinned through its page
+  parser, and a reader that filters by age takes the day as an argument (SP4d).**
+  jobsinlund's walk was 34 pages and 5.5 MB, most of it descriptions. Its fixture
+  is page 1, replayed through `_parse_page` as dsv's is through its parser. The
+  reader skips postings over 30 days old, so `_parse_page` takes `today`, and the
+  fixture case passes the capture's date. A saved page must parse the same next
+  month.
+- **A probe test keeps the page a reader no longer reads (SP4d).** The Ashby
+  reader's fixture is now the API's JSON, but the probe fingerprints the board
+  page itself, so that page lives on as `kognity.listing.html`, a name
+  `capture_fixtures._page_of` does not own (the `path.rendered.html` rule).

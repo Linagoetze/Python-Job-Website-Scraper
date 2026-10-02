@@ -100,7 +100,7 @@ the ordering below.
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
 | 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done | `sp4c-layer5-unreadable` |
-| 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | not started | `sp4d-feed-layer5` |
+| 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | steps 1–3 done; step 4's revival awaits the owner | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | not started | `sp4g-refilter-inputs` |
@@ -2429,15 +2429,111 @@ reads that rather than fetching.
 Branch sp4d-feed-layer5. Commit, do not push. Update this plan file.
 ```
 
+### Result — steps 1–3 done 2026-10-02, branch `sp4d-feed-layer5`
+
+**Step 1, jobsinlund: the reader supplies the description.** An extractor may
+now put the posting text on the job as `description_text`. Layer 5 reads it and
+fetches nothing. That is one rule in `_fetch_and_analyze`, through
+`experience_filter.supplied_description`. A supplied description is exempt from
+the length test and keeps the marker test. The pipeline's re-check agrees: a
+stored job carrying one has been judged when its stored description is that
+text. Otherwise it is re-judged from the supplied text, with no fetch, which is
+how jobsinlund's stored shells get read on the next run. jobsinlund strips the
+API's HTML `description` and supplies it. The capture (owner-approved, 34
+pages, 790 postings) showed why the exemption is needed. Stripped, the shortest
+description is 397 characters and **186 of 790 are under 500**, all of them
+real postings. None is empty, none trips the marker, and the reader's other
+fields came out identical to the old reader's over the whole walk. Pinned:
+a supplied 420-character description is read, stored and not fetched on the
+next run. A stored shell is re-judged from the supplied text with no fetch. A
+rejected row keeps its own description. Every posting in the real fixture
+reads with no fetch.
+
+The walk was 5.5 MB, over the 2–4 MB put to the owner, so the committed
+fixture is page 1 (170 KB), pinned through a split-out `_parse_page`, as dsv
+is. `_parse_page` takes the day, because the reader skips postings over 30 days
+old. The other 33 pages were kept outside the repository, not committed.
+
+**Step 2, the captures and the routes (owner's choices).**
+
+| reader | static page | rendered page | platform JSON | route chosen |
+|---|---|---|---|---|
+| Ashby (kognity, monday_com, strava) | shell (76 chars), but the posting is in schema.org JSON-LD | 3,511 chars, readable | public posting API: every listed posting with `descriptionPlain`, one request per board | **posting API**. The reader moved to it and supplies the description. |
+| Workable (simprints, nutrition_international) | shell (43 chars). The meta description is cut at 255. | 9,347 chars, readable | per-job v2 JSON, full text, undocumented (rung 3) | **`strategy: dynamic`**, an owner edit to `sources.yaml`. No code. |
+| undp (Oracle HCM) | 4 chars | 1,547 chars of site chrome: the requisition is closed | REST finder: no item | **none**. See below. |
+
+**undp has not been scraped since 2026-08-31.** `jobs.undp.org/robots.txt` is
+`User-agent: *` / `Disallow: /`, so every run since run 16 skips the source
+before extraction. That writes no `source_health` row and no failure line,
+which is how it went unnoticed. There is no listing to feed Layer 5 from, so
+there is no detail route to choose, and its 16 rows are unlisted. The owner
+chose to record it and decide later.
+
+**Step 3, Ashby fails loudly.** First as asked: the `__appData` reader raised
+on a page without it, or with unparseable JSON. Step 2 then replaced that path.
+The posting-API reader raises on a body that is not JSON or has no `jobs` list,
+and an empty `jobs` list is an empty board. Both are pinned. The old board page
+lives on as `kognity.listing.html` for the probe's fingerprint tests. The
+kognity fixture is the API response captured in step 2. Its golden went from 5
+to 4 because the board now lists four postings, not because of the move.
+
+**Step 4, measured read-only (run 33, 2026-10-01, before any of this ran).**
+
+| source | rows | in export | desc < 300 | desc max | unchecked (page unreadable) | run 33's Unreadable pages block |
+|---|---:|---:|---:|---:|---:|---|
+| jobsinlund | 391 | 32 | 391 | 107 | 32 | 32 of 32 |
+| undp | 18 | 0 | 18 | 4 | 0 | not run (robots) |
+| kognity | 4 | 2 | 4 | 105 | 0 | 2 of 2 |
+| simprints | 4 | 4 | 4 | 48 | 0 | 4 of 4 |
+| monday_com | 4 | 0 | 4 | 86 | 0 | — |
+
+strava and nutrition_international still have no stored rows, because Layer 0
+drops all they list (31 and 3 in run 33). simprints' 4 and kognity's 2 "in
+export" are the export written before they were put back to `rejected`. The
+next export drops them.
+
+**After, projected, not yet run.** No real run was made in this session. Over
+the captured data: jobsinlund 0 unreadable of 790, kognity 0 of 4. monday_com
+and strava share kognity's reader and route, but their API responses were not
+captured. simprints and nutrition_international will read once `sources.yaml`
+says `dynamic` (one rendered page verified, at 9,347 characters). On the next
+run, jobsinlund's 32 unchecked rows and its stored shells still listed are
+re-judged from the supplied text, with no fetch. A `'new'` one now read as too
+senior flips to `'rejected'` (SP4c's rule). SP4b estimated that at 4 of the
+then 21 exported rows. The real after (the block, and the unchecked count per
+source) is the owner's next run to show.
+
+**Revival, proposed and not written.** Selected by query: `rejected`, a
+deferred-state level, a description under 500, source simprints or kognity,
+and listed in the latest run (each was dropped as unverified at Layer 5 in run
+33). That gives **6 rows: simprints 4, kognity 2**. Both kognity postings are
+also still on the board as of today's capture. The other 2 kognity rows and
+undp's 16 are unlisted. busuu's 1 (SP4c) is too. Nothing else SP4c left
+behind is listed. **The condition:** kognity's 2 read on the next run as soon
+as this branch is merged. simprints' 4 read only once `sources.yaml` says
+`dynamic`. Revived before that, they repeat SP4c's cycle, sitting `new` and
+unchecked while Layer 5 drops them. Method as SP4c: a backup copy outside
+`data/` first, one transaction, status `'new'`, description and level cleared.
+
+**Tests.** Suite 1,071 passed, 12 expected failures (was 1,050 + 12).
+
 ### Your to-dos
 
-- [ ] Approve each live capture before it runs (jobsinlund, then one detail
-      page each for Ashby, Workable and undp).
-- [ ] Choose the route for Ashby, Workable and undp when the session puts the
-      options to you: an undocumented endpoint is a judgement call.
+- [x] Approve each live capture before it runs (jobsinlund, then one detail
+      page each for Ashby, Workable and undp). Approved 2026-10-02.
+- [x] Choose the route for Ashby, Workable and undp. Chosen 2026-10-02:
+      posting API, `strategy: dynamic`, and none for undp (no listing).
+- [ ] **Set `strategy: dynamic` on simprints and nutrition_international** in
+      `sources.yaml`. The session does not touch that file.
+- [ ] Confirm the revival: 6 rows (simprints 4, kognity 2), with simprints'
+      after the line above. Nothing is written before you confirm.
+- [ ] After the next real run, check the "Unreadable pages" block: jobsinlund,
+      kognity and simprints should be gone from it.
+- [ ] **undp:** retire it, or probe its Oracle careers site as a new listing.
+      robots.txt has disallowed the old listing since about 2026-08-31.
 - [ ] Afterwards, label a handful of undp, simprints and monday_com rows
-      (your SP4b Q8 answer).
-
+      (your SP4b Q8 answer). undp has nothing new to label until it has a
+      listing.
 ---
 
 ## SP4e — Read the years requirement, not the smallest number
@@ -2748,7 +2844,10 @@ per company: verdict, extractor reused, rows captured.
 ## SP6 — Fixtures for the remaining eight readers
 
 `asana`, `coefficient`, `jobsinlund`, `mammut`, `norrsken`, `oatly`, `sida`,
-`undp`. Same method as SP4, lower stakes: each serves one source, so a bug is
+`undp`. **Seven now:** SP4d covered `jobsinlund` (page 1 of its walk, through
+its parser). `undp` cannot be captured while its robots.txt disallows the
+listing (SP4d), and waits on the owner's call about the source. Same method
+as SP4, lower stakes: each serves one source, so a bug is
 contained rather than inherited. On the bug rate SP4 actually measured (one
 reader bug in five, not the three-of-five the same section estimated going
 in — see SP4's note above its own prompt), do not expect every instalment to
@@ -2766,8 +2865,7 @@ think
 Read CLAUDE.md and docs/SOURCES-PLAN.md, then work on SP6 only.
 
 Capture fixtures for these uncovered readers and fix what that reveals:
-<PICK TWO OR THREE: asana, coefficient, jobsinlund, mammut, norrsken, oatly,
-sida, undp>
+<PICK TWO OR THREE: asana, coefficient, mammut, norrsken, oatly, sida, undp>
 
 Same method as SP4: capture first, then read the extractor, then compare against
 the page, then pin the golden. Do not reason about the layout before capturing.

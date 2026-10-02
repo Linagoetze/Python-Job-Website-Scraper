@@ -90,7 +90,7 @@ so a page that starts to read is checked then.
 - macOS or Linux
 - ~400 MB of disk for the headless Chromium that Playwright downloads
 
-Playwright is only needed for sources marked `strategy: dynamic` (one of the nine
+Playwright is only needed for sources marked `strategy: dynamic` (two of the nine
 in the example config). Drop those and you can skip the browser download.
 
 ## Setup
@@ -432,7 +432,7 @@ sources:
 | --- | --- |
 | `name` | Identifier for the source. **Must match a key in `job_scraper/extractors/registry.py`** — a source with no registered extractor is skipped with a log line. |
 | `url` | The career page or job board to fetch. A Workday `url` may carry the listing's own filter query, as the listing shows it once a filter is ticked (`?locationCountry=<id>`). The reader sends it to Workday as that filter and fails the source if the response does not show it applied. airbus has one because its unfiltered board is past the 2,000 postings Workday will count, which the reader refuses; its filter narrows it to one country, well below that. |
-| `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page. |
+| `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page, and why a Workable source is `dynamic` too: its detail page is a JavaScript shell to a plain fetch. |
 
 The example ships nine entries chosen to exercise a different extractor each, so
 there's one working example per supported ATS.
@@ -918,7 +918,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1050 tests plus 12 expected failures, about fifteen seconds, no network access
+1071 tests plus 12 expected failures, about fifteen seconds, no network access
 required. The expected failures are strict `xfail`s in
 `tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
 each pinned so that its fix turns it green. Extractors are
@@ -950,10 +950,10 @@ failed capture rather than a crash.
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit — except a
 response recognised as XML, which is saved as-is: an HTML parser corrupts it
-(SP4, found capturing Personio's feed). Not every source has one yet — eight
+(SP4, found capturing Personio's feed). Not every source has one yet — seven
 of the twenty-six extractors are uncovered, down from thirteen after SP4
 covered the five generic ATS readers (Breezy, Lever, Personio, SmartRecruiters,
-Workable). Closing the rest is planned as SP6 of
+Workable) and SP4d covered jobsinlund. Closing the rest is planned as SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.
 

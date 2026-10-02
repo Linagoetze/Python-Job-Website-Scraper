@@ -64,7 +64,10 @@ sources:
   # --- Workable ---
   - name: simprints
     url: https://apply.workable.com/simprints/
-    strategy: static
+    # dynamic for the detail pages, not the listing: the reader POSTs to
+    # Workable's JSON either way, but each posting's page is a JS shell to a
+    # static fetch, so Layer 5 could read nothing off it (SP4d).
+    strategy: dynamic
     company: Simprints
   # --- Personio ---
   - name: outdooractive
