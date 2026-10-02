@@ -5,9 +5,10 @@ Layer 3 — title heuristic: excludes jobs whose title contains seniority
            requests. Configured via rules.json.
 
 Layer 5 — detail-page parsing: fetches each job's detail_url, strips HTML,
-           and looks for numeric experience requirements. Jobs requiring
-           >= 3 years are excluded; jobs with no requirement or <= 2 years
-           are kept. Always runs, but only for jobs not already in the store
+           and reads the experience requirement (_read_years_requirement:
+           the largest requirement, the lowest alternative route). Jobs
+           requiring >= 3 years are excluded; jobs with no requirement or
+           <= 2 years are kept. Always runs, but only for jobs not already in the store
            — it is the one layer that costs an HTTP request per job.
 """
 
@@ -18,6 +19,7 @@ import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -215,20 +217,37 @@ def apply_combined_title_filter(
 # Layer 5 — detail-page experience extraction
 # ---------------------------------------------------------------------------
 
-_EXPERIENCE_PATTERNS: list[re.Pattern[str]] = [
-    # "2+ years of experience", "2 years of experience"
-    re.compile(r"\b(\d+)\s*\+?\s*years?\s+of\s+experience\b", re.IGNORECASE),
-    # "minimum of 3 years", "minimum 3 years"
-    re.compile(r"\bminimum\s+(?:of\s+)?(\d+)\s+years?\b", re.IGNORECASE),
-    # "at least 3 years"
-    re.compile(r"\bat\s+least\s+(\d+)\s+years?\b", re.IGNORECASE),
-    # "1-3 years" — extract lower bound
-    re.compile(r"\b(\d+)\s*[-–]\s*\d+\s+years?\b", re.IGNORECASE),
-    # "3+ years of/in [field]", "3+ years' experience"
-    re.compile(r"\b(\d+)\s*\+\s*years?\b", re.IGNORECASE),
-]
+# How Layer 5 reads a years requirement (SP4e). Not a list of phrasings each
+# yielding a number, and no longer the smallest number in the text: SP4b
+# measured that reading as wrong in both directions, an age or the employer's
+# own history excluding a job, and a narrow skill or an "additional N years"
+# clause letting a senior one through. The reading has three steps.
+#
+# 1. Find every *figure*: a number with a unit of time, in English, Swedish,
+#    Danish or German ("3 years", "five (5) years", "3–5 yrs", "3 års").
+# 2. Decide whether each figure is a *requirement*. It is when it is tied to
+#    experience ("3 years of relevant experience", "3 års erfarenhet"), stated
+#    as a minimum ("at least 3 years", "3+ years"), or tied to a qualification
+#    ("a Master's degree and 2 years"). It is not when its context says it is
+#    something else: an age, a time ago, a window ("in the last 3 years"), a
+#    contract's length, a cap ("up to 7 years"), an additive clause ("an
+#    additional 2 years ... in lieu of"), a preference ("ideally 5 years"), or
+#    the employer speaking about itself.
+# 3. Combine the requirements. A candidate must meet every requirement, so
+#    separate requirements combine by the *largest*. But a posting may offer
+#    alternative routes to the same role, one per qualification or per level
+#    hired at, and the owner qualifies through whichever asks least (SP4b Q1).
+#    So routes combine by the *smallest*, and that route then joins the other
+#    requirements. A route offered in lieu of the main requirement can only
+#    lower the answer, and a qualification standing in for some years takes
+#    them off it.
+#
+# The errors are arranged to fall on the kept side. A figure wrongly taken as a
+# route can only lower the answer, and a vetoed figure is simply not read; only
+# a figure wrongly taken as a requirement raises it, which is why step 2 asks
+# for a tie, a minimum or a qualification, and never reads a bare "N years".
 
-_WORD_YEARS: dict[str, int] = {
+_EN_NUMBERS: dict[str, int] = {
     "one": 1,
     "two": 2,
     "three": 3,
@@ -239,30 +258,284 @@ _WORD_YEARS: dict[str, int] = {
     "eight": 8,
     "nine": 9,
     "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "fifteen": 15,
+    "twenty": 20,
 }
-_WORD_YEARS_PATTERN = re.compile(
-    r"\b(one|two|three|four|five|six|seven|eight|nine|ten)"
-    r"\s+years?\s+(?:of\s+)?experience\b",
-    re.IGNORECASE,
+# Swedish, Danish and Norwegian. Kept apart from the English words because "to"
+# and "ni" are also English and Danish for something else: a Nordic word counts
+# only before a Nordic unit, and an English one only before an English unit.
+_NORDIC_NUMBERS: dict[str, int] = {
+    "ett": 1,
+    "en": 1,
+    "et": 1,
+    "två": 2,
+    "to": 2,
+    "tre": 3,
+    "fyra": 4,
+    "fire": 4,
+    "fem": 5,
+    "sex": 6,
+    "seks": 6,
+    "sju": 7,
+    "syv": 7,
+    "åtta": 8,
+    "otte": 8,
+    "nio": 9,
+    "ni": 9,
+    "tio": 10,
+    "ti": 10,
+}
+_NORDIC_UNITS = frozenset({"år", "års"})
+_MONTH_UNITS = frozenset({"month", "months", "månad", "månader", "månaders", "måned", "måneder"})
+
+_NUMBER = (
+    r"(?:\d{1,2}(?:[.,]5)?|"
+    + "|".join(sorted({*_EN_NUMBERS, *_NORDIC_NUMBERS}, key=len, reverse=True))
+    + r")"
 )
-_MONTHS_PATTERN = re.compile(
-    r"\b(\d+)\s*\+?\s*months?\s+(?:of\s+)?experience\b",
+# One figure. A range is one figure read at its lower bound, so "3–5 years"
+# never yields a separate 5. The lookbehind keeps a year such as 2026, or a
+# grade such as P-2, from lending its digits.
+_FIGURE = re.compile(
+    rf"(?<![\w,/-])(?<!\d\.)(?P<n>{_NUMBER})(?:\s*\(\s*\d{{1,2}}\s*\))?"
+    rf"(?P<range>\s*(?:-|–|—|to|till|until)\s*{_NUMBER}(?:\s*\(\s*\d{{1,2}}\s*\))?)?"
+    r"\s*(?P<plus>\+)?\s*"
+    r"(?P<unit>years?|yrs?|års?|jahren?|months?|månad(?:er|ers)?|måned(?:er)?)\b"
+    r"(?P<plus_after>\s*\+)?",
     re.IGNORECASE,
 )
 
-# PhD is preferred/optional → keep the job regardless of other PhD signals.
-_PHD_PREFERRED = re.compile(
-    r"\bPhD\b.{0,60}?\b(?:preferred|desired|a\s+plus|an?\s+advantage|beneficial|nice\s+to\s+have|is\s+a\s+bonus|ideally)\b"
-    r"|\b(?:preferred|desired|ideally)\b.{0,60}?\bPhD\b",
-    re.IGNORECASE | re.DOTALL,
+# Step 2: what follows a figure that ties it to experience. A few words may sit
+# between ("of relevant progressively responsible experience"), never a full
+# stop. "working" and "as a" tie it as firmly as the noun does.
+_TIE_AFTER = re.compile(
+    r"^\s*(?:['’]s?\s*)?(?:of|av|af|in|i)?\s*(?:[\w’'/&-]+,?\s+){0,5}?"
+    r"(?:experience|expertise|erfarenhet|erfaring|erfahrung|berufserfahrung"
+    r"|arbetslivserfarenhet|working\b|worked\b|as\s+an?\s)"
+    # "3–6 years selling scientific software", "5 years leading teams", but not
+    # "2 years following graduation".
+    r"|^\s*(?!(?:during|following|starting|beginning|including|according|remaining)\b)[a-z]+ing\b",
+    re.IGNORECASE,
 )
-# PhD is a hard requirement → exclude the job.
-_PHD_REQUIRED = re.compile(
-    r"\bPhD\b.{0,60}?\b(?:required|mandatory|essential|necessary)\b"
-    r"|\b(?:requires?|must\s+have|must\s+hold|need\s+a|holding\s+a)\b.{0,60}?\bPhD\b"
-    r"|\bdoctorate\b.{0,60}?\b(?:required|mandatory|essential)\b",
-    re.IGNORECASE | re.DOTALL,
+_EXPERIENCE_NOUN = re.compile(
+    r"\b(?:experience|expertise|erfarenhet|erfaring|erfahrung)", re.IGNORECASE
 )
+_MINIMUM_BEFORE = re.compile(
+    r"(?:\bminimum(?:\s+of)?|\bmin\.?|\bat\s+least|\bno\s+less\s+than|\bnot\s+less\s+than"
+    r"|\bminst|\bmindst|\bmindestens)\s*[(:]?\s*$",
+    re.IGNORECASE,
+)
+_MINIMUM_AFTER = re.compile(r"^\s*(?:minimum|min\.?)\b", re.IGNORECASE)
+# A range or a "+" reads as a requirement when a field follows it ("3–5 years
+# in customer support"), but not when a full stop or a comma does ("Duration:
+# 3–4 years, subject to funding").
+_FIELD_AFTER = re.compile(r"^\s*(?:['’]s?\s*)?(?:of|in|as|at|within|working|av|inom|i)\b", re.I)
+
+# What precedes a figure that makes it something other than a requirement: an
+# age, a window or a time ago, a cap, an additive clause, a contract's length.
+_VETO_BEFORE = re.compile(
+    r"(?:(?:\baged?|\blast|\bpast|\bnext|\bfirst|\bwithin(?:\s+the)?|\bevery|\bafter"
+    r"|\bnearly|\balmost|\bspent|\bspanning"
+    r"|(?<!looking\s)(?<!seeking\s)\bfor(?:\s+(?:over|more\s+than|almost|nearly|about|around|some))?"
+    r"|\bsince|\badditional|\bfurther|\bextra|\bup\s+to|\bmaximum(?:\s+of)?|\bmax\.?"
+    r"|\bno\s+more\s+than|\bnot\s+more\s+than|\bless\s+than|\bfewer\s+than|\bunder"
+    r"|\bcommit(?:ment)?\s+(?:to|for)|\bsenaste|\binom|\bsedan|\bunder\s+de)\s*\(?"
+    # A header may end in a colon ("Duration: 3–4 years"). "Looking for:" may
+    # not, which is why the colon is allowed only here.
+    r"|(?:\bage(?:\s+of)?|\bduration(?:\s+of)?|\bperiod(?:\s+of)?|\bterm(?:\s+of)?"
+    r"|\bcommitment(?:\s+of)?|\bcontract(?:\s+of)?|\blength(?:\s+of\s+\w+)?)\s*[(:]?)\s*$",
+    re.IGNORECASE,
+)
+# "Age: interns must be at least 18 years" names the age before the figure.
+_AGE_BEFORE = re.compile(r"\bage\b[^.;]{0,40}$", re.IGNORECASE)
+_VETO_AFTER = re.compile(
+    r"^\s*(?:old\b|of\s+age|or\s+(?:older|over|above)|ago\b|from\s+now|later\b|gammal|gamle?\b"
+    r"|before\b|prior\s+to\b"
+    r"|of\s+(?:\w+\s+){0,2}?(?:education|schooling|study|studies|validity)\b"
+    r"|of\s+(?:history|existence|operations?)\b"
+    r"|(?!of\b)(?:\w+\s+)?(?:contract|duration|commitment|appointment|fixed[-\s]term|renewable"
+    r"|horizon|warranty|history|track\s+record|anniversary|validity)\b"
+    r"|valid\b|in\s+(?:business|operation|existence)"
+    # Years of study, not of work: "minst tre års heltidsstudier".
+    r"|\w*studier\b|\w*utbildning\b|\w*uddannelse\b)",
+    re.IGNORECASE,
+)
+
+# A preference is not a requirement. Read before the figure only when it says so
+# unmistakably ("ideally", "Preferred:"). A bare "preferred" just before a figure
+# usually ends the item before it in a stripped list ("... a related field
+# preferred 6 years of experience"), so it is not read there.
+_PREFERENCE_BEFORE = re.compile(
+    r"(?:\bideally|\bpreferably|\bdesirably|\boptimally|\bpreferred:|\bdesirable:|\bdesired:"
+    r"|\bnice\s+to\s+have:|\bmeriterande:?|\bhelst)\s*(?:\w+\s+){0,2}?$",
+    re.IGNORECASE,
+)
+_PREFERENCE_AFTER = re.compile(
+    r"\b(?:preferred|preferable|desirable|desired|advantageous|an?\s+(?:additional\s+|added\s+)?"
+    r"(?:asset|plus|advantage|bonus)|nice\s+to\s+have|meriterande|önskvärt|ett\s+plus)\b",
+    re.IGNORECASE,
+)
+# A preference after the figure is read to the end of its sentence or list item
+# ("Candidates with 5 years and above of relevant experience in ... are
+# preferred"). A stripped page shows a new list item only as a capital letter
+# after a lower-case word ("... administrative operations Proficient in ERP"),
+# except after a word that cannot end an item ("in the context of Data
+# engineering").
+_PREFERENCE_REACH = 250
+_NAMED_PARENTHETICAL = re.compile(
+    r"\((?!\s*(?:is\s+|are\s+|would\s+be\s+)?(?:an?\s+)?(?:added\s+|additional\s+)?"
+    r"(?:preferred|preferable|desirable|desired|advantageous|asset|plus|advantage|bonus"
+    r"|nice\s+to\s+have)\s*\))[^)]*\)"
+)
+_ITEM_START = re.compile(
+    r"(?<=[a-z])(?<!\bof)(?<!\bin)(?<!\bon)(?<!\bat)(?<!\bby)(?<!\bto)(?<!\ba)(?<!\ban)(?<!\bthe)"
+    r"(?<!\band)(?<!\bor)(?<!\bwith)(?<!\bfor)(?<!\bfrom)\s+(?=[A-Z][a-z])"
+)
+
+# The employer speaking about itself ("with more than 40 years of experience,
+# our organisation ..."): first person plural, and nothing addressed to a
+# candidate, in the figure's sentence.
+_SENTENCE_END = re.compile(r"[.!?;\n•]")
+_FIRST_PERSON_PLURAL = re.compile(
+    r"\b(?:we|we['’](?:ve|re)|our|ours|us|vi|vår|vårt|våra|vores|wir|unser\w*)\b", re.IGNORECASE
+)
+_ADDRESSED_TO_CANDIDATE = re.compile(
+    r"\b(?:you|your|you['’](?:ll|ve|re|d)|candidates?|applicants?|du|dig|din|ditt|dina|sie"
+    r"|required|requires?|requirements?|must|should|essential|qualifications?|qualified"
+    r"|someone|somebody|person|individual|profile|looking\s+for|seeking|ideal|need|needs"
+    r"|expect|expects|must-haves?|bring)\b",
+    re.IGNORECASE,
+)
+
+# Step 3: a figure tied to a qualification is one route among alternatives.
+# "Master" only as a degree, never "master data" or "Scrum Master"; "degree"
+# never as "a high degree of autonomy".
+_QUALIFICATION = (
+    r"(?:(?<!high\s)(?<!great\s)(?<!certain\s)(?<!some\s)degree|bachelor\S*|master['’]?s\b"
+    r"|master\s+(?:degree|of)\b|ph\.?\s?d|doctora\w*|diploma|secondary\s+(?:education|school)"
+    r"|high\s+school|first[-\s]level|b\.?sc|m\.?sc|mba|examen|gymnasie\w*"
+    r"|(?:university|college)\s+(?:graduates?|education))"
+)
+# "<qualification> ... with|and|plus <figure>": the qualification and its years
+# are one route. Nothing between them may be another figure, or the link word
+# belongs to that figure instead ("a degree. 5 years of experience, with at
+# least 2 years in a senior role" is not a route of 2).
+_ROUTE_BEFORE = re.compile(
+    rf"\b{_QUALIFICATION}[^.;:•\n]{{0,300}}?"
+    r"(?:\bwith|\band|\bplus|\+|\bfollowed\s+by|\bcombined\s+with|\bin\s+combination\s+with"
+    r"|\boch|\bmed|\bog)\s+(?:an?\s+)?(?:minimum\s+(?:of\s+)?|at\s+least\s+|minst\s+)?$",
+    re.IGNORECASE,
+)
+# "<figure> (with a bachelor's degree)", "<figure> of experience with a Master's".
+# A posting that hires at several levels at once states one figure per level
+# ("1 year for category C, 5 years for category B", "Entry-Level: 2-7 years").
+# Each level is a route in, exactly as each degree is.
+_LEVEL = (
+    r"(?:(?:category|band|level|grade|tier)\s+[A-Z0-9]\b|[PGD]-?\d\b|(?:entry|junior|mid|senior)"
+    r"[-\s]level)"
+)
+_ROUTE_AFTER = re.compile(
+    r"^[^.;•\n]{0,100}?(?:\(\s*(?:with\s+|for\s+|if\s+only\s+)?(?:an?\s+|the\s+)?[^)]{0,30}?"
+    rf"(?:{_QUALIFICATION}|{_LEVEL})|\b(?:with|for|if\s+only)\s+(?:an?\s+|the\s+)?"
+    rf"(?:[\w’']+\s+){{0,2}}?(?:{_QUALIFICATION}|{_LEVEL}))",
+    re.IGNORECASE,
+)
+_LEVEL_BEFORE = re.compile(
+    rf"{_LEVEL}[^.;•\n]{{0,40}}?:?\s*(?:essential\s*:?\s*)?"
+    r"(?:at\s+least|minimum(?:\s+of)?)?\s*$",
+    re.IGNORECASE,
+)
+# "... 3 years of X, or 5 years of Y": alternatives with no qualification named.
+_OR_BEFORE = re.compile(
+    r"\b(?:or|eller|alternatively)\s+(?:an?\s+)?(?:minimum\s+(?:of\s+)?|at\s+least\s+)?$",
+    re.IGNORECASE,
+)
+# "... OR a Master's degree": the figure before it was one route of two.
+_OR_QUALIFICATION = re.compile(rf"\b(?:or|eller)\b[^.;]{{0,40}}?\b{_QUALIFICATION}", re.IGNORECASE)
+# A route offered instead of the main requirement ("a bachelor's degree combined
+# with seven years will be considered in lieu of the above").
+_SUBSTITUTE = re.compile(
+    r"\bin\s+lieu\b|\binstead\s+of\b|\bin\s+place\s+of\b|\bmay\s+be\s+(?:accepted|considered)"
+    r"|\bwill\s+be\s+(?:accepted|considered)|\bsubstitut\w*",
+    re.IGNORECASE,
+)
+# The years a qualification stands in for ("a degree may be considered in lieu
+# of two years of experience"): not a requirement, a reduction of one.
+_DEDUCTION_BEFORE = re.compile(
+    r"(?:\bin\s+lieu\s+of|\binstead\s+of|\bin\s+place\s+of|\bsubstitut\w*\s+for)\s*$",
+    re.IGNORECASE,
+)
+
+# How far around a figure its context is read: far enough for "a minimum of",
+# not so far that it borrows the context of the item before.
+_CONTEXT_CHARS = 100
+# How far back a qualification may name the route a figure belongs to. UN
+# postings list a whole field of study between the degree and its years ("an
+# advanced university degree in statistics, demography, economics or a closely
+# related quantitative social science discipline, with a minimum of two years").
+_ROUTE_CHARS = 320
+# No posting asks for more years than this. A larger figure is the employer's
+# history ("has spent nearly 70 years working to ...") or an age.
+_MAX_PLAUSIBLE_YEARS = 25
+
+
+class _Kind(Enum):
+    """What part of the requirement a figure is."""
+
+    # Must be met whatever the route.
+    REQUIREMENT = "requirement"
+    # One of several ways in, by qualification or by level.
+    ROUTE = "route"
+    # A way in offered in lieu of the posting's main requirement.
+    SUBSTITUTE = "substitute"
+    # Years a qualification stands in for.
+    DEDUCTION = "deduction"
+
+
+@dataclass(frozen=True)
+class _Figure:
+    """One figure the reading took as part of the requirement, and what part."""
+
+    years: int
+    kind: _Kind
+
+
+# The PhD rule (SP4e, F14). A doctorate decides only when it is required in its
+# own clause, and it is not required when it is offered beside another degree
+# ("a Master's or PhD") or as a preference.
+_DOCTORATE = r"(?:ph\.?\s?d\b|d\.?phil\b|doctorate|doctoral\s+degree|doktorsexamen|doktorgrad)"
+# A mention that names a doctoral *position* is the job, not a requirement of it:
+# "PhD students", "mandatory PhD courses", "doctoral studies".
+_DOCTORATE_MENTION = re.compile(
+    rf"{_DOCTORATE}(?!\.?[\s‑-]*(?:students?|stud(?:y|ies)|courses?|candidates?|positions?|projects?"
+    r"|programmes?|programs?|thesis|level|supervis\w*|education|fellows?|researchers?))",
+    re.IGNORECASE,
+)
+_DOCTORATE_ALTERNATIVE = re.compile(
+    rf"(?:degree|master\S*|m\.?sc|mba|bachelor\S*|equivalent)\s*,?\s*(?:or|and/or|/)\s*"
+    rf"(?:an?\s+)?(?:{_DOCTORATE})"
+    rf"|(?:{_DOCTORATE})\s*[,(]?\s*(?:or|and/or|/)\s*(?:an?\s+)?(?:[\w-]+\s+){{0,3}}?"
+    rf"(?:degree|master\S*|m\.?sc|mba|bachelor\S*|equivalent|corresponding|comparable|similar)",
+    re.IGNORECASE,
+)
+_DOCTORATE_REQUIRED = re.compile(
+    r"\b(?:required|mandatory|essential|necessary|requires?|must|need|needed|holding|hold"
+    r"|prerequisites?|requirements?)\b",
+    re.IGNORECASE,
+)
+_DOCTORATE_PREFERRED = re.compile(
+    r"\b(?:preferred|preferably|desired|desirable|ideally|a\s+plus|an?\s+(?:asset|advantage)"
+    r"|beneficial|nice\s+to\s+have|bonus|advantageous|meriterande|preference)\b",
+    re.IGNORECASE,
+)
+# "a PhD, or an international degree deemed equivalent to a PhD" offers no way
+# in without a doctorate.
+_DOCTORATE_EQUIVALENT = re.compile(rf"equivalent\s+to\s+(?:an?\s+)?{_DOCTORATE}", re.IGNORECASE)
+# A doctorate's clause: its sentence, cut to this many characters either side so
+# that one long stripped list does not lend it a "required" from elsewhere.
+_DOCTORATE_CONTEXT_CHARS = 70
 
 
 def _strip_html(html: str) -> str:
@@ -308,32 +581,197 @@ def supplied_description(job: JobRecord) -> str:
     return str(job.get("description_text") or "").strip()[:_MAX_DESCRIPTION_CHARS]
 
 
-def _extract_min_years(text: str) -> int | None:
-    """Return the minimum years requirement found in text, or None if not found."""
-    all_years: list[int] = []
-    for pat in _EXPERIENCE_PATTERNS:
-        for m in pat.finditer(text):
-            try:
-                all_years.append(int(m.group(1)))
-            except (IndexError, ValueError):
-                pass
-    for m in _WORD_YEARS_PATTERN.finditer(text):
-        n = _WORD_YEARS.get(m.group(1).lower())
-        if n is not None:
-            all_years.append(n)
-    for m in _MONTHS_PATTERN.finditer(text):
-        try:
-            all_years.append(int(m.group(1)) // 12)
-        except (IndexError, ValueError):
-            pass
-    return min(all_years) if all_years else None
+def _figure_years(match: re.Match[str]) -> int | None:
+    """The whole years a figure states, or None when its number and unit disagree.
+
+    A Nordic number word counts only before a Nordic unit and an English one only
+    before an English unit, so "to years" is never two years.
+    """
+    number, unit = match.group("n").lower(), match.group("unit").lower()
+    nordic_unit = unit in _NORDIC_UNITS
+    if number[0].isdigit():
+        value = float(number.replace(",", "."))
+    elif nordic_unit or unit.startswith("må"):
+        if number not in _NORDIC_NUMBERS:
+            return None
+        value = _NORDIC_NUMBERS[number]
+    else:
+        if number not in _EN_NUMBERS:
+            return None
+        value = _EN_NUMBERS[number]
+    if unit in _MONTH_UNITS:
+        return int(value // 12)
+    return int(value)
+
+
+def _sentence(text: str, start: int, end: int) -> str:
+    """The sentence holding text[start:end], cut to _CONTEXT_CHARS * 2 either side."""
+    lo = max(0, start - 2 * _CONTEXT_CHARS)
+    head = text[lo:start]
+    cut = [m.end() for m in _SENTENCE_END.finditer(head)]
+    if cut:
+        head = head[cut[-1] :]
+    tail = text[end : end + 2 * _CONTEXT_CHARS]
+    stop = _SENTENCE_END.search(tail)
+    if stop:
+        tail = tail[: stop.start()]
+    return head + text[start:end] + tail
+
+
+def _preferred_after(text: str, end: int) -> bool:
+    """True when a preference later in the figure's sentence is about this figure.
+
+    It is not when another figure, or a second mention of experience, comes
+    between them: "6+ years of sales experience, ... Retailer-facing experience
+    preferred" prefers the second experience, not the six years.
+    """
+    tail = text[end : end + _PREFERENCE_REACH]
+    for boundary in (_SENTENCE_END, _ITEM_START):
+        stop = boundary.search(tail)
+        if stop:
+            tail = tail[: stop.start()]
+    # "(desirable)" marks the whole item; "(B2B SaaS preferred)" marks only
+    # what it names.
+    tail = _NAMED_PARENTHETICAL.sub(" ", tail)
+    preference = _PREFERENCE_AFTER.search(tail)
+    if preference is None:
+        return False
+    between = tail[: preference.start()]
+    own_tie = _TIE_AFTER.match(between)
+    rest = between[own_tie.end() :] if own_tie else between
+    return not (_FIGURE.search(rest) or _EXPERIENCE_NOUN.search(rest))
+
+
+def _read_figure(text: str, match: re.Match[str], previous_end: int) -> _Figure | None:
+    """Step 2 for one figure: the requirement it states, or None when it states none."""
+    years = _figure_years(match)
+    if years is None or years > _MAX_PLAUSIBLE_YEARS:
+        return None
+    start, end = match.span()
+    before = text[max(0, start - _CONTEXT_CHARS) : start]
+    after = text[end : end + _CONTEXT_CHARS]
+    sentence = _sentence(text, start, end)
+
+    if _VETO_BEFORE.search(before) or _VETO_AFTER.match(after) or _AGE_BEFORE.search(before):
+        return None
+    if _PREFERENCE_BEFORE.search(before):
+        return None
+    if _preferred_after(text, end):
+        return None
+    if _DEDUCTION_BEFORE.search(before):
+        return _Figure(years=years, kind=_Kind.DEDUCTION)
+
+    # Only the text since the previous figure can link this one to a route:
+    # anything earlier belongs to that figure.
+    own_before = text[max(previous_end, start - _ROUTE_CHARS) : start]
+    route = bool(
+        _ROUTE_BEFORE.search(own_before)
+        or _LEVEL_BEFORE.search(own_before)
+        or _ROUTE_AFTER.match(text[end : end + _ROUTE_CHARS])
+    )
+    tied = bool(_TIE_AFTER.match(after))
+    minimum = bool(
+        _MINIMUM_BEFORE.search(before)
+        or _MINIMUM_AFTER.match(after)
+        or match.group("plus")
+        or match.group("plus_after")
+    )
+    ranged = bool(match.group("range"))
+    if not (tied or minimum or route or (ranged and _FIELD_AFTER.match(after))):
+        return None
+
+    if _FIRST_PERSON_PLURAL.search(sentence) and not _ADDRESSED_TO_CANDIDATE.search(sentence):
+        return None
+    if route and _SUBSTITUTE.search(sentence):
+        return _Figure(years=years, kind=_Kind.SUBSTITUTE)
+    return _Figure(years=years, kind=_Kind.ROUTE if route else _Kind.REQUIREMENT)
+
+
+def _requirement_figures(text: str) -> list[_Figure]:
+    """Steps 1 and 2: every figure in the text that states a years requirement.
+
+    A requirement joined to the one before it by "or" makes both of them
+    routes: "3 years of X, or 5 years of Y" offers two ways in, as a pair of
+    degrees does. So does "... with 9 years. OR a Master's degree with 7
+    years", where the first degree sits too far back to be read as its own.
+    """
+    figures: list[_Figure] = []
+    previous_end = 0
+    for match in _FIGURE.finditer(text):
+        figure = _read_figure(text, match, previous_end)
+        if figure is not None and figures and figures[-1].kind is _Kind.REQUIREMENT:
+            between = text[previous_end : match.start()]
+            near = len(between) < _CONTEXT_CHARS
+            if (figure.kind is _Kind.REQUIREMENT and near and _OR_BEFORE.search(between)) or (
+                figure.kind is _Kind.ROUTE and _OR_QUALIFICATION.search(between)
+            ):
+                figures[-1] = _Figure(years=figures[-1].years, kind=_Kind.ROUTE)
+                if figure.kind is _Kind.REQUIREMENT:
+                    figure = _Figure(years=figure.years, kind=_Kind.ROUTE)
+        if figure is not None:
+            figures.append(figure)
+        previous_end = match.end()
+    return figures
+
+
+def _read_years_requirement(text: str) -> int | None:
+    """The years of experience a posting requires, or None when it states none.
+
+    Step 3 of the reading described above `_EN_NUMBERS`. Every requirement must
+    be met, so they combine by the largest. Routes are alternatives, and the
+    owner qualifies through whichever asks least (SP4b Q1), so they combine by
+    the smallest, and that route joins the requirements. A route offered *in
+    lieu of* the posting's main requirement is an alternative to all of that,
+    so it can only lower the answer. A qualification standing in for some years
+    ("a degree may be considered in lieu of two years") takes them off.
+
+    min() over every number in the text went in SP4e: it let a narrow skill ("at
+    least 2 years with survey software") or an additive clause decide a role
+    that asks for 5 (docs/DECISIONS.md).
+    """
+    by_kind: dict[_Kind, list[int]] = {}
+    for figure in _requirement_figures(text):
+        by_kind.setdefault(figure.kind, []).append(figure.years)
+    needed = list(by_kind.get(_Kind.REQUIREMENT, []))
+    if _Kind.ROUTE in by_kind:
+        needed.append(min(by_kind[_Kind.ROUTE]))
+    answer = max(needed) if needed else None
+    if _Kind.SUBSTITUTE in by_kind:
+        substitute = min(by_kind[_Kind.SUBSTITUTE])
+        answer = substitute if answer is None else min(answer, substitute)
+    if answer is not None and _Kind.DEDUCTION in by_kind:
+        answer = max(0, answer - max(by_kind[_Kind.DEDUCTION]))
+    return answer
 
 
 def _has_phd_required(text: str) -> bool:
-    """Return True only if the text requires a PhD (not merely preferred or desired)."""
-    if _PHD_PREFERRED.search(text):
-        return False
-    return bool(_PHD_REQUIRED.search(text))
+    """True only when the text requires a doctorate in so many words.
+
+    Each mention is judged in its own clause. One offered beside another degree
+    ("a Master's or PhD") or as a preference does not count, and neither does a
+    clause that names no requirement at all.
+    """
+    for mention in _DOCTORATE_MENTION.finditer(text):
+        start, end = mention.span()
+        lo = max(0, start - _DOCTORATE_CONTEXT_CHARS)
+        clause = text[lo : end + _DOCTORATE_CONTEXT_CHARS]
+        offset = start - lo
+        head, tail = clause[:offset], clause[offset:]
+        cut = [m.end() for m in _SENTENCE_END.finditer(head)]
+        if cut:
+            head = head[cut[-1] :]
+        stop = _SENTENCE_END.search(tail, end - start)
+        if stop:
+            tail = tail[: stop.start()]
+        clause = head + tail
+        alternative = _DOCTORATE_ALTERNATIVE.search(clause) and not _DOCTORATE_EQUIVALENT.search(
+            clause
+        )
+        if alternative or _DOCTORATE_PREFERRED.search(clause):
+            continue
+        if _DOCTORATE_REQUIRED.search(clause):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -346,7 +784,7 @@ class _DetailSignals:
     """
 
     job: JobRecord
-    min_years: int | None = None
+    years_required: int | None = None
     phd_required: bool = False
     fetch_failed: bool = False
     # The page was fetched and holds no posting (SP4c). Distinct from
@@ -377,7 +815,7 @@ def _fetch_and_analyze(
 
     A job whose reader supplied its description (`supplied_description`) is read
     from that instead, and nothing is fetched.
-    min_years is None when no numeric requirement was found or there was no URL.
+    years_required is None when no requirement was found or there was no URL.
     `unreadable` is set, and nothing else read, when the page held no posting.
     description_text is the stripped page text, capped at _MAX_DESCRIPTION_CHARS,
     or '' when nothing was fetched — WP7's scorer reads this back from the store
@@ -424,7 +862,7 @@ def _analyze(
         return _DetailSignals(job=job, unreadable=True)
     return _DetailSignals(
         job=job,
-        min_years=_extract_min_years(text),
+        years_required=_read_years_requirement(text),
         phd_required=_has_phd_required(text),
         hybrid_found=(bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None),
         listed_location_found=(
@@ -504,7 +942,7 @@ def apply_detail_filter(
 
     A job that arrives with a `description_text` its reader supplied is read
     from that, and its page is not fetched (SP4d; see `supplied_description`).
-    Keeps jobs where: no numeric requirement found, or min years <= _MAX_JUNIOR_YEARS,
+    Keeps jobs where: no requirement found, or the years required <= _MAX_JUNIOR_YEARS,
     and the role does not require a PhD.
     Fails open on fetch/parse errors (job is kept).
     Annotates each job dict with an `experience_level` string.
@@ -599,7 +1037,7 @@ def apply_detail_filter(
 
     for signals in results:
         job = signals.job
-        min_years, phd_req, failed = signals.min_years, signals.phd_required, signals.fetch_failed
+        years, phd_req, failed = signals.years_required, signals.phd_required, signals.fetch_failed
         description_text = signals.description_text
 
         # The two deferred states, settled in Layer 1's order. Either can drop
@@ -666,18 +1104,18 @@ def apply_detail_filter(
                     **{DROP_RULE_KEY: RULE_PHD_REQUIRED},
                 )
             )
-        elif min_years is None:
+        elif years is None:
             no_requirement += 1
             kept.append(dict(job, experience_level="unspecified", **extra))
-        elif min_years <= _MAX_JUNIOR_YEARS:
+        elif years <= _MAX_JUNIOR_YEARS:
             kept.append(dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)", **extra))
         else:
             excluded.append(
                 dict(
                     job,
-                    experience_level=f"senior ({min_years}+yr)",
+                    experience_level=f"senior ({years}+yr)",
                     **extra,
-                    **{DROP_RULE_KEY: f"experience: {min_years}+ years required"},
+                    **{DROP_RULE_KEY: f"experience: {years}+ years required"},
                 )
             )
 
