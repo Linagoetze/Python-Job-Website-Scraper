@@ -2386,7 +2386,14 @@ strava and nutrition_international share the Ashby and Workable readers.
    420 characters). Let an extractor supply `description_text` itself, and
    let Layer 5 read that instead of fetching when it is present. That is one
    rule in apply_detail_filter, not a per-source branch, and it saves a
-   request per job. Config over code: no new module. Pin with the existing
+   request per job. SP4c's threshold bites here: the shortest jobsinlund
+   description is about 420 characters, under MIN_READABLE_CHARS (500), so
+   `is_unreadable` would flag a supplied description and the pipeline's
+   "stored description under the threshold" test would fetch the job again
+   every run. A description the reader supplied is not a fetched page: exempt
+   it from the length test (keep the marker test), and make the re-fetch test
+   in pipeline.py agree. Pin both: a supplied 420-character description is
+   read, stored, and not fetched on the next run. Config over code: no new module. Pin with the existing
    jobsinlund pattern. That reader has no fixture (SP6's list), so capture
    one first with scripts/capture_fixtures.py. The capture is live, so ask the
    owner before running it.
@@ -2402,7 +2409,17 @@ strava and nutrition_international share the Ashby and Workable readers.
    empty list, priority 2). Make it raise, as personio.py now does (SP4), and
    pin it.
 4. Re-measure SP4b's coverage matrix for these sources, read-only, and report
-   it. Then remind the owner of their SP4b Q8 answer: label a handful of
+   it, with SP4c's own measure beside it: rows per source whose
+   experience_level is "unchecked (page unreadable)", and the run summary's
+   "Unreadable pages" block, before and after. Then PROPOSE, and do not write
+   until the owner confirms the number, reviving again the rows SP4c had to
+   put back because their pages were unreadable: simprints 4 and kognity 2
+   (select them by query: rejected, a deferred-state experience_level, a
+   description under the threshold, source simprints or kognity), plus undp's
+   16 and anything else SP4c left behind that is still listed. Use SP4c's
+   method (backup copy outside data/ first, one transaction, status 'new',
+   description and experience_level cleared) and only for rows still listed:
+   an unlisted row is never fetched. Then remind the owner of their SP4b Q8 answer: label a handful of
    undp, simprints and monday_com rows now that they can be read.
 
 DOCS. Test count; README's uncovered-reader sentence if a fixture is added.
@@ -2538,7 +2555,13 @@ Q6 (an unreadable job is kept, marked) collide on a job whose location is
 empty AND whose page cannot be read. Under SP4c that job is unverified, so it
 is dropped for the run and never stored, and the owner never sees it, on
 every run. Count how many such jobs the store and the last run hold, and put
-the case to the owner. Do not choose quietly.
+the case to the owner. Do not choose quietly. Two facts from SP4c to put
+beside the count. A stored `new` row that is dropped as unverified is not
+touched, so it stays in the review sheet (SP4c's revived simprints rows did,
+and the owner had them put back to rejected); a brand-new job dropped as
+unverified is never stored and is never seen. And "unchecked (page
+unreadable)" now marks every kept job whose page could not be read, so the
+population is countable from experience_level.
 
 DOCS. Test count. In tests/test_filter_audit.py,
 test_a_home_based_or_worldwide_field_is_admitted_as_remote (strict xfail)
@@ -2587,8 +2610,9 @@ run_exclusions.
    which needs the migration care WP4/WP5 took) and documenting the pass as
    title-and-location only. Ask; do not choose quietly.
 2. Let the pass re-judge Layer 5 from the stored description_text for 'new'
-   rows only (never 'seen', per the WP5 rule), with no HTTP. An unreadable
-   description (SP4c) is left alone.
+   rows only (never 'seen', per the WP5 rule), with no HTTP. A row with no
+   stored description, or whose experience_level is "unchecked (page
+   unreadable)" (SP4c), has nothing to judge and is left alone.
 3. retrofilter records its drops under the `refilter/` prefix, in a run of
    its own, so they are logged like every other exclusion (WP8a).
 
@@ -2781,8 +2805,8 @@ showed it. airbus's reader raised, and the summary said
 line above the summary. A source whose reader raises is counted with config
 skips (no extractor, unknown strategy, robots.txt refused), so a failure
 that isn't watched for in the log reads as routine. The summary already has
-a block for sources that shrank (WP10) and one for sources that returned
-nothing (CU2). A source that failed outright is the loudest case and has
+a block for sources that shrank (WP10), one for sources that returned
+nothing (CU2) and, since SP4c, one for detail pages that held no posting. A source that failed outright is the loudest case and has
 neither.
 
 **2. A source that returns exactly one page, run after run.** In
@@ -2816,7 +2840,7 @@ per warning.
    WARNING log line. The summary counts it in "(N skipped)" alongside config
    skips and names nothing: SP3b's dry run printed "5 / 6 processed
    (1 skipped)" for a failed airbus. Give failures a block of their own, in
-   the style of the source-health and empty-source blocks ("!" marker, no
+   the style of the source-health, empty-source and unreadable-pages blocks ("!" marker, no
    ladder gutter). Each failed source is named, with the first line of its
    error, and the block says its stored jobs were kept and nothing was
    delisted. Split the Sources line so a failure is not counted as a skip.
