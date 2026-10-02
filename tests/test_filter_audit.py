@@ -6,10 +6,11 @@ one reproduces the *shape* of a phrasing the audit found, not its words.
 
 Two kinds of test, kept apart on purpose:
 
-- `xfail(strict=True)`: a decision the audit found wrong. Each fails today and
-  is the red-to-green target its follow-up package inherits. `strict` makes a
-  fix that lands without removing the marker fail the suite, so the marker
-  cannot outlive the bug.
+- `xfail(strict=True)`: a decision the audit found wrong. Each failed when
+  written and is the red-to-green target its follow-up package inherits.
+  `strict` makes a fix that lands without removing the marker fail the suite,
+  so the marker cannot outlive the bug. The Layer 5 years and PhD targets went
+  green in SP4e and lost their markers; the tests stay as the audit's record.
 - Plain tests: behaviour that is the owner's policy, not a correctness bug.
   The owner answered SP4b's questions on 2026-10-01 (docs/DECISIONS.md). One
   of these pins an answer that matches today. The other pins today's
@@ -28,8 +29,8 @@ import pytest
 from job_scraper.experience_filter import (
     EXPERIENCE_UNREADABLE,
     UNVERIFIED_KEY,
-    _extract_min_years,
     _has_phd_required,
+    _read_years_requirement,
     apply_detail_filter,
 )
 from job_scraper.filtering import (
@@ -109,7 +110,6 @@ def test_a_js_shell_cannot_settle_a_deferred_location(location: str, pending: st
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SP4b: a phrasing the years patterns do not read")
 @pytest.mark.parametrize(
     ("text", "years"),
     [
@@ -124,7 +124,7 @@ def test_a_js_shell_cannot_settle_a_deferred_location(location: str, pending: st
     ],
 )
 def test_missed_phrasing(text: str, years: int) -> None:
-    assert _extract_min_years(text) == years
+    assert _read_years_requirement(text) == years
 
 
 # ---------------------------------------------------------------------------
@@ -132,11 +132,6 @@ def test_missed_phrasing(text: str, years: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SP4b: a number that is not an experience requirement decides the verdict; "
-    "12 stored rows were rejected this way",
-)
 @pytest.mark.parametrize(
     "text",
     [
@@ -148,34 +143,24 @@ def test_missed_phrasing(text: str, years: int) -> None:
     ],
 )
 def test_not_a_requirement(text: str) -> None:
-    assert _extract_min_years(text) is None
+    assert _read_years_requirement(text) is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SP4b: an 'additional N years' equivalence clause is read as the whole "
-    "requirement, and the lowest number wins",
-)
 def test_an_additional_years_clause_is_not_the_requirement() -> None:
     text = (
         "Minimum 5 years of experience in programme management. A first-level "
         "degree with an additional 2 years of experience may be accepted in lieu "
         "of the advanced degree."
     )
-    assert _extract_min_years(text) == 5
+    assert _read_years_requirement(text) == 5
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SP4b: lowest-number-wins lets a narrow secondary skill override the "
-    "role's own requirement",
-)
 def test_a_narrow_skill_does_not_override_the_requirement() -> None:
     text = (
         "Minimum 5 years of experience in programme management. "
         "At least 2 years of experience with survey software."
     )
-    assert _extract_min_years(text) == 5
+    assert _read_years_requirement(text) == 5
 
 
 def test_tiered_routes_take_the_lowest_today() -> None:
@@ -183,30 +168,26 @@ def test_tiered_routes_take_the_lowest_today() -> None:
 
     The owner's answer to SP4b Q1 (2026-10-01): they qualify through that
     route, so it is the honest reading. SP4e redesigns the years reading and
-    must keep this green. Lowest-wins is right across routes, and still wrong
-    across unrelated figures (the xfails above).
+    kept this green. Lowest-wins is right across routes, and still wrong
+    across unrelated figures (the tests above).
     """
     text = (
         "An advanced degree and 2 years of experience, or a first-level degree "
         "and 4 years of experience."
     )
-    assert _extract_min_years(text) == 2
+    assert _read_years_requirement(text) == 2
 
 
 # ---------------------------------------------------------------------------
-# Layer 5, wrong: the PhD rule. It has never fired on a stored description, so
-# these are the shapes the regexes get wrong rather than observed losses.
+# Layer 5, wrong: the PhD rule. It had never fired on a stored description, so
+# these are the shapes the regexes got wrong rather than observed losses.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SP4b: a PhD offered as one of two degrees is read as required"
-)
 def test_a_phd_as_an_alternative_is_not_required() -> None:
     assert _has_phd_required("The role requires a Master's degree or PhD in economics.") is False
 
 
-@pytest.mark.xfail(strict=True, reason="SP4b: 'doctoral degree' is not recognised")
 def test_a_required_doctoral_degree_is_required() -> None:
     assert _has_phd_required("A doctoral degree in statistics is required.") is True
 

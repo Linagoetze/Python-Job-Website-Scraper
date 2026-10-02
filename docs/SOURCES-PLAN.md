@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b are done** (as of 2026-10-01); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4e are done** (as of 2026-10-02); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -101,7 +101,7 @@ the ordering below.
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
 | 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done | `sp4c-layer5-unreadable` |
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | done | `sp4d-feed-layer5` |
-| 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
+| 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | done | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | not started | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | not started | `sp4h-keyword-compounds` |
@@ -134,8 +134,10 @@ fix packages of its own ahead of SP5. It did: SP4c–SP4h, proposed in
 SP4b's result and approved by the owner on 2026-10-01, each now a section of
 its own after SP4b. **SP4c, then SP4d,
 before SP5**: SP4d fixes the Ashby and Workable readers SP5 may add employers
-on. SP4e and SP4f follow in either order. SP4g goes after SP4e, and SP4h
-whenever convenient. SP6 is ongoing maintenance with no deadline.
+on. SP4e first, then SP4f: SP4f measures what it admits through Layer 5's
+years reading, so **SP4e must be merged before SP4f measures anything**.
+SP4g goes after SP4e is merged, because its re-judging calls SP4e's reading.
+SP4h whenever convenient. SP6 is ongoing maintenance with no deadline.
 SP7 needs only SP1 and SP3b, and sooner is better: until it lands, a source
 whose reader fails reads as "skipped" in the run summary. Its tombstone guard
 is the one optional part.
@@ -2535,13 +2537,13 @@ description. What the next run makes of them is the owner's run to show.
       `sources.yaml`. Done by the owner, 2026-10-02.
 - [x] Confirm the revival: 6 rows (simprints 4, kognity 2). Confirmed and
       written, 2026-10-02.
-- [ ] After the next run, look at the 6 revived rows: each should be read and
+- [x] After the next run, look at the 6 revived rows: each should be read and
       judged, not unchecked. kognity's need this branch merged first.
-- [ ] After the next real run, check the "Unreadable pages" block: jobsinlund,
+- [x] After the next real run, check the "Unreadable pages" block: jobsinlund,
       kognity and simprints should be gone from it.
 - [x] **undp:** retired 2026-10-02. You took it out of `sources.yaml`, and its
       reader and registry line were removed (see `docs/DECISIONS.md`).
-- [ ] Afterwards, label a handful of simprints and monday_com rows (your SP4b
+- [x] Afterwards, label a handful of simprints and monday_com rows (your SP4b
       Q8 answer). **simprints done 2026-10-02:** all 9 were already labelled
       `Discard`, and you re-judged the four now read in full. They stay
       `Discard`, on location. monday_com's 10 unlabelled rows are still to
@@ -2610,13 +2612,180 @@ DOCS. Test count. docs/DECISIONS.md: the reading rule, and why min() went.
 Branch sp4e-years-reading. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-02, branch `sp4e-years-reading`
+
+**The reading.** `_extract_min_years` (five patterns and a `min()`) is
+replaced by `_read_years_requirement`, which reads in three steps. It finds
+every *figure*: a number with a unit of time, in English, Swedish, Danish or
+German, with a range read at its lower bound. It then decides which figures
+are requirements. A figure tied to experience counts, as does one stated as a
+minimum or one tied to a qualification or a level. A figure does not count
+when it is an age, a time ago or a window, a cap, a contract's length, years
+of study, an additive clause, a preference, the employer speaking about
+itself, or above 25. Last, it combines them. The **largest** requirement
+decides, because a candidate must meet them all. The **smallest** route
+decides among alternatives (per degree, or per level a roster hires at), as
+Q1 answered. A route offered in lieu of the main requirement can only lower the
+answer, and a degree that counts in place of some years takes them off. The
+reading is arranged so that its errors fall on the kept side; DECISIONS says
+how, and the review fixes below say where that first fell short. The PhD rule now judges each mention in its own clause. It skips a
+mention naming a doctoral position, and does not count one offered beside
+another qualification. All regexes are compiled once, at import. Rule strings
+and `experience_level` values are unchanged. The cost per posting is unchanged
+too, about 0.6 ms.
+
+**Tests.** All ten SP4b targets went green, and their markers were removed:
+four missed phrasings, two non-requirements, the additive clause, the narrow
+skill and both PhD tests. `test_tiered_routes_take_the_lowest_today` stays
+green. 46 new tests pin the reading: what is a requirement, what is not, how
+requirements combine, and the doctorate rule. Every text is invented. One
+existing test changed. "1 year of experience preferred" read 1 and now reads
+nothing, because a preference is not a requirement (DECISIONS); the verdict,
+kept, is the same. Suite: **1,127 passed, 2 expected failures** (was 1,071 +
+12). The 2 left are SP4f's home-based tests.
+
+**Measured, read-only and offline.** Copies of the store (run 34, 2026-10-02)
+and the HTTP cache were made in the session scratchpad. The corpus was 1,991
+texts. 1,075 are stored descriptions that are not unreadable. 916 are
+descriptions readers supply, from run 34's cached responses replayed through
+the readers' own parse functions: jobsinlund 790, Ashby's monday_com 91,
+strava 31 and kognity 4. Workable's rendered pages are in it as simprints' 4
+stored rows. Each text was judged by the old code (a copy of `main`'s module)
+and the new. Every changed verdict was then read by hand, and a rule was
+changed only for a misreading found that way. "Excluded" below means more than
+2 years (Q2) or a PhD required.
+
+| source | kept → excluded | of which in the export | excluded → kept | where the rows are |
+|---|---:|---:|---:|---|
+| impactpool | 68 (3 PhD) | 9 | 12 | 9 `new`, 1 delisted, the rest rejected |
+| jobsinlund (supplied) | 27 (16 PhD) | 0 | 7 (3 PhD) | not stored* |
+| unops | 12 | 2 | 0 | 2 `new`, 10 rejected |
+| oatly | 6 | 0 | 0 | stored, rejected |
+| jpal | 7 (1 PhD) | 0 | 0 | stored, rejected |
+| axis_comms | 3 | 2 | 0 | 2 `new`, 1 rejected |
+| dsv | 3 | 0 | 0 | stored, rejected |
+| sida | 3 | 0 | 0 | stored, rejected |
+| irc | 3 | 0 | 4 | stored, rejected |
+| monday_com (supplied) | 3 | 0 | 0 | not stored |
+| strava (supplied) | 2 | 0 | 0 | not stored |
+| novo_nordisk | 1 | 0 | 0 | stored, rejected |
+| path | 1 | 0 | 8 | stored, rejected |
+| canonical | 0 | 0 | 1 | stored, rejected |
+| **all** | **139** | **13** | **32** | |
+
+\* jobsinlund's, monday_com's and strava's changed rows are postings in run
+34's responses with no row in the store. Layers 0–1 dropped them, or they were
+never stored. kognity (4), simprints (4) and every source not listed changed no
+verdict. A further 151 texts changed only their level (for example 5+ to 7+).
+
+**Kept → excluded, 139.** 91 had no requirement read before. That is the
+missed phrasing of F6: a qualifier word, the possessive, a number word, "five
+(5)", "N to M", Swedish, Danish and German. 28 had a figure of 2 or less win
+under `min()` (F7): a narrow skill, a subset ("including at least 2 years
+..."), a bracketed preference. 20 are the PhD rule. **The 13 in the export are
+all `new` rows** (impactpool 9, unops 2, axis_comms 2): 10 newly read
+phrasings and 3 the old `min()`. Each was read by hand, and each states 3 to 8
+years in so many words.
+
+**Excluded → kept, 32. Every one, by reason:**
+
+| reason | rows | sources |
+|---|---:|---|
+| the employer's own history, first person (F4) | 8 | path |
+| an age: a minimum age (F4) or the age of the people served | 8 | irc 3, impactpool 5 |
+| a time span that is not a career: a contract's length, a product roadmap's horizon | 5 | jobsinlund 4, impactpool 1 |
+| alternative routes, the lowest decides (Q1) | 4 | impactpool |
+| a PhD offered beside another qualification, or PhD students to supervise | 3 | jobsinlund |
+| a cap, "up to N years" | 2 | canonical, irc |
+| a range's lower bound ("N to M years", which the old patterns read at M) | 1 | impactpool |
+| every figure in the posting marked desirable | 1 | impactpool |
+
+None is in the export. 25 are stored and rejected, and 15 of those were
+rejected on years: path 8, impactpool 5, irc 2. Those 15 include 10 of F4's
+12; the other 2 F4 rows now read a real 5 years. The other 10 of the 25 were
+rejected on location, so their years change nothing. Nothing automatic
+un-rejects, so the 15 stay rejected unless you revive them. The other 7 are
+jobsinlund postings with no row in the store.
+
+**Rows you labelled `review` (the false-negative direction).** 39 of the
+corpus's texts carry a `review` label. 16 were excluded before and 21 are
+now. The 5 that changed, all kept → excluded, are 4 postings. 2 are jobsinlund
+copies of one posting with no row in the store, asking for about 5 years. The
+other 3 are already stored `rejected`: an impactpool posting whose main
+requirement is 6 years (the old reading took a narrower 2), an oatly posting
+asking for at least 5 years in German, and an impactpool roster that requires a
+PhD. Each is a correct reading under Q2. They are listed so that you can see
+what the reading costs, as the prompt asked. **No `new` row you labelled
+`review` changes.** The 11 SP4b rows rejected on correctly read years stay
+rejected.
+
+**jobsinlund reads `unspecified` on 580 of 790** supplied descriptions (601
+under the old reading), and on 162 of the 186 under 500 characters. Of its 161
+stored rows in the corpus, 120 read `unspecified`, and 28 of its 32 in the
+export. Some are aggregator summaries that leave the requirement out. The rule
+was not tuned to them.
+
+**Review fixes, 2026-10-02.** A reviewer's invented ads found three ways the
+first version dropped a job that the old code kept: a "Preferred
+qualifications" heading, levels labelled loosely ("Junior: ... Mid: ..."), and
+a PhD rule that fired on any "must" near a mention ("a team of PhD economists
+... must be fluent in English"). It also found four smaller misses that let a
+senior job through: "Ph.D." with full stops, "knowledge of X is a plus" after
+a figure, "worked in finance for 5+ years", and "5 (five) years". All are
+fixed and pinned, 16 tests (suite **1,143 passed, 2 expected failures**).
+Fixing them turned up three over-reaches of my own, and those are pinned too.
+A "Desired qualifications" heading over a whole requirement list must still
+let "Minimum of 4 years" bind. "Working days for 12 months" is a contract,
+not a career. "A doctoral degree in X or the corresponding research
+competence" is an alternative. Re-measured on the same corpus, one verdict
+moved against the first version: a rejected jpal row now reads PhD required.
+The figures in this result are the re-measured ones. No `new` row in the
+store, the 12 revived ones included, is excluded by the fixed reading.
+
+**Stored rows.** A row read in full is never judged again (F13). The two kinds
+the next run re-judges (a page never read, and a supplied description that
+changed) will be judged by the new reading. Nothing else moves by itself. In
+particular, the 13 export rows above stay `new` in the sheet.
+
+**Proposed, not built and not run: a read-only report of the `new` rows the
+reading would exclude.** It opens the store with `mode=ro` and selects
+`status = 'new'` rows whose `experience_level` is a judged one (`unspecified`,
+`junior (<=2yr)` or `senior (...)`), never `unchecked (page unreadable)`. That
+is SP4g's rule: decide from the level, not the description's length (SP4d). It
+re-reads each stored `description_text` through `_read_years_requirement` and
+`_has_phd_required`, and prints source, title, key, the stored level and the
+new reading, for the rows the new reading excludes. It writes nothing, fetches
+nothing and logs no drop. You act on its list with `review`. It is SP4g's step
+2 as a dry run, so SP4g's prompt now points at it. The measurement above
+already found what it would print today: the 13 export rows. This session's
+chat names them.
+
 ### Your to-dos
 
-- [ ] Read every change from excluded to kept that the session reports, and
-      approve or reject the reading on that evidence.
-- [ ] Act with `review` on the read-only list of 'new' rows the new reading
-      would exclude. The session does not change their status.
-
+- [x] Read every change from excluded to kept that the session reports, and
+      approve or reject the reading on that evidence. **Approved 2026-10-02**,
+      all 32.
+- [ ] Look at the 5 `review`-labelled texts that the reading now excludes (4
+      postings; listed in the session's chat). Each is a correct reading
+      under Q2, and none is a `new` row.
+- [x] Act with `review` on the 13 `new` export rows the reading would
+      exclude. **Done 2026-10-02**: `review --reject` on all 13, at your
+      request. Each echoed title matched.
+- [x] Decide whether to revive the 15 stored rows rejected on years that the
+      reading would now keep. **Revive, 2026-10-02.** 12 are written. A
+      backup was made first, at
+      `~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4e-20261002-132915`.
+      In one transaction, status went to `'new'` and `experience_level` to
+      the new reading of the stored description: path 8 and irc 2 to
+      `unspecified`, impactpool 2 to `junior (<=2yr)`. Unlike SP4c and SP4d, the
+      description was kept. These pages were read in full, so nothing needs
+      fetching, and the row is consistent whether or not this branch is
+      merged first.
+- [x] **3 held back: left rejected, your decision 2026-10-02.** Two impactpool rows were last
+      seen 2026-09-08 with 13 misses, so the postings are closed. Revived,
+      they sit in the sheet until the next impactpool scrape delists them. The
+      third is a run-30 leftover with shifted fields: its title is an employer
+      name, and you rejected those by hand on 2026-09-25.
 ---
 
 ## SP4f — Where is a job whose location field does not say?
@@ -2632,7 +2801,8 @@ source is admitted unread (F5). **Waits on Q3 and Q4.** Opus 5, `think hard`,
 think hard
 
 Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4f
-only. SP4c should be merged first (see the stop-and-ask below). The owner's
+only. SP4c should be merged first (see the stop-and-ask below), and SP4e must
+be merged before you measure anything (see SINCE SP4e below). The owner's
 answers (2026-10-01, docs/DECISIONS.md):
 - Q3a: a home-based or worldwide role counts as remote and is admitted.
 - Q3b: a home-based role across a region that includes where the owner
@@ -2686,6 +2856,23 @@ Rows already rejected on this (kognity 1 on hybrid, simprints 4 on location,
 as of run 34) need the owner's revival, by SP4c's method. Propose it; do not
 write it.
 
+SINCE SP4e (amended 2026-10-02): COUNT WHAT REACHES THE SHEET, NOT WHAT
+LAYER 0 ADMITS. A job rejected on a deferred location never reached Layer 5's
+years and PhD check, and SP4e changed that check. Once your change admits it,
+it meets SP4e's reading. On run 34's store, 539 readable rows are rejected on a
+deferred location (499 unresolvable, 40 non-hybrid), and SP4e's reading would
+exclude 176 of them on years or a PhD anyway (167 and 9). So report every
+admission net of Layer 5's years check: rows admitted, then rows still
+excluded on years or PhD, then rows that would reach the sheet. A bare
+"N rows now admitted" overstates it by about a third. The revival you propose
+(kognity 1, simprints 4) is judged by the same reading, so say what it reads
+for each of them before the owner confirms.
+ONE LOOSE END, unverified, from SP4e: the jobsinlund posting the owner
+labelled `review` that has no row in the store has the location "Lunds
+Kommun", which may not match the listed place at Layer 0. Check why it was
+never stored. If the cause is the location field, it belongs here. If it is
+not, report it and leave it.
+
 STOP AND ASK, before implementing Q4. Q4 (an empty location fails closed) and
 Q6 (an unreadable job is kept, marked) collide on a job whose location is
 empty AND whose page cannot be read. Under SP4c that job is unverified, so it
@@ -2735,7 +2922,7 @@ Sonnet 5, `think`, 2 hr.
 think
 
 Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4g
-only.
+only. SP4e must be merged: step 2 calls its reading.
 
 SP4b (F13): the re-filter pass judges stored rows without `raw_snippet` and
 `department`, which Layer 0's remote-keyword check reads in a run. Today that
@@ -2758,6 +2945,23 @@ run_exclusions.
    call those shells.
 3. retrofilter records its drops under the `refilter/` prefix, in a run of
    its own, so they are logged like every other exclusion (WP8a).
+
+SINCE SP4e (2026-10-02, updated the same day). Step 2 re-judges with
+`_read_years_requirement` and `_has_phd_required`, the reading SP4e built.
+SP4e's result proposes a read-only report of the 'new' rows that reading
+would exclude. That report is this step as a dry run, so build step 2 so that
+it can print its changes without writing them. The owner has since acted on
+everything that report would have found. The 13 'new' rows SP4e's reading
+excluded were rejected with `review`. 12 rows rejected on years were revived as
+'new' with the new reading's level already written, and 3 were left rejected.
+So on today's store the expected dry run is **zero status flips** (checked
+read-only on 2026-10-02, over 94 'new' rows). It should show **4 level-only
+changes**, from `unspecified` to `junior (<=2yr)`: impactpool 2, irc 1, unops
+1. These are rows judged before SP4e whose small figure the old patterns did
+not read. Decide whether the pass rewrites a level when the status stays, and
+say which. Any status flip on a store with no run since then means the pass
+reads differently from a run. Find out why before writing anything. It must
+not touch 'rejected' rows.
 
 DOCS. README's maintenance-commands entry for retrofilter, test count,
 docs/DECISIONS.md.
@@ -2880,6 +3084,19 @@ For each, in order, and stop at the first rung that fails:
 Then run the pipeline against the new sources only and confirm the postings that
 come back look like real postings, not like a plausible-looking parse of the
 wrong element.
+
+THEN CHECK LAYER 5'S YEARS READING ON EACH NEW SOURCE (amended 2026-10-02, from
+SP4e and its review). The reading was tuned on today's boards: UN rosters,
+jobsinlund's aggregator texts and a handful of ATS boards. A new company's own
+layout is where it can misread: its headings ("Preferred qualifications",
+"Nice to have"), its level labels ("Junior: ... Mid: ..."), its preference
+wording. All three bugs the SP4e review found were of that kind, and each one
+dropped a job the owner would want. For each new source, read a handful of its
+descriptions, read-only, against the experience_level each was given. Include
+every one excluded on years or a PhD, and some read as `unspecified`. A
+misreading comes back as an invented test case and a report, not as a patch
+here. SP5 adds sources; it does not redesign Layer 5. If a misreading excluded
+a job, say so first: that is the expensive direction.
 
 DOCS. Update the test count in README.md (it has no fixture count). Do NOT add the company
 names to any tracked file — see "Publishing this file".
