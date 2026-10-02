@@ -2954,11 +2954,14 @@ it can print its changes without writing them. The owner has since acted on
 everything that report would have found. The 13 'new' rows SP4e's reading
 excluded were rejected with `review`. 12 rows rejected on years were revived as
 'new' with the new reading's level already written, and 3 were left rejected.
-So on today's store the expected dry run is **zero flips**: every 'new' row
-read in full already carries the level SP4e's reading gives it (checked
-read-only on 2026-10-02, 94 'new' rows). Any flip on a store with no run since
-then means the pass reads differently from a run. Find out why before writing
-anything. It must not touch 'rejected' rows.
+So on today's store the expected dry run is **zero status flips** (checked
+read-only on 2026-10-02, over 94 'new' rows). It should show **4 level-only
+changes**, from `unspecified` to `junior (<=2yr)`: impactpool 2, irc 1, unops
+1. These are rows judged before SP4e whose small figure the old patterns did
+not read. Decide whether the pass rewrites a level when the status stays, and
+say which. Any status flip on a store with no run since then means the pass
+reads differently from a run. Find out why before writing anything. It must
+not touch 'rejected' rows.
 
 DOCS. README's maintenance-commands entry for retrofilter, test count,
 docs/DECISIONS.md.
