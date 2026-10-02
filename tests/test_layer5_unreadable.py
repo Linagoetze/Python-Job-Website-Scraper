@@ -380,3 +380,34 @@ def test_a_stored_seen_job_that_a_recheck_rejects_keeps_the_owners_status(
     site.page = posting("We require 8+ years of experience in the field.")
     _run(tmp_path)
     assert _stored(tmp_path)[_URL]["status"] == "shortlisted"
+
+
+def test_a_stored_job_dropped_as_unverified_shows_as_unchecked_not_blank(
+    env: dict[str, Any],
+) -> None:
+    """A revived row is stored with no level. If its deferred location cannot be
+    verified it is dropped for the run and its row is untouched, so without this
+    the sheet would show it blank."""
+    tmp_path = env["tmp_path"]
+    _run(tmp_path)  # stored, unchecked
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        store._c().execute("UPDATE jobs SET experience_level = ''")  # as after a revival
+    env["extracted"][0]["location"] = "Home based - Worldwide"
+    _run(tmp_path)
+    job = _stored(tmp_path)[_URL]
+    assert (job["status"], job["experience_level"]) == ("new", EXPERIENCE_UNREADABLE)
+
+
+def test_marking_unlabelled_never_overwrites_a_level(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        run_id = store.begin_run()
+        store.upsert_jobs(
+            [
+                {"dedupe_key": "a", "source_name": "s", "experience_level": "junior (<=2yr)"},
+                {"dedupe_key": "b", "source_name": "s"},
+            ],
+            run_id,
+        )
+        assert store.mark_unlabelled(["a", "b"], EXPERIENCE_UNREADABLE) == 1
+        levels = {j["dedupe_key"]: j["experience_level"] for j in store.all_jobs()}
+    assert levels == {"a": "junior (<=2yr)", "b": EXPERIENCE_UNREADABLE}

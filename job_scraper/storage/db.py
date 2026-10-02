@@ -470,6 +470,19 @@ class JobStore:
         )
         return cur.rowcount
 
+    def mark_unlabelled(self, keys: list[str], level: str) -> int:
+        """Give *level* to each of *keys* that has no experience_level yet.
+
+        Never overwrites: a row that already carries a level keeps it. Used for
+        a stored job whose page could not be read this run, so that it shows as
+        unchecked and not as a blank. Returns the number labelled.
+        """
+        cur = self._c().executemany(
+            "UPDATE jobs SET experience_level = ? WHERE dedupe_key = ? AND experience_level = ''",
+            ((level, k) for k in keys),
+        )
+        return cur.rowcount
+
     def mark_all_new(self, status: str) -> int:
         """Flip every unreviewed ('new') job to *status*. Returns the number flipped.
 

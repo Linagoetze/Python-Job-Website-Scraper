@@ -918,7 +918,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1048 tests plus 12 expected failures, about fifteen seconds, no network access
+1050 tests plus 12 expected failures, about fifteen seconds, no network access
 required. The expected failures are strict `xfail`s in
 `tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
 each pinned so that its fix turns it green. Extractors are

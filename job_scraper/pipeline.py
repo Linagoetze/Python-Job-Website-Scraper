@@ -801,6 +801,21 @@ def _run_pipeline(
                 refreshed_rejected,
             )
 
+        # A stored job dropped as unverified is left as it was, so a row that
+        # has never been judged (a revived one) would show in the sheet with a
+        # blank level. Say what is known: its page could not be read.
+        store.mark_unlabelled(
+            [
+                k
+                for j in detail_excluded
+                if j.get(UNVERIFIED_KEY)
+                and j.get(PAGE_STATE_KEY) in (PAGE_UNREADABLE, PAGE_FAILED)
+                and (k := dedupe_key_for_job(j))
+                and k in stored
+            ],
+            EXPERIENCE_UNREADABLE,
+        )
+
         rows_delisted = store.note_misses_and_delist(
             source_scraped_keys, delist_after, force_delist_sources
         )
