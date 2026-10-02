@@ -134,8 +134,10 @@ fix packages of its own ahead of SP5. It did: SP4c–SP4h, proposed in
 SP4b's result and approved by the owner on 2026-10-01, each now a section of
 its own after SP4b. **SP4c, then SP4d,
 before SP5**: SP4d fixes the Ashby and Workable readers SP5 may add employers
-on. SP4e and SP4f follow in either order. SP4g goes after SP4e, and SP4h
-whenever convenient. SP6 is ongoing maintenance with no deadline.
+on. SP4e first, then SP4f: SP4f measures what it admits through Layer 5's
+years reading, so **SP4e must be merged before SP4f measures anything**.
+SP4g goes after SP4e is merged, because its re-judging calls SP4e's reading.
+SP4h whenever convenient. SP6 is ongoing maintenance with no deadline.
 SP7 needs only SP1 and SP3b, and sooner is better: until it lands, a source
 whose reader fails reads as "skipped" in the run summary. Its tombstone guard
 is the one optional part.
@@ -2799,7 +2801,8 @@ source is admitted unread (F5). **Waits on Q3 and Q4.** Opus 5, `think hard`,
 think hard
 
 Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4f
-only. SP4c should be merged first (see the stop-and-ask below). The owner's
+only. SP4c should be merged first (see the stop-and-ask below), and SP4e must
+be merged before you measure anything (see SINCE SP4e below). The owner's
 answers (2026-10-01, docs/DECISIONS.md):
 - Q3a: a home-based or worldwide role counts as remote and is admitted.
 - Q3b: a home-based role across a region that includes where the owner
@@ -2853,6 +2856,23 @@ Rows already rejected on this (kognity 1 on hybrid, simprints 4 on location,
 as of run 34) need the owner's revival, by SP4c's method. Propose it; do not
 write it.
 
+SINCE SP4e (amended 2026-10-02): COUNT WHAT REACHES THE SHEET, NOT WHAT
+LAYER 0 ADMITS. A job rejected on a deferred location never reached Layer 5's
+years and PhD check, and SP4e changed that check. Once your change admits it,
+it meets SP4e's reading. On run 34's store, 539 readable rows are rejected on a
+deferred location (499 unresolvable, 40 non-hybrid), and SP4e's reading would
+exclude 176 of them on years or a PhD anyway (167 and 9). So report every
+admission net of Layer 5's years check: rows admitted, then rows still
+excluded on years or PhD, then rows that would reach the sheet. A bare
+"N rows now admitted" overstates it by about a third. The revival you propose
+(kognity 1, simprints 4) is judged by the same reading, so say what it reads
+for each of them before the owner confirms.
+ONE LOOSE END, unverified, from SP4e: the jobsinlund posting the owner
+labelled `review` that has no row in the store has the location "Lunds
+Kommun", which may not match the listed place at Layer 0. Check why it was
+never stored. If the cause is the location field, it belongs here. If it is
+not, report it and leave it.
+
 STOP AND ASK, before implementing Q4. Q4 (an empty location fails closed) and
 Q6 (an unreadable job is kept, marked) collide on a job whose location is
 empty AND whose page cannot be read. Under SP4c that job is unverified, so it
@@ -2902,7 +2922,7 @@ Sonnet 5, `think`, 2 hr.
 think
 
 Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP4g
-only.
+only. SP4e must be merged: step 2 calls its reading.
 
 SP4b (F13): the re-filter pass judges stored rows without `raw_snippet` and
 `department`, which Layer 0's remote-keyword check reads in a run. Today that
@@ -2926,14 +2946,19 @@ run_exclusions.
 3. retrofilter records its drops under the `refilter/` prefix, in a run of
    its own, so they are logged like every other exclusion (WP8a).
 
-SINCE SP4e (2026-10-02). Step 2 re-judges with `_read_years_requirement`
-and `_has_phd_required`, the reading SP4e built. SP4e's result proposes a
-read-only report of the 'new' rows that reading would exclude. That report is
-this step as a dry run, so build step 2 so that it can print its changes
-without writing them. On run 34's store it would flip 13 'new' rows (impactpool
-9, unops 2, axis_comms 2), unless the owner has already rejected them with
-`review`. It must not touch 'rejected' rows. The 15 SP4e found rejected on years
-that it would now keep are the owner's to revive, not the pass's.
+SINCE SP4e (2026-10-02, updated the same day). Step 2 re-judges with
+`_read_years_requirement` and `_has_phd_required`, the reading SP4e built.
+SP4e's result proposes a read-only report of the 'new' rows that reading
+would exclude. That report is this step as a dry run, so build step 2 so that
+it can print its changes without writing them. The owner has since acted on
+everything that report would have found. The 13 'new' rows SP4e's reading
+excluded were rejected with `review`. 12 rows rejected on years were revived as
+'new' with the new reading's level already written, and 3 were left rejected.
+So on today's store the expected dry run is **zero flips**: every 'new' row
+read in full already carries the level SP4e's reading gives it (checked
+read-only on 2026-10-02, 94 'new' rows). Any flip on a store with no run since
+then means the pass reads differently from a run. Find out why before writing
+anything. It must not touch 'rejected' rows.
 
 DOCS. README's maintenance-commands entry for retrofilter, test count,
 docs/DECISIONS.md.
@@ -3056,6 +3081,19 @@ For each, in order, and stop at the first rung that fails:
 Then run the pipeline against the new sources only and confirm the postings that
 come back look like real postings, not like a plausible-looking parse of the
 wrong element.
+
+THEN CHECK LAYER 5'S YEARS READING ON EACH NEW SOURCE (amended 2026-10-02, from
+SP4e and its review). The reading was tuned on today's boards: UN rosters,
+jobsinlund's aggregator texts and a handful of ATS boards. A new company's own
+layout is where it can misread: its headings ("Preferred qualifications",
+"Nice to have"), its level labels ("Junior: ... Mid: ..."), its preference
+wording. All three bugs the SP4e review found were of that kind, and each one
+dropped a job the owner would want. For each new source, read a handful of its
+descriptions, read-only, against the experience_level each was given. Include
+every one excluded on years or a PhD, and some read as `unspecified`. A
+misreading comes back as an invented test case and a report, not as a patch
+here. SP5 adds sources; it does not redesign Layer 5. If a misreading excluded
+a job, say so first: that is the expensive direction.
 
 DOCS. Update the test count in README.md (it has no fixture count). Do NOT add the company
 names to any tracked file — see "Publishing this file".
