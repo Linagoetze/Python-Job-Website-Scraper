@@ -100,7 +100,7 @@ the ordering below.
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
 | 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done | `sp4c-layer5-unreadable` |
-| 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | steps 1–3 done; step 4's revival awaits the owner | `sp4d-feed-layer5` |
+| 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | done | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | not started | `sp4g-refilter-inputs` |
@@ -2429,7 +2429,7 @@ reads that rather than fetching.
 Branch sp4d-feed-layer5. Commit, do not push. Update this plan file.
 ```
 
-### Result — steps 1–3 done 2026-10-02, branch `sp4d-feed-layer5`
+### Result — done 2026-10-02, branch `sp4d-feed-layer5`
 
 **Step 1, jobsinlund: the reader supplies the description.** An extractor may
 now put the posting text on the job as `description_text`. Layer 5 reads it and
@@ -2503,7 +2503,7 @@ senior flips to `'rejected'` (SP4c's rule). SP4b estimated that at 4 of the
 then 21 exported rows. The real after (the block, and the unchecked count per
 source) is the owner's next run to show.
 
-**Revival, proposed and not written.** Selected by query: `rejected`, a
+**Revival, done 2026-10-02 (owner confirmed all 6).** Selected by query: `rejected`, a
 deferred-state level, a description under 500, source simprints or kognity,
 and listed in the latest run (each was dropped as unverified at Layer 5 in run
 33). That gives **6 rows: simprints 4, kognity 2**. Both kognity postings are
@@ -2514,6 +2514,13 @@ as this branch is merged. simprints' 4 read only once `sources.yaml` says
 `dynamic`. Revived before that, they repeat SP4c's cycle, sitting `new` and
 unchecked while Layer 5 drops them. Method as SP4c: a backup copy outside
 `data/` first, one transaction, status `'new'`, description and level cleared.
+**Written** after the owner set simprints and nutrition_international to
+`dynamic`. The copy is at
+`~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4d-20261002-085030`. One
+transaction made 6 changes, and nothing else in the store was touched:
+`rejected` went from 1,260 to 1,254 and `new` from 70 to 76. Their
+`description_fetched_at` was cleared too, since it moves in lockstep with the
+description. What the next run makes of them is the owner's run to show.
 
 **Tests.** Suite 1,071 passed, 12 expected failures (was 1,050 + 12).
 
@@ -2523,10 +2530,12 @@ unchecked while Layer 5 drops them. Method as SP4c: a backup copy outside
       page each for Ashby, Workable and undp). Approved 2026-10-02.
 - [x] Choose the route for Ashby, Workable and undp. Chosen 2026-10-02:
       posting API, `strategy: dynamic`, and none for undp (no listing).
-- [ ] **Set `strategy: dynamic` on simprints and nutrition_international** in
-      `sources.yaml`. The session does not touch that file.
-- [ ] Confirm the revival: 6 rows (simprints 4, kognity 2), with simprints'
-      after the line above. Nothing is written before you confirm.
+- [x] **Set `strategy: dynamic` on simprints and nutrition_international** in
+      `sources.yaml`. Done by the owner, 2026-10-02.
+- [x] Confirm the revival: 6 rows (simprints 4, kognity 2). Confirmed and
+      written, 2026-10-02.
+- [ ] After the next run, look at the 6 revived rows: each should be read and
+      judged, not unchecked. kognity's need this branch merged first.
 - [ ] After the next real run, check the "Unreadable pages" block: jobsinlund,
       kognity and simprints should be gone from it.
 - [ ] **undp:** retire it, or probe its Oracle careers site as a new listing.
