@@ -2626,7 +2626,7 @@ decides among alternatives (per degree, or per level a roster hires at), as
 Q1 answered. A route offered in lieu of the main requirement can only lower the
 answer, and a degree that counts in place of some years takes them off. The
 reading is arranged so that its errors fall on the kept side; DECISIONS says
-how. The PhD rule now judges each mention in its own clause. It skips a
+how, and the review fixes below say where that first fell short. The PhD rule now judges each mention in its own clause. It skips a
 mention naming a doctoral position, and does not count one offered beside
 another qualification. All regexes are compiled once, at import. Rule strings
 and `experience_level` values are unchanged. The cost per posting is unchanged
@@ -2656,10 +2656,10 @@ changed only for a misreading found that way. "Excluded" below means more than
 | source | kept → excluded | of which in the export | excluded → kept | where the rows are |
 |---|---:|---:|---:|---|
 | impactpool | 68 (3 PhD) | 9 | 12 | 9 `new`, 1 delisted, the rest rejected |
-| jobsinlund (supplied) | 28 (17 PhD) | 0 | 7 (3 PhD) | not stored* |
+| jobsinlund (supplied) | 27 (16 PhD) | 0 | 7 (3 PhD) | not stored* |
 | unops | 12 | 2 | 0 | 2 `new`, 10 rejected |
 | oatly | 6 | 0 | 0 | stored, rejected |
-| jpal | 6 | 0 | 0 | stored, rejected |
+| jpal | 7 (1 PhD) | 0 | 0 | stored, rejected |
 | axis_comms | 3 | 2 | 0 | 2 `new`, 1 rejected |
 | dsv | 3 | 0 | 0 | stored, rejected |
 | sida | 3 | 0 | 0 | stored, rejected |
@@ -2717,11 +2717,28 @@ what the reading costs, as the prompt asked. **No `new` row you labelled
 `review` changes.** The 11 SP4b rows rejected on correctly read years stay
 rejected.
 
-**jobsinlund reads `unspecified` on 579 of 790** supplied descriptions (601
+**jobsinlund reads `unspecified` on 580 of 790** supplied descriptions (601
 under the old reading), and on 162 of the 186 under 500 characters. Of its 161
 stored rows in the corpus, 120 read `unspecified`, and 28 of its 32 in the
 export. Some are aggregator summaries that leave the requirement out. The rule
 was not tuned to them.
+
+**Review fixes, 2026-10-02.** A reviewer's invented ads found three ways the
+first version dropped a job that the old code kept: a "Preferred
+qualifications" heading, levels labelled loosely ("Junior: ... Mid: ..."), and
+a PhD rule that fired on any "must" near a mention ("a team of PhD economists
+... must be fluent in English"). It also found four smaller misses that let a
+senior job through: "Ph.D." with full stops, "knowledge of X is a plus" after
+a figure, "worked in finance for 5+ years", and "5 (five) years". All are
+fixed and pinned, 16 tests (suite **1,143 passed, 2 expected failures**).
+Fixing them turned up three over-reaches of my own, and those are pinned too.
+A "Desired qualifications" heading over a whole requirement list must still
+let "Minimum of 4 years" bind. "Working days for 12 months" is a contract,
+not a career. "A doctoral degree in X or the corresponding research
+competence" is an alternative. Re-measured on the same corpus, one verdict
+moved against the first version: a rejected jpal row now reads PhD required.
+The figures in this result are the re-measured ones. No `new` row in the
+store, the 12 revived ones included, is excluded by the fixed reading.
 
 **Stored rows.** A row read in full is never judged again (F13). The two kinds
 the next run re-judges (a page never read, and a supplied description that

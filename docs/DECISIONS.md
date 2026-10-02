@@ -1220,7 +1220,8 @@ session — see `CLAUDE.md`.
   only lower the answer, and a degree that counts in place of some years takes
   them off. The rule string and the `experience_level` values did not change
   (WP8a's contract).
-- **The reading is built so that its errors fall on the kept side (SP4e).**
+- **The reading is built so that its errors fall on the kept side (SP4e; not
+  wholly so, see the review entry below).**
   A figure wrongly taken as a route can only lower the answer. A vetoed figure
   is simply not read. Only a figure wrongly taken as a requirement raises it,
   which is why step 2 asks for a tie to experience, a minimum or a
@@ -1248,10 +1249,40 @@ session — see `CLAUDE.md`.
   PhD", "a doctorate or comparable merits", "(or equivalent)") does not
   decide, and a preference does not. "Equivalent to a PhD" is not an
   alternative. Over SP4e's corpus the old rule fired on 10 texts and the new
-  one on 29: 26 from jobsinlund's aggregator, nearly all postdoc and research
-  roles, and 3 from impactpool. 3 of the old 10 no longer fire (a PhD offered
+  one on 28: 24 from jobsinlund's aggregator, nearly all postdoc and research
+  roles, 3 from impactpool and 1 from jpal. 3 of the old 10 no longer fire (a PhD offered
   beside a Master's, PhD students to supervise, a doctorate or equivalent
   merits).
+- **The kept-side claim had holes, and a review found them (SP4e review,
+  2026-10-02).** The entry above says the reading's errors fall on the kept
+  side. That held for the corpus, where no wrongly excluded job was found by
+  hand, but not by construction. A reviewer's invented ads found three ways
+  the first version dropped a job the old code kept. In each, a route or a
+  preference that the reading did not *recognise* fell through to `max()`.
+  (1) A "Preferred qualifications" heading. A preference was only seen next to
+  its figure, so a heading over a whole section was missed. Headings now open
+  a section that runs to the next requirement heading, or to the end of the
+  text. Only a capitalised heading word counts, since a lower-case
+  "preferred" usually ends the item before it. A figure stated as a minimum in
+  words still binds inside the section, because some boards put all their
+  requirements under "Desired qualifications". (2) Levels labelled loosely
+  ("Junior: 0–2 years ... Mid: 3–5 years"). A bare level word is now a route as
+  a heading with a colon, in brackets, or in "for junior candidates", and
+  nowhere else, so "working with senior stakeholders" is no route. (3) The
+  PhD rule fired on any "must" or "need" near a mention. Now the doctorate must
+  be what the clause requires (see the next entry). **The lesson for the next
+  change:** an unrecognised alternative is the failure that costs a job, so a
+  new phrasing of routes or preferences needs a test written against the old
+  code as well as the new.
+- **A doctorate is required only when the clause requires *it* (SP4e
+  review).** A requiring verb or a requirement heading must sit just before
+  the mention ("must hold a", "requires a", "Requirements: PhD"), or a
+  requiring predicate just after it ("a Ph.D. in economics is required").
+  "Ph.D." keeps its own full stops. A mention that names people or the job
+  ("PhD economists", "PhD-holding researchers", "PhD students") is not a
+  qualification. Re-measured, this moved one verdict on the corpus: a
+  rejected jpal row whose qualifications open with "a PhD (or a submitted
+  dissertation)" now reads PhD required.
 - **How SP4e was measured, and how to repeat it.** Offline and read-only: a
   copy of the store and of the HTTP cache in the session scratchpad, never the
   live files. The corpus is every stored description that is not unreadable,
@@ -1263,7 +1294,7 @@ session — see `CLAUDE.md`.
   found that way, never to move a count. The reading costs the same as
   before, about 0.6 ms a posting.
 - **The reading does not special-case supplied text, and jobsinlund's
-  `unspecified` is the summary's silence, not a finding (SP4e).** 579 of the
+  `unspecified` is the summary's silence, not a finding (SP4e).** 580 of the
   790 jobsinlund descriptions read as `unspecified` (601 under the old
   reading), and 162 of its 186 descriptions under 500 characters. Some of its
   aggregator texts are summaries that leave the requirement out. That is
