@@ -272,20 +272,40 @@ def _strip_html(html: str) -> str:
         return re.sub(r"<[^>]+>", " ", html)
 
 
-def is_unreadable(text: str) -> bool:
+def is_unreadable(text: str, supplied: bool = False) -> bool:
     """True when a fetched detail page, stripped, holds no posting to judge.
 
     A 200 response is not a reading: a client-rendered page arrives as a title
     and a "please enable JavaScript" notice. Decided on the stripped text alone,
     so it costs nothing and needs no knowledge of the source.
 
+    `supplied` marks a description the reader took from the platform's own data
+    rather than a page Layer 5 fetched (SP4d). The length test is a test for a
+    page that came back as chrome around nothing; a description field has no
+    chrome, so a short one is a short posting. jobsinlund's run from about 420
+    characters. Only the marker test applies, and empty is still unreadable.
+
     The tetrapak signature (one text on several different postings of a source)
     is deliberately not here: see docs/DECISIONS.md, SP4c.
     """
     stripped = text.strip()
-    if len(stripped) < MIN_READABLE_CHARS:
+    if not stripped:
+        return True
+    if not supplied and len(stripped) < MIN_READABLE_CHARS:
         return True
     return len(stripped) < _SHELL_MARKER_CEILING and bool(_JS_SHELL_MARKER.search(stripped))
+
+
+def supplied_description(job: JobRecord) -> str:
+    """The description a reader supplied with the job, as Layer 5 would store it.
+
+    '' when the reader supplied none, in which case Layer 5 fetches the detail
+    page. The reader hands over plain text: knowing its platform's format is the
+    reader's job, so nothing here parses HTML out of it. The pipeline compares
+    this with the stored description to decide whether a stored job has been
+    judged on it yet, so it must be exactly what `apply_detail_filter` stores.
+    """
+    return str(job.get("description_text") or "").strip()[:_MAX_DESCRIPTION_CHARS]
 
 
 def _extract_min_years(text: str) -> int | None:
@@ -355,6 +375,8 @@ def _fetch_and_analyze(
 ) -> _DetailSignals:
     """Fetch a job's detail page and extract experience/PhD/deferred-state signals.
 
+    A job whose reader supplied its description (`supplied_description`) is read
+    from that instead, and nothing is fetched.
     min_years is None when no numeric requirement was found or there was no URL.
     `unreadable` is set, and nothing else read, when the page held no posting.
     description_text is the stripped page text, capped at _MAX_DESCRIPTION_CHARS,
@@ -364,28 +386,17 @@ def _fetch_and_analyze(
     location are both searched in the text already in hand, so neither costs an
     HTTP request of its own.
     """
+    supplied = supplied_description(job)
+    if supplied:
+        # The reader already holds the posting (SP4d): read it, and spend no
+        # request on a detail page that would only say the same thing, or less.
+        return _analyze(job, supplied, hybrid_pattern, location_pattern, supplied=True)
     url = str(job.get("detail_url") or job.get("apply_url") or "").strip()
     if not url:
         return _DetailSignals(job=job)
     try:
         html = fn(url)
-        text = _strip_html(html)
-        if is_unreadable(text):
-            # Nothing below this line may be read off a shell: no years, no PhD,
-            # and above all no "the description names no listed place".
-            return _DetailSignals(job=job, unreadable=True)
-        return _DetailSignals(
-            job=job,
-            min_years=_extract_min_years(text),
-            phd_required=_has_phd_required(text),
-            hybrid_found=(
-                bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None
-            ),
-            listed_location_found=(
-                bool(location_pattern.search(text)) if location_pattern is not None else None
-            ),
-            description_text=text[:_MAX_DESCRIPTION_CHARS],
-        )
+        return _analyze(job, _strip_html(html), hybrid_pattern, location_pattern)
     except RobotsDisallowed as exc:
         logger.debug("%s: robots.txt refused %r — keeping job", layer_short(LAYER_DETAIL), exc)
         return _DetailSignals(job=job, fetch_failed=True, robots_refused=True)
@@ -397,6 +408,30 @@ def _fetch_and_analyze(
             exc,
         )
         return _DetailSignals(job=job, fetch_failed=True)
+
+
+def _analyze(
+    job: JobRecord,
+    text: str,
+    hybrid_pattern: re.Pattern[str] | None,
+    location_pattern: re.Pattern[str] | None,
+    supplied: bool = False,
+) -> _DetailSignals:
+    """Every Layer 5 signal from one posting's text, fetched or supplied."""
+    if is_unreadable(text, supplied=supplied):
+        # Nothing below this line may be read off a shell: no years, no PhD,
+        # and above all no "the description names no listed place".
+        return _DetailSignals(job=job, unreadable=True)
+    return _DetailSignals(
+        job=job,
+        min_years=_extract_min_years(text),
+        phd_required=_has_phd_required(text),
+        hybrid_found=(bool(hybrid_pattern.search(text)) if hybrid_pattern is not None else None),
+        listed_location_found=(
+            bool(location_pattern.search(text)) if location_pattern is not None else None
+        ),
+        description_text=text[:_MAX_DESCRIPTION_CHARS],
+    )
 
 
 def _page_state(signals: _DetailSignals) -> dict[str, str]:
@@ -467,6 +502,8 @@ def apply_detail_filter(
 ) -> tuple[list[JobRecord], list[JobRecord]]:
     """Fetch each job's detail page and filter by experience requirement and PhD.
 
+    A job that arrives with a `description_text` its reader supplied is read
+    from that, and its page is not fetched (SP4d; see `supplied_description`).
     Keeps jobs where: no numeric requirement found, or min years <= _MAX_JUNIOR_YEARS,
     and the role does not require a PhD.
     Fails open on fetch/parse errors (job is kept).

@@ -411,3 +411,87 @@ def test_marking_unlabelled_never_overwrites_a_level(tmp_path: Path) -> None:
         assert store.mark_unlabelled(["a", "b"], EXPERIENCE_UNREADABLE) == 1
         levels = {j["dedupe_key"]: j["experience_level"] for j in store.all_jobs()}
     assert levels == {"a": "junior (<=2yr)", "b": EXPERIENCE_UNREADABLE}
+
+
+# --- a description the reader supplied (SP4d) --------------------------------
+
+# jobsinlund's shortest posting was about 420 characters (SP4b): a real posting,
+# under the threshold a fetched page is held to.
+_SUPPLIED = ("A short posting for an analyst role in our team. " * 9)[:420]
+
+
+def test_a_supplied_description_is_exempt_from_the_length_test_only() -> None:
+    assert len(_SUPPLIED) == 420 < MIN_READABLE_CHARS
+    assert is_unreadable(_SUPPLIED)
+    assert not is_unreadable(_SUPPLIED, supplied=True)
+    assert is_unreadable("Please enable JavaScript to run this app.", supplied=True)
+    assert is_unreadable("   ", supplied=True)
+
+
+def test_layer5_reads_a_supplied_description_and_fetches_nothing() -> None:
+    (kept,), excluded = apply_detail_filter([_job(description_text=_SUPPLIED)], _boom)
+    assert not excluded
+    assert kept["experience_level"] == "unspecified", "read, not failed and not unreadable"
+    assert kept["description_text"] == _SUPPLIED
+    assert kept["description_fetched_at"]
+
+
+def test_a_supplied_description_is_judged_like_a_page() -> None:
+    text = _SUPPLIED + " You bring 5+ years of experience."
+    kept, (dropped,) = apply_detail_filter([_job(description_text=text)], _boom)
+    assert not kept
+    assert dropped["experience_level"] == "senior (5+yr)"
+
+
+def test_an_empty_supplied_description_falls_back_to_the_page() -> None:
+    (kept,), _ = _detail(_job(description_text="  "), posting("No requirement stated."))
+    assert kept["experience_level"] == "unspecified"
+
+
+def test_a_supplied_description_is_stored_and_not_fetched_on_the_next_run(
+    env: dict[str, Any],
+) -> None:
+    """Before SP4d's pipeline change a stored description under the threshold
+    was re-checked every run, and a short supplied one would never have settled.
+    """
+    site, tmp_path = env["site"], env["tmp_path"]
+    env["extracted"][0]["description_text"] = _SUPPLIED
+
+    first = _run(tmp_path)
+    job = _stored(tmp_path)[_URL]
+    assert (job["experience_level"], job["description_text"]) == ("unspecified", _SUPPLIED)
+    assert first.unreadable_pages == ()
+
+    second = _run(tmp_path)
+    assert second.jobs_stored_rechecked == 0, "judged on this text already"
+    assert site.fetches[_URL] == 0, "no run fetches a page the reader already supplied"
+
+
+def test_a_stored_shell_is_rejudged_from_the_supplied_text_without_a_fetch(
+    env: dict[str, Any],
+) -> None:
+    """jobsinlund's stored rows hold the shells of the pages fetched before SP4d."""
+    site, tmp_path = env["site"], env["tmp_path"]
+    _run(tmp_path)
+    assert site.fetches[_URL] == 1
+
+    env["extracted"][0]["description_text"] = _SUPPLIED
+    second = _run(tmp_path)
+    assert second.jobs_stored_rechecked == 1
+    assert site.fetches[_URL] == 1
+    assert _stored(tmp_path)[_URL]["description_text"] == _SUPPLIED
+
+
+def test_a_skipped_stored_job_keeps_the_description_it_was_judged_on(
+    env: dict[str, Any],
+) -> None:
+    """A rejected row skips Layer 5, so the reader's text must not replace its own."""
+    tmp_path = env["tmp_path"]
+    env["site"].page = posting("You bring 6+ years of experience.")
+    _run(tmp_path)
+    before = _stored(tmp_path)[_URL]
+    assert before["status"] == "rejected"
+
+    env["extracted"][0]["description_text"] = _SUPPLIED
+    _run(tmp_path)
+    assert _stored(tmp_path)[_URL]["description_text"] == before["description_text"]
