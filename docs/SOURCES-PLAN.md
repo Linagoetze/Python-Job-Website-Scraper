@@ -99,7 +99,7 @@ the ordering below.
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
-| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done except the post-revival report (needs a real run) | `sp4c-layer5-unreadable` |
+| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done | `sp4c-layer5-unreadable` |
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | not started | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
@@ -2287,7 +2287,15 @@ SQLite's backup API at
 `~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4c-20261001-141811`; the
 store went from 1,247 to 1,237 rejected rows and nothing else changed. They are
 `new`, with description and experience_level cleared. **What the next run made of
-them is not yet known**: no real run has been made since. The suite is 1,045 passed and 12 expected failures;
+them: run 33 (2026-10-01).** Four were fetched and read in full (impactpool 2,
+canonical 2); the description names no listed place, so they are rejected again,
+on a real read this time. Six stayed shells (simprints 4, kognity 2): they were
+dropped as unverified, not stored rejected, and remain `new` with an empty
+description and level, to be fetched again each run until SP4d makes their pages
+readable. The run summary's new block named jobsinlund (32 of 32), kognity (2 of
+2) and simprints (4 of 4). Known wrinkle: an unverified deferred drop is counted
+in the funnel's two L5 location/hybrid lines, which read as judged, and its
+stored row keeps a blank experience level, not the unchecked label. The suite is 1,045 passed and 12 expected failures;
 `ruff check`, `ruff format --check` and `run --help` are clean. SP7 had not
 landed, so the warning block is SP4c's own, in SP7's shape (`!` marker, own
 block, printed by `format_summary`).
