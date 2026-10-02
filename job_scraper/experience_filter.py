@@ -87,6 +87,38 @@ RULE_LOCATION_UNVERIFIED = "location: unresolvable field, could not read the des
 # two facts about two filters (WP8d; was `hybrid_unverified` in WP5/WP6).
 UNVERIFIED_KEY = "unverified_this_run"
 
+# What a kept job's experience_level says when its detail page was fetched but
+# held no posting (SP4c). Its own value, never "unspecified": that one means a
+# posting was read in full and states no requirement, and an unreadable page
+# says nothing of the kind.
+EXPERIENCE_UNREADABLE = "unchecked (page unreadable)"
+
+# What this run learnt about a job's detail page, carried on the job dict like
+# UNVERIFIED_KEY and DROP_RULE_KEY so the pipeline can count per source without
+# a second return value. Absent when no fetch was attempted (no URL).
+PAGE_STATE_KEY = "detail_page_state"
+PAGE_READ = "read"
+PAGE_UNREADABLE = "unreadable"
+PAGE_FAILED = "failed"
+
+# A detail page is unreadable when its stripped text is shorter than this (SP4c,
+# measured against the store on 2026-10-01). Every stored description of a shell
+# was 159 characters or fewer; every one of a posting read in full was 2,060 or
+# more; nothing lay between. 500 sits well clear of both ends of that gap, so a
+# short page that really is a posting still has room to be longer than a shell,
+# and a shell has room to grow a cookie banner without being read as a posting.
+MIN_READABLE_CHARS = 500
+
+# A JS-shell notice only proves a shell while the page is short. A fully rendered
+# posting can carry the same noscript line in its footer, and must not be called
+# unreadable for it. 2,000 is just under the shortest readable posting stored.
+_SHELL_MARKER_CEILING = 2_000
+_JS_SHELL_MARKER = re.compile(
+    r"enable\s+javascript|javascript\s+(?:is\s+)?(?:required|disabled|must\s+be\s+enabled)"
+    r"|requires?\s+javascript|turn\s+on\s+javascript",
+    re.IGNORECASE,
+)
+
 
 def _build_seniority_pattern(terms: list[str]) -> re.Pattern[str]:
     escaped = [re.escape(t.strip()) for t in terms if t.strip()]
@@ -240,6 +272,22 @@ def _strip_html(html: str) -> str:
         return re.sub(r"<[^>]+>", " ", html)
 
 
+def is_unreadable(text: str) -> bool:
+    """True when a fetched detail page, stripped, holds no posting to judge.
+
+    A 200 response is not a reading: a client-rendered page arrives as a title
+    and a "please enable JavaScript" notice. Decided on the stripped text alone,
+    so it costs nothing and needs no knowledge of the source.
+
+    The tetrapak signature (one text on several different postings of a source)
+    is deliberately not here: see docs/DECISIONS.md, SP4c.
+    """
+    stripped = text.strip()
+    if len(stripped) < MIN_READABLE_CHARS:
+        return True
+    return len(stripped) < _SHELL_MARKER_CEILING and bool(_JS_SHELL_MARKER.search(stripped))
+
+
 def _extract_min_years(text: str) -> int | None:
     """Return the minimum years requirement found in text, or None if not found."""
     all_years: list[int] = []
@@ -281,6 +329,10 @@ class _DetailSignals:
     min_years: int | None = None
     phd_required: bool = False
     fetch_failed: bool = False
+    # The page was fetched and holds no posting (SP4c). Distinct from
+    # fetch_failed, which is a request that did not complete, though both mean
+    # "this job was not checked" and both fail the same way.
+    unreadable: bool = False
     # A fetch refused by robots.txt, as opposed to one that merely failed. It is
     # not transient and not per-job: if a site disallows one detail page it
     # disallows the pattern, so the whole source loses its Layer 5 checks and
@@ -304,6 +356,7 @@ def _fetch_and_analyze(
     """Fetch a job's detail page and extract experience/PhD/deferred-state signals.
 
     min_years is None when no numeric requirement was found or there was no URL.
+    `unreadable` is set, and nothing else read, when the page held no posting.
     description_text is the stripped page text, capped at _MAX_DESCRIPTION_CHARS,
     or '' when nothing was fetched — WP7's scorer reads this back from the store
     rather than re-fetching.
@@ -317,6 +370,10 @@ def _fetch_and_analyze(
     try:
         html = fn(url)
         text = _strip_html(html)
+        if is_unreadable(text):
+            # Nothing below this line may be read off a shell: no years, no PhD,
+            # and above all no "the description names no listed place".
+            return _DetailSignals(job=job, unreadable=True)
         return _DetailSignals(
             job=job,
             min_years=_extract_min_years(text),
@@ -340,6 +397,16 @@ def _fetch_and_analyze(
             exc,
         )
         return _DetailSignals(job=job, fetch_failed=True)
+
+
+def _page_state(signals: _DetailSignals) -> dict[str, str]:
+    if signals.unreadable:
+        return {PAGE_STATE_KEY: PAGE_UNREADABLE}
+    if signals.fetch_failed:
+        return {PAGE_STATE_KEY: PAGE_FAILED}
+    if signals.description_text:
+        return {PAGE_STATE_KEY: PAGE_READ}
+    return {}
 
 
 def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | None:
@@ -427,6 +494,11 @@ def apply_detail_filter(
     knows *not* to treat that exclusion as a durable, storable judgement. A
     transient network error must not read the same as "checked and found
     lacking".
+    A page that was fetched but holds no posting (SP4c; see `is_unreadable`) is
+    the same case: nothing is read off it, so a deferred job is unverified, and
+    any other job is kept with experience_level EXPERIENCE_UNREADABLE and no
+    stored description, so the next run fetches it again. Each job also carries
+    PAGE_STATE_KEY saying whether its page was read, unreadable or failed.
     Every excluded job also carries the rule that dropped it under
     DROP_RULE_KEY — the years threshold that fired, the PhD requirement, or
     which of the two hybrid cases it was — for the run's exclusion log.
@@ -439,6 +511,7 @@ def apply_detail_filter(
     hybrid_excluded = 0
     location_excluded = 0
     unverified = 0
+    unreadable = 0
     fetched_at = utc_now_iso()
 
     def _task(job: JobRecord) -> _DetailSignals:
@@ -464,14 +537,18 @@ def apply_detail_filter(
         found lacking. That is not a judgement about the job, only a fact about
         this run's network conditions, so it carries no description and must not
         be persisted as a permanent rejection — see the docstring above and
-        pipeline.py's use of UNVERIFIED_KEY.
+        pipeline.py's use of UNVERIFIED_KEY. An unreadable page is exactly this
+        case (SP4c): `_fetch_and_analyze` reads nothing off a shell, so both
+        deferred answers arrive as None and land here as unverified.
         """
+        state = _page_state(signals)
         if not verified:
             return dict(
                 job,
                 experience_level=level,
                 description_text="",
                 description_fetched_at="",
+                **state,
                 **{UNVERIFIED_KEY: True, DROP_RULE_KEY: unverified_rule},
             )
         return dict(
@@ -479,6 +556,7 @@ def apply_detail_filter(
             experience_level=level,
             description_text=signals.description_text,
             description_fetched_at=fetched_at if signals.description_text else "",
+            **state,
             **{DROP_RULE_KEY: checked_rule},
         )
 
@@ -528,10 +606,20 @@ def apply_detail_filter(
         extra = {
             "description_text": description_text,
             "description_fetched_at": fetched_at if description_text else "",
+            **_page_state(signals),
         }
-        if failed:
-            fetch_failed += 1
-            kept.append(dict(job, experience_level="unspecified", **extra))
+        if signals.unreadable or failed or not description_text:
+            # Kept, and marked: the owner decided (SP4b Q6) that a job whose page
+            # could not be read is shown rather than lost, but never as though it
+            # was checked. A failed fetch and a missing URL are the same fact as
+            # a shell, so they carry the same level; "unspecified" is reserved
+            # for a posting read in full that states no requirement. Fails open
+            # for years and PhD because there is nothing to fail on.
+            if failed:
+                fetch_failed += 1
+            else:
+                unreadable += 1
+            kept.append(dict(job, experience_level=EXPERIENCE_UNREADABLE, **extra))
         elif phd_req:
             excluded.append(
                 dict(
@@ -584,7 +672,7 @@ def apply_detail_filter(
             "%d had no numeric requirement; "
             "%d dropped as non-hybrid in a conditional location; "
             "%d dropped because an unresolvable location field named no listed place "
-            "in the description "
+            "in the description; %d kept unchecked because the page held no posting "
             "(%d of those two totals because nothing could be verified this run, not "
             "because it was checked and found lacking)",
             layer_short(LAYER_DETAIL),
@@ -593,6 +681,7 @@ def apply_detail_filter(
             no_requirement,
             hybrid_excluded,
             location_excluded,
+            unreadable,
             unverified,
         )
     return kept, excluded

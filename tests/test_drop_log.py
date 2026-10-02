@@ -41,14 +41,15 @@ from job_scraper.filtering import (
 )
 from job_scraper.pipeline import run_pipeline
 from job_scraper.storage.db import JobStore
+from tests.pages import posting
 
 _SOURCE = "acme"
 _LISTING = "https://acme.example/jobs"
 
-_SENIOR_BODY = "We are looking for someone with 8+ years of experience in the field."
-_PHD_BODY = "A PhD is required for this role."
-_OFFICE_BODY = "You will be in the office five days a week."
-_PLAIN_BODY = "A great opportunity for someone early in their career."
+_SENIOR_BODY = posting("We are looking for someone with 8+ years of experience in the field.")
+_PHD_BODY = posting("A PhD is required for this role.")
+_OFFICE_BODY = posting("You will be in the office five days a week.")
+_PLAIN_BODY = posting("A great opportunity for someone early in their career.")
 
 
 def _job(title: str, *, location: str, slug: str, snippet: str = "") -> dict[str, str]:

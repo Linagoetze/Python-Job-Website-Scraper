@@ -26,6 +26,7 @@ from __future__ import annotations
 import pytest
 
 from job_scraper.experience_filter import (
+    EXPERIENCE_UNREADABLE,
     UNVERIFIED_KEY,
     _extract_min_years,
     _has_phd_required,
@@ -84,21 +85,11 @@ def _detail(job: dict[str, object], page: str) -> list[dict[str, object]]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SP4b: a JS shell is recorded as 'unspecified', the same as a posting "
-    "read in full that states no requirement; it needs a state of its own",
-)
 def test_a_js_shell_is_not_reported_as_no_requirement() -> None:
     [job] = _detail(_job(), _JS_SHELL)
-    assert job["experience_level"] != "unspecified"
+    assert job["experience_level"] == EXPERIENCE_UNREADABLE
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SP4b: a deferred location judged against a JS shell is stored as a "
-    "permanent rejection; 24 stored rows were lost this way",
-)
 @pytest.mark.parametrize(
     ("location", "pending"),
     [

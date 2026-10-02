@@ -99,7 +99,7 @@ the ordering below.
 | 3c | Narrow airbus below Workday's cap | 1.5 hr | Sonnet 5 | `think` | done | `sp3c-workday-facets` |
 | 4 | Fixtures for the five generic ATS readers | 3 hr | Sonnet 5 | `think` | done | `sp4-fixtures-ats` |
 | 4b | Audit the filter ladder, source by source | 3.5 hr | Opus 5 | `think hard` | done | `sp4b-filter-audit` |
-| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | not started | `sp4c-layer5-unreadable` |
+| 4c | Layer 5 learns to say "I could not read this" | 2.5 hr | Sonnet 5 | `think` | done | `sp4c-layer5-unreadable` |
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | not started | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | not started | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | not started | `sp4f-location-policy` |
@@ -2277,12 +2277,87 @@ unverified is the right failure direction for it.
 Branch sp4c-layer5-unreadable. Commit, do not push. Update this plan file.
 ```
 
+### Result — steps 1–5 done 2026-10-01, branch `sp4c-layer5-unreadable`
+
+**Step 6, the revival (2026-10-01, owner's choice: only the rows still listed).**
+Of the 29 selected, 10 were still listed in run 32 and were revived: simprints 4,
+impactpool 2, canonical 2, kognity 2. The other 19 (undp 16, kognity 2, busuu 1)
+stay rejected, untouched. Done in one transaction after a copy made with
+SQLite's backup API at
+`~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4c-20261001-141811`; the
+store went from 1,247 to 1,237 rejected rows and nothing else changed. They are
+`new`, with description and experience_level cleared. **What the next run made of
+them: run 33 (2026-10-01).** Four were fetched and read in full (impactpool 2,
+canonical 2); the description names no listed place, so they are rejected again,
+on a real read this time. Six stayed shells (simprints 4, kognity 2): they were
+dropped as unverified, not stored rejected, and remain `new` with an empty
+description and level, to be fetched again each run until SP4d makes their pages
+readable. The run summary's new block named jobsinlund (32 of 32), kognity (2 of
+2) and simprints (4 of 4). **2026-10-02, owner's call: the six unreadable ones (simprints 4, kognity 2) were put back to `rejected`**, with their status, level and description restored from the pre-revival copy (one transaction; copy at `~/Documents/job_scraper_backups/jobs.sqlite3.pre-unrevive-20261002-080953`). Left `new` they stayed in the review sheet unchecked while Layer 5 kept dropping them. They need a fresh revival once SP4d makes their pages readable; the four read ones stay rejected. Known wrinkle: an unverified deferred drop is counted
+in the funnel's two L5 location/hybrid lines, which read as judged, and its
+stored row keeps a blank experience level, not the unchecked label. The suite is 1,045 passed and 12 expected failures;
+`ruff check`, `ruff format --check` and `run --help` are clean. SP7 had not
+landed, so the warning block is SP4c's own, in SP7's shape (`!` marker, own
+block, printed by `format_summary`).
+
+**The threshold: 500 characters, with a marker ceiling of 2,000.** Measured
+read-only against `data/jobs.sqlite3` (run 32). Every stored description under
+2,060 characters is a shell or a stub: jobsinlund 224 (longest 107), undp 16
+(longest 4), simprints 4, kognity 4, monday_com 2, and one path row at 159. The
+next length up is 2,060. So the gap is **160 to 2,059** and 500 sits inside it,
+more than three times the longest shell and under a quarter of the shortest
+posting. The JS-shell marker (`enable javascript`, `javascript is required`, …)
+counts only below 2,000 characters, because a posting read in full can carry the
+same noscript line in its footer and must not be called unreadable for it.
+
+**The tetrapak signature is not included.** The code is cheap (a counter over
+one run's results), but the test is not safe, so this is a recommendation and not
+a stop. Identical text on several postings of a source is also what a real
+duplicate looks like: one role advertised in several cities. The store shows the
+two kinds side by side. The single readable-length group in it is tetrapak's
+four postings sharing 3,612 characters of chrome, and the only other (impactpool,
+two postings at 2,200) is the 2026-09-25 field-shift bug. Neither text can be
+told from a legitimate duplicate by looking at it, and a wrong call keeps a
+readable job as "unchecked" and drops a deferred one as unverified every run.
+tetrapak's own cause was a URL shape that has since been fixed in its reader.
+If the owner wants it anyway, it belongs where all of a run's pages are in hand,
+and needs a rule for what makes a duplicate legitimate. That is a decision, not
+a tidy-up.
+
+**Beyond the prompt, each one a consequence of it:**
+
+- A stored `'new'` row that a re-check reads and rejects is now stored
+  `'rejected'`. Without it a revived row judged "senior" would stay in the review
+  sheet. `'seen'` and `'shortlisted'` are the owner's decisions and keep their
+  status, as in the re-filter pass.
+- A failed fetch and a missing URL get the same `unchecked (page unreadable)`
+  level as a shell (added after review): `unspecified` now means only "read in
+  full, states no requirement". They are not counted in the summary block, which
+  is of pages that came back.
+- A re-check that gets no page no longer overwrites the stored experience level
+  (it would have turned "unchecked" back into "unspecified").
+- The sheet had no experience column at all, so "shows in the sheet" needed one:
+  `experience_level`, between `score_flags` and `detail_url`.
+- The summary row "stored, hybrid recheck" is now "stored, rechecked", since it
+  also counts the unread ones.
+- `JobStore.job_index` gained `description_chars`, which is how a run tells a
+  stored job that was read from one that was not.
+- Tests whose fake pages were a sentence long now read as shells. They wrap the
+  sentence with `tests/pages.posting`, which pads it past the threshold.
+
+**One thing the owner should know before confirming step 6.** Of the 29 selected
+rows only 10 are still listed on their source as of run 32 (simprints 4,
+impactpool 2, canonical 2, kognity 2). The other 19 (undp 16, kognity 2, busuu 1)
+were not on their listing that run. A row that is not listed is never fetched, so
+it cannot be re-checked, and once it is `'new'` it is eligible for delisting like
+any other. See the to-dos.
+
 ### Your to-dos
 
-- [ ] Confirm the count of rows to revive when the session prints its
+- [x] Confirm the count of rows to revive when the session prints its
       selection (expect 29: 24 rejected against a JS shell plus 5 further
       `review`-labelled rows). Nothing is written before you confirm.
-- [ ] After the next real run, look at the revived rows in the sheet. They
+- [x] After the next real run, look at the revived rows in the sheet. They
       should be re-checked, or marked unchecked, not shown as "unspecified".
 
 ---
@@ -2311,7 +2386,14 @@ strava and nutrition_international share the Ashby and Workable readers.
    420 characters). Let an extractor supply `description_text` itself, and
    let Layer 5 read that instead of fetching when it is present. That is one
    rule in apply_detail_filter, not a per-source branch, and it saves a
-   request per job. Config over code: no new module. Pin with the existing
+   request per job. SP4c's threshold bites here: the shortest jobsinlund
+   description is about 420 characters, under MIN_READABLE_CHARS (500), so
+   `is_unreadable` would flag a supplied description and the pipeline's
+   "stored description under the threshold" test would fetch the job again
+   every run. A description the reader supplied is not a fetched page: exempt
+   it from the length test (keep the marker test), and make the re-fetch test
+   in pipeline.py agree. Pin both: a supplied 420-character description is
+   read, stored, and not fetched on the next run. Config over code: no new module. Pin with the existing
    jobsinlund pattern. That reader has no fixture (SP6's list), so capture
    one first with scripts/capture_fixtures.py. The capture is live, so ask the
    owner before running it.
@@ -2327,7 +2409,17 @@ strava and nutrition_international share the Ashby and Workable readers.
    empty list, priority 2). Make it raise, as personio.py now does (SP4), and
    pin it.
 4. Re-measure SP4b's coverage matrix for these sources, read-only, and report
-   it. Then remind the owner of their SP4b Q8 answer: label a handful of
+   it, with SP4c's own measure beside it: rows per source whose
+   experience_level is "unchecked (page unreadable)", and the run summary's
+   "Unreadable pages" block, before and after. Then PROPOSE, and do not write
+   until the owner confirms the number, reviving again the rows SP4c had to
+   put back because their pages were unreadable: simprints 4 and kognity 2
+   (select them by query: rejected, a deferred-state experience_level, a
+   description under the threshold, source simprints or kognity), plus undp's
+   16 and anything else SP4c left behind that is still listed. Use SP4c's
+   method (backup copy outside data/ first, one transaction, status 'new',
+   description and experience_level cleared) and only for rows still listed:
+   an unlisted row is never fetched. Then remind the owner of their SP4b Q8 answer: label a handful of
    undp, simprints and monday_com rows now that they can be read.
 
 DOCS. Test count; README's uncovered-reader sentence if a fixture is added.
@@ -2463,7 +2555,13 @@ Q6 (an unreadable job is kept, marked) collide on a job whose location is
 empty AND whose page cannot be read. Under SP4c that job is unverified, so it
 is dropped for the run and never stored, and the owner never sees it, on
 every run. Count how many such jobs the store and the last run hold, and put
-the case to the owner. Do not choose quietly.
+the case to the owner. Do not choose quietly. Two facts from SP4c to put
+beside the count. A stored `new` row that is dropped as unverified is not
+touched, so it stays in the review sheet (SP4c's revived simprints rows did,
+and the owner had them put back to rejected); a brand-new job dropped as
+unverified is never stored and is never seen. And "unchecked (page
+unreadable)" now marks every kept job whose page could not be read, so the
+population is countable from experience_level.
 
 DOCS. Test count. In tests/test_filter_audit.py,
 test_a_home_based_or_worldwide_field_is_admitted_as_remote (strict xfail)
@@ -2512,8 +2610,9 @@ run_exclusions.
    which needs the migration care WP4/WP5 took) and documenting the pass as
    title-and-location only. Ask; do not choose quietly.
 2. Let the pass re-judge Layer 5 from the stored description_text for 'new'
-   rows only (never 'seen', per the WP5 rule), with no HTTP. An unreadable
-   description (SP4c) is left alone.
+   rows only (never 'seen', per the WP5 rule), with no HTTP. A row with no
+   stored description, or whose experience_level is "unchecked (page
+   unreadable)" (SP4c), has nothing to judge and is left alone.
 3. retrofilter records its drops under the `refilter/` prefix, in a run of
    its own, so they are logged like every other exclusion (WP8a).
 
@@ -2706,8 +2805,8 @@ showed it. airbus's reader raised, and the summary said
 line above the summary. A source whose reader raises is counted with config
 skips (no extractor, unknown strategy, robots.txt refused), so a failure
 that isn't watched for in the log reads as routine. The summary already has
-a block for sources that shrank (WP10) and one for sources that returned
-nothing (CU2). A source that failed outright is the loudest case and has
+a block for sources that shrank (WP10), one for sources that returned
+nothing (CU2) and, since SP4c, one for detail pages that held no posting. A source that failed outright is the loudest case and has
 neither.
 
 **2. A source that returns exactly one page, run after run.** In
@@ -2741,7 +2840,7 @@ per warning.
    WARNING log line. The summary counts it in "(N skipped)" alongside config
    skips and names nothing: SP3b's dry run printed "5 / 6 processed
    (1 skipped)" for a failed airbus. Give failures a block of their own, in
-   the style of the source-health and empty-source blocks ("!" marker, no
+   the style of the source-health, empty-source and unreadable-pages blocks ("!" marker, no
    ladder gutter). Each failed source is named, with the first line of its
    error, and the block says its stored jobs were kept and nothing was
    delisted. Split the Sources line so a failure is not counted as a skip.

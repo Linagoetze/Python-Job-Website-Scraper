@@ -17,6 +17,7 @@ from job_scraper.filtering import (
     build_hybrid_pattern,
     build_location_pattern,
 )
+from tests.pages import posting
 
 # ---------------------------------------------------------------------------
 # _extract_min_years
@@ -134,7 +135,7 @@ class TestHybridResolution:
         }
 
     def _run(self, job, html="<p>A great role.</p>"):
-        return apply_detail_filter([job], lambda _url: html, hybrid_pattern=self._PATTERN)
+        return apply_detail_filter([job], lambda _url: posting(html), hybrid_pattern=self._PATTERN)
 
     def test_hybrid_in_description_confirms(self):
         kept, excluded = self._run(
@@ -222,7 +223,9 @@ class TestUnresolvableLocationResolution:
         }
 
     def _run(self, job, html="<p>A great role.</p>"):
-        return apply_detail_filter([job], lambda _url: html, location_pattern=self._PATTERN)
+        return apply_detail_filter(
+            [job], lambda _url: posting(html), location_pattern=self._PATTERN
+        )
 
     def test_listed_place_in_description_confirms(self):
         kept, excluded = self._run(
@@ -269,7 +272,7 @@ class TestUnresolvableLocationResolution:
     def test_fails_closed_when_no_locations_are_configured(self):
         kept, excluded = apply_detail_filter(
             [self._job([_UNRESOLVED_PENDING_REASON])],
-            lambda _url: "<p>Based in Lund.</p>",
+            lambda _url: posting("Based in Lund."),
             location_pattern=None,
         )
         assert not kept
@@ -294,7 +297,7 @@ class TestUnresolvableLocationResolution:
         job = self._job([_HYBRID_PENDING_REASON, _UNRESOLVED_PENDING_REASON])
         kept, _ = apply_detail_filter(
             [job],
-            lambda _url: "<p>A hybrid role based in Lund.</p>",
+            lambda _url: posting("A hybrid role based in Lund."),
             hybrid_pattern=build_hybrid_pattern({"conditional_location_keywords": ["hybrid"]}),
             location_pattern=self._PATTERN,
         )

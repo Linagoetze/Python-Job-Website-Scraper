@@ -75,6 +75,15 @@ posting you have already rejected should never cost a request.
 Layer 5 fails open — if a detail page can't be fetched or parsed, the job is kept
 rather than silently dropped.
 
+A page that could not be fetched, or *was* fetched but holds no posting (a client-rendered shell: a title
+and a "please enable JavaScript" notice) is a third case, and is never mistaken
+for a posting that states no requirement. The job is kept, and the review sheet's
+`experience_level` column says `unchecked (page unreadable)` instead of
+`unspecified`. A job whose location is still to be settled from the page is
+dropped for that run only, never stored as rejected, because nothing was read to
+judge it by. A stored job with no description is fetched again on the next run,
+so a page that starts to read is checked then.
+
 ## Requirements
 
 - Python 3.10 or newer (developed on 3.13)
@@ -223,7 +232,7 @@ Jobs seen (all pages, dupes incl.)             8,000
   L3  − senior-level title                      −520   → 3,973 passed title filters
   L4  − blocklisted (rejected)                −3,800   →   173 after blocklist
         already in table (skipped)               140
-        stored, hybrid recheck                     3
+        stored, rechecked                          3
         new, detail-checked                       30
   L5  − needs 3+ yrs / PhD (1 PhD)                −6
   L5  − non-hybrid (distant city)                 −2
@@ -301,6 +310,23 @@ and is counted as skipped. This is the clean scrape that found nothing, which is
 either a broken reader or a genuinely empty careers page, and only looking will
 tell you which. Nothing is delisted either way, unless you passed
 `--allow-empty-delist` — in which case the line says so instead.
+
+**Unreadable pages** get a third block, for a different question again — "could
+the pages behind the listing be read?":
+
+```
+────────────────────────────────────────────────────
+!  Unreadable pages: 2 sources had detail pages with no posting in them
+!  acme_jobs: 4 of 9 detail pages unreadable — those jobs are not experience-checked
+!  contoso: 1 of 12 detail pages unreadable — those jobs are not experience-checked
+```
+
+Nothing in the funnel looks wrong when a source's detail pages are shells: the
+listing was fine and the jobs were kept. That is exactly why they need a line of
+their own. The count is of pages that came back, so a request that failed is not
+in either number. Those jobs were not checked for years or a PhD; they sit in
+the review sheet marked `unchecked (page unreadable)` and are fetched again each
+run until the page reads.
 
 ### Why was something dropped?
 
@@ -892,7 +918,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1021 tests plus 15 expected failures, about fifteen seconds, no network access
+1050 tests plus 12 expected failures, about fifteen seconds, no network access
 required. The expected failures are strict `xfail`s in
 `tests/test_filter_audit.py`: filter decisions the SP4b audit found wrong,
 each pinned so that its fix turns it green. Extractors are

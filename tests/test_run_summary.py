@@ -65,7 +65,7 @@ Jobs seen (all pages, dupes incl.)             8,000
   L3  − senior-level title                      −100   →   900 passed title filters
   L4  − blocklisted (rejected)                   −50   →   850 after blocklist
         already in table (skipped)               300
-        stored, hybrid recheck                    10
+        stored, rechecked                         10
         new, detail-checked                    1,200
   L5  − needs 3+ yrs / PhD (20 PhD)               −0
   L5  − non-hybrid (distant city)               −100

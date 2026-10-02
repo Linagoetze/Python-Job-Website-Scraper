@@ -470,6 +470,19 @@ class JobStore:
         )
         return cur.rowcount
 
+    def mark_unlabelled(self, keys: list[str], level: str) -> int:
+        """Give *level* to each of *keys* that has no experience_level yet.
+
+        Never overwrites: a row that already carries a level keeps it. Used for
+        a stored job whose page could not be read this run, so that it shows as
+        unchecked and not as a blank. Returns the number labelled.
+        """
+        cur = self._c().executemany(
+            "UPDATE jobs SET experience_level = ? WHERE dedupe_key = ? AND experience_level = ''",
+            ((level, k) for k in keys),
+        )
+        return cur.rowcount
+
     def mark_all_new(self, status: str) -> int:
         """Flip every unreviewed ('new') job to *status*. Returns the number flipped.
 
@@ -717,10 +730,22 @@ class JobStore:
         }
 
     def job_index(self) -> dict[str, dict[str, Any]]:
-        """dedupe_key -> {status, hybrid_confirmed} for every stored job."""
+        """dedupe_key -> {status, hybrid_confirmed, description_chars} per stored job.
+
+        `description_chars` is the length of the stored description, so a caller
+        can tell a job that was read from one that was not without pulling the
+        text of every row.
+        """
         return {
-            r["dedupe_key"]: {"status": r["status"], "hybrid_confirmed": r["hybrid_confirmed"]}
-            for r in self._c().execute("SELECT dedupe_key, status, hybrid_confirmed FROM jobs")
+            r["dedupe_key"]: {
+                "status": r["status"],
+                "hybrid_confirmed": r["hybrid_confirmed"],
+                "description_chars": r["description_chars"],
+            }
+            for r in self._c().execute(
+                "SELECT dedupe_key, status, hybrid_confirmed, "
+                "LENGTH(description_text) AS description_chars FROM jobs"
+            )
         }
 
     def jobs_with_status(self, statuses: tuple[str, ...]) -> list[dict[str, Any]]:
