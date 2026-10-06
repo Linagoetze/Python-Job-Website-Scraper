@@ -534,10 +534,16 @@ mostly on the first run after switching it on: a job dropped this way is stored
 as rejected and skipped thereafter, so the load falls back to newly posted jobs.
 
 **Home-based, worldwide and regional roles.** A role that is not in one place
-counts as remote. `Home based`, `Worldwide` and `Home based - Worldwide` are
-admitted outright, with no configuration. A home-based or remote role across a
-region in `remote_regions` is admitted too: `Home based - <region>`, or
-`Remote | <region>`, once that region is in the list. So is a field that offers
+counts as remote, but only where it is open to you. `Remote`, `Fully Remote`,
+`Home based`, `Worldwide` and `Home based - Worldwide` are admitted outright,
+with no configuration, and so is a remote option that names worldwide, global
+or international beside another place (`US - Remote; Global - Remote`,
+`United States + International (Remote)`). A home-based or remote role across a
+region in `remote_regions` is admitted too: `Home based - <region>`,
+`<region> - Remote` or `Remote | <region>`, once that region is in the list.
+Remote anywhere else is not: `Germany - Remote` is admitted only if `Germany`
+is in `remote_regions`. A country named in a field is matched as itself, so a
+broader region such as a continent does not cover it. List the countries too. So is a field that offers
 such an option beside an office city, like `Home based - <region>; Office Based -
 London`, since the home-based option is open to you whichever office is named. A region
 on its own, with no remote or home-based wording anywhere in the job, is still
@@ -545,14 +551,20 @@ settled by layer 5 like a bare country, because it may just hold an office. So
 is a home-based region that is not in your list. Fields are split into options
 on `|`, `/`, `;` and line breaks, and each option is read on its own.
 
-**The remote caveat.** A `remote_keyword` only admits a job when its location
-field names no specific city. Some job boards tag every single posting
-`Remote | <duty station>`, so treating "remote" as "location doesn't matter" would
-let the entire board through. `Remote` and `Remote | Home Based` pass;
-`Remote | Nairobi` is rejected, because Nairobi is a real duty station and it
-isn't in your `locations`. A bare `Home Based | Nairobi` is read the same way.
-Within one segment the check is looser: `Germany - Remote` passes, wherever the
-country is.
+**The remote caveat.** A bare remote tag beside a named place is that place.
+Some job boards tag every single posting `Remote | <duty station>`, so treating
+"remote" as "location doesn't matter" would let the entire board through.
+`Remote` and `Remote | Home Based - May require travel` pass; `Remote | Nairobi`
+is rejected, because Nairobi is a real duty station and it isn't in your
+`locations`. A bare `Home Based | Nairobi` is read the same way.
+
+**An empty field whose page says remote.** An empty location is settled by its
+detail page naming one of your `locations`, or by the page saying the job is
+remote where you can work. Only two things count as saying so: Workday's own
+label `remote type Fully Remote`, and an employer's `Location:` line that names
+worldwide, global or international, or one of your `remote_regions`
+(`Location: Global, Remote`). A bare `Location: Remote` does not count there,
+and neither does prose about remote places.
 
 ### `job_scraper/config/title_exclude_keywords.csv`
 
@@ -961,7 +973,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1180 tests, about fifteen seconds, no network access required.
+1196 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

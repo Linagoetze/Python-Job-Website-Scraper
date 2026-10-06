@@ -3017,7 +3017,20 @@ they stay deferred.
   today's Layer 0 under your rules.json, kept by SP4e's reading). The count is
   printed for you to confirm first.
 
-**Questions for you.**
+**Follow-up, 2026-10-06: both questions answered and built** (branch
+`sp4f-remote-follow-up`). (1) The loose remote test is gone. Remote counts in
+your `remote_regions` or worldwide ("US - Remote; Global - Remote", "United
+States + International (Remote)"), and a remote option naming no region still
+counts, by your choice. 34 stored rows change, all already rejected, most of
+them wrike's remote roles in single European countries. A country is matched as
+itself, so list the countries you want beside the regions. (2) path's pages
+carry no Workday label (0 of 35), so the exact label alone would have missed
+the roster that raised the question. On your choice, Layer 5 also reads an
+employer's "Location:" line, judged by the same rule. It settles 5 stored
+empty-location rows (path 1, irc 4), all rejected by then. No stored `new` row
+changes. Suite: **1,196 passed**.
+
+**Questions for you** (answered, see the follow-up above).
 
 1. **Remote within a segment is admitted anywhere.** "USA - MA - Remote" and
    "Estonia - Remote" pass today's `remote_keywords` test, because a segment
@@ -3083,8 +3096,13 @@ detail pages that could not be read". Suite: **1,180 passed**.
       The store held no `new` rows beforehand, because you had rejected the
       whole sheet on 2026-10-05 after run 35. A first attempt stopped on a
       check that assumed some `new` rows existed and rolled back, unwritten.
-- [ ] Decide on the two questions above (loose remote segments, Workday's
-      workplace label).
+- [x] Decide on the two questions above (loose remote segments, Workday's
+      workplace label). **Decided 2026-10-06, built on branch
+      `sp4f-remote-follow-up`:** remote counts only in your `remote_regions`
+      or worldwide, while a remote option naming no region still counts. An
+      empty field is also settled by Workday's exact "Fully Remote" label, or a
+      "Location:" line naming worldwide or one of your regions. See
+      `docs/DECISIONS.md` and the follow-up note below.
 - [ ] Optionally, `review --reject` the empty-location `new` rows that Q4
       would now drop (35, impactpool 24, path 8, irc 3), keeping the path
       worldwide roster. Otherwise they stay until SP4g re-judges stored rows.
