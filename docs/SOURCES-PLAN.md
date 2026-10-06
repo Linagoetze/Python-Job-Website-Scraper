@@ -105,7 +105,7 @@ the ordering below.
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | done | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | done | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
-| 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1 reported, none added (owner decisions pending) | `sp5-add-sources` |
+| 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: one source live, one held back, rest reported | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
 
@@ -3490,18 +3490,22 @@ per company: verdict, extractor reused, rows captured.
 
 ### Result — batch 1, 2026-10-06, branch `sp5-add-sources`
 
-**Eleven companies probed, none added.** One earned a `reuse` verdict and failed
-the check that follows it, so it was taken back out. No source, registry line,
-fixture or test changed, so the README's test count did not move. The companies
-are named in chat, not here ("Publishing this file"); they are numbered in the
-order the owner gave them. None was tombstoned, four were existing candidates,
-and none runs on Ashby, Workable or Workday, so no platform rule from SP4d
-applied and SP3b was not needed.
+**Eleven companies probed; two added as SmartRecruiters sources, one of them
+held back from `sources.yaml`.** One more earned a `reuse` verdict and failed
+the check that follows it, so it was taken back out. The companies are named in
+chat, not here ("Publishing this file"); they are numbered in the order the
+owner gave them. None was tombstoned, four were existing candidates, and none
+runs on Ashby, Workable or Workday, so no platform rule from SP4d applied and
+SP3b was not needed. The owner exempted `api.smartrecruiters.com` for companies
+1 and 11 (`ignore_robots`, as the one existing SmartRecruiters source has), and
+both were then captured and pinned: two fixtures (three files), two goldens, 11
+new tests (1232 to 1243).
 
-- **1. SmartRecruiters board.** Not feasible, rung 2: robots.txt on
-  `api.smartrecruiters.com` forbids the reader's request. `ignore_robots` is the
-  owner's judgement, as it was for the one SmartRecruiters source already
-  configured. Extractor reused: none. Rows captured: 0.
+- **1. SmartRecruiters board.** Probe: not feasible, rung 2 (robots.txt on
+  `api.smartrecruiters.com`). With the owner's exemption: `reuse smartrecruiters`,
+  **live in `sources.yaml`**. Rows captured: 39, one page, all real postings.
+  The first run stores none of them: every posting is dropped at Layer 0 as
+  "city not on the list", and 13 of the 39 are remote (see "Workplace fields").
 - **2. Teamtailor board.** Verdict `reuse teamtailor`, 7 rows, and the capture
   was taken. **The rows are wrong:** all seven have `location` set to the
   card's visible title text (shortened with "..." when long), and `department`
@@ -3538,10 +3542,15 @@ applied and SP3b was not needed.
 - **10. Own site, Next.js.** Not feasible, rungs 1-2: a stated total of 1,006
   at 10 a page, no posting links in the static or rendered HTML, and a
   SmartRecruiters fingerprint with no board URL to read.
-- **11. Own site over SmartRecruiters.** Not feasible, rung 2: the same
-  `api.smartrecruiters.com` robots.txt refusal as company 1, on the board the
-  page links to. The page also has a "Load more" control the reader does not
-  press.
+- **11. Own site over SmartRecruiters.** Probe: not feasible, rung 2 (the same
+  refusal as company 1, on the board the page links to). With the exemption:
+  `reuse smartrecruiters`, rows captured: 136 over two pages, so the fixture is
+  the whole walk (`--pages all`, as for J-PAL). The reader walks the API, so the
+  page's "Load more" control does not matter. **Held back: not in
+  `sources.yaml`.** Its registry line, fixture and golden are committed. A
+  scratch run (store and spreadsheet in the scratchpad) kept 17 rows and
+  rejected 26 at Layer 5, and 5 of those are wrongly rejected: see "Workplace
+  fields". A rejection is permanent, so it waits for the reader fix.
 
 **Teamtailor image-card layout (found at company 2).** The board uses a grid
 of image cards. The title is a `<span title=...>` and the metadata is a `<div>`
@@ -3560,16 +3569,61 @@ layouts), and that gives the probe a plain check that no row's location equals
 its title. The capture is in the scratchpad and is the test case. Not folded
 in here, because SP5 adds sources.
 
+**Workplace fields (SmartRecruiters, SP4f).** The postings carry
+`location.remote` and `location.hybrid`, and `smartrecruiters.py` discards both.
+In the fixtures: company 1 has 13 remote and 19 hybrid of 39, company 11 has 3
+remote and 33 hybrid of 136. Measured on the scratch run: of company 11's 20
+rows rejected as "non-hybrid in a conditional location", **5 are marked hybrid
+by the platform** (four junior or internship roles and one project controller),
+and their descriptions say nothing about the workplace. That is the kognity
+case again, and the expensive direction, because `rejected` is permanent. Every
+company 1 posting is dropped at Layer 0 because its location field is a bare
+city, though 13 are remote by the platform's flag. Proposed, not folded in: map
+`remote` and `hybrid` into `raw_snippet` as the Ashby and Workable readers do,
+in a Sonnet package. Company 11 goes into `sources.yaml` after it, and its
+rows are then re-measured.
+
+**Layer 5's years reading on company 11** (read from the scratch store, 43 rows
+read). Three of the six exclusions are right as written (`minimum 3 års`,
+`7-10 years`, `3+ years`), one range excluded at its lower bound (`3-8 års`) is
+right under SP4e's rule, and two junior readings come from ranges read at their
+lower bound (`1-5 years`, `2 – 5 års`), also under that rule. Two misreadings:
+- **Excluded, the expensive direction (2 rows).** Two Manager roles list
+  "Qualifications Ideally, you have: Around 6-9 years of relevant experience ..."
+  and read as 6+ years. "Ideally" in a sentence is a preference and is not read,
+  but "Ideally, you have:" opening a list is not recognised. Invented case,
+  against `_read_years_requirement`: "Qualifications Ideally, you have: 5 years
+  of relevant experience in logistics. A degree in engineering." reads 5 and
+  should read nothing, and "We would ideally like 5 years of relevant experience
+  in logistics." reads nothing and is the control. Both rows are senior Manager
+  roles, so the owner may not want them either way.
+- **Kept, the cheap direction (1 row).** "Proven experience (5-10 years) in a
+  Project Manager, PMO or Workstream Lead role" reads `unspecified`. Its
+  controls read as expected: "Proven experience of 5-10 years in a Project
+  Manager role" reads 5 and "You have solid experience (3+ years) as an auditor"
+  reads 3, so it is the parenthetical range that is missed.
+Neither was patched. Both come back as test cases for a package of their own.
+The re-filter pass would not reach the first on its own, since the two rows
+are stored `rejected` and nothing automatic un-rejects. After a fix,
+`retrofilter --dry-run` shows what the next scrape would reject, and
+`drops --refilter` shows what a `retrofilter` pass logged.
+
+**Other checks.** The summary printed no "Unreadable pages" block, so neither
+source is starved at Layer 5 (company 11's stored descriptions run from 2,781
+to 10,348 characters). `drops --layer 0-rules` for both shows one rule only,
+"city not on the list": no "remote keyword overridden by a named city" and no
+unresolvable-field rule. No kept or fixture title has a German, Swedish or
+Danish compound of the `contains` family. Company 1's remote roles are written
+as a city plus a flag, not a single country, so the countries are listed for
+the owner in chat only.
+
 **Proposals for the owner**, none run (each needs a yes in chat):
-`candidate add` for companies 4, 10 and 11 (for now, each with its reason and
+`candidate add` for companies 4 and 10 (for now, each with its reason and
 today's date), `candidate recheck` for 5, 6 and 7 (for now, new blocker, dated
 today), and optionally `recheck` for 8 so its stale blocker stops saying
-"bot-hostile". Company 1 is the same `candidate add` unless the owner exempts
-`api.smartrecruiters.com`, in which case 1 and 11 become `reuse` and are
-re-probed. None is by design, so none is a tombstone.
-
-Layer 5's years reading, the remote-shape drops and the "Unreadable pages"
-check were not run: there is no new source to run them on.
+"bot-hostile". Companies 1 and 11 were candidates for nothing: they are
+sources. `candidate activate` does not apply, since neither was a candidate.
+None of the eleven is by design, so none is a tombstone.
 
 ### Your to-dos
 

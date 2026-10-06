@@ -132,6 +132,12 @@ REGISTRY: dict[str, ExtractorFn] = {
     "impactpool": partial(impactpool.extract, source_name="impactpool"),
     # --- OECD (SmartRecruiters) ---
     "oecd": partial(smartrecruiters.extract, source_name="oecd", org_slug="OECD"),
+    "wwf_us": partial(
+        smartrecruiters.extract, source_name="wwf_us", org_slug="WorldWildlifeFundInc1"
+    ),
+    "deloitte_nordic": partial(
+        smartrecruiters.extract, source_name="deloitte_nordic", org_slug="DeloitteNordic"
+    ),
     # --- Sida ---
     "sida": partial(sida.extract, source_name="sida"),
     # --- NIRAS (dynamic) ---

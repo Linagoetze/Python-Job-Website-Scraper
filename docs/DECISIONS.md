@@ -1562,3 +1562,25 @@ session — see `CLAUDE.md`.
   link", not "no postings", and an old blocker of "no job content" should be
   re-read from the rendered text before it is renewed. Neither correction is
   built here. Both are proposed in SP5's result.
+- **A source can be captured, pinned and still held out of `sources.yaml`
+  (SP5, 2026-10-06).** The SmartRecruiters reader discards the platform's
+  `location.hybrid` and `location.remote`. On a first scratch run, 5 of 20 rows
+  that Layer 5 rejected as "non-hybrid in a conditional location" were marked
+  hybrid by the platform, with nothing about the workplace in their text.
+  Because `rejected` is permanent and nothing automatic undoes it, the source
+  stays out of the live config until the reader carries the flag (SP4f's
+  route), while its registry line, fixture and golden are committed so the
+  repair has a test case. Adding the source later is one paste. Un-rejecting
+  rows is the owner's job by hand. The same check belongs to any first
+  run of a source on a platform with such a field: join the platform's flag to
+  the rows Layer 5 rejects before the real run, not after. A run against a
+  scratch store and a `--sources` file holding only the new entries does this
+  without touching the live store.
+- **A robots.txt refusal on a platform's API is the owner's call, per source
+  (SP5).** The probe passes no `ignore_robots`, so it can only report
+  "not feasible, rung 2" for a SmartRecruiters board. The capture script does
+  honour `sources.yaml`'s `ignore_robots`, so once the owner agrees, the board
+  is added with the exemption and captured, not re-probed. A board of more than
+  100 postings needs `capture_fixtures.py --pages all` or the replay fakes the
+  end of the walk and the capture reports "UNPARSEABLE".
+

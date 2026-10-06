@@ -690,6 +690,40 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Nurse – Temporary position Corporate Functions Paris, fr",
         },
     },
+    "wwf_us": {
+        # smartrecruiters.py's third source. One page: `totalFound` (39) matched
+        # the 39 postings read. Country is SmartRecruiters' lower-case ISO code,
+        # as for OECD, and `relativeUri` is absent here too.
+        "count": 39,
+        "first_job": {
+            "source_name": "wwf_us",
+            "title": "Cybersecurity Specialist - R4645",
+            "location": "Quito, ec",
+            "department": "Information Technology",
+            "listing_url": "https://careers.smartrecruiters.com/WorldWildlifeFundInc1/wwfus",
+            "detail_url": "https://jobs.smartrecruiters.com/WorldWildlifeFundInc1/744000153753919",
+            "apply_url": "https://jobs.smartrecruiters.com/WorldWildlifeFundInc1/744000153753919",
+            "raw_snippet": "Cybersecurity Specialist - R4645 Information Technology Quito, ec",
+        },
+    },
+    "deloitte_nordic": {
+        # smartrecruiters.py over two pages (136 postings at 100 a page), so the
+        # whole walk is saved: deloitte_nordic.json + .p1.json. A one-page replay
+        # would fake the end of the board (docs/DECISIONS.md, WP11). No posting
+        # carries a department. The platform marks 33 of the 136 hybrid and 3
+        # remote, which the reader does not read (reported in SP5).
+        "count": 136,
+        "first_job": {
+            "source_name": "deloitte_nordic",
+            "title": "Build your career in Transfer Pricing - Aarhus",
+            "location": "Aarhus, dk",
+            "department": "",
+            "listing_url": "https://careers.smartrecruiters.com/DeloitteNordic",
+            "detail_url": "https://jobs.smartrecruiters.com/DeloitteNordic/744000153731959",
+            "apply_url": "https://jobs.smartrecruiters.com/DeloitteNordic/744000153731959",
+            "raw_snippet": "Build your career in Transfer Pricing - Aarhus Aarhus, dk",
+        },
+    },
     "nutrition_international": {
         # workable.py, moved onto the fetcher's post_json in this same
         # package ahead of its first capture. No bug in the field mapping.

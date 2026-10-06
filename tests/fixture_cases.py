@@ -262,6 +262,21 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://careers.smartrecruiters.com/OECD/oecd---en",
         lambda url, fetch: smartrecruiters.extract(url, fetch, source_name="oecd", org_slug="OECD"),
     ),
+    "wwf_us": (
+        "wwf_us.json",
+        "https://careers.smartrecruiters.com/WorldWildlifeFundInc1/wwfus",
+        lambda url, fetch: smartrecruiters.extract(
+            url, fetch, source_name="wwf_us", org_slug="WorldWildlifeFundInc1"
+        ),
+    ),
+    "deloitte_nordic": (
+        # 136 postings at 100 a page: the walk is deloitte_nordic.json plus .p1.json.
+        "deloitte_nordic.json",
+        "https://careers.smartrecruiters.com/DeloitteNordic",
+        lambda url, fetch: smartrecruiters.extract(
+            url, fetch, source_name="deloitte_nordic", org_slug="DeloitteNordic"
+        ),
+    ),
     "nutrition_international": (
         "nutrition_international.json",
         "https://apply.workable.com/nutritionintl/",
