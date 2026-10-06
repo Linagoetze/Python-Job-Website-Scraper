@@ -1547,3 +1547,18 @@ session — see `CLAUDE.md`.
   unknown match type still falls back to `word`. `donor` was removed by the
   owner's Q7 answer (1 wanted job recovered for 1 unwanted, measured). The
   re-filter pass found no stored `new` row either change touches.
+- **A `reuse` verdict is not a clean read, and the probe's "no postings" is not
+  a finding about the site (SP5, 2026-10-06).** The probe's `reuse teamtailor`
+  came with seven rows whose location was each row's own title: a layout the
+  reader had never met, read as the nearest block. Nothing failed and the
+  report printed the rows without comment, so the check that catches it is
+  the one SP5's prompt already has, reading the rows before adding the source.
+  The company was left out rather than added with a note, because a bad
+  location is not neutral: Layer 0 judges it as a city nobody has heard of.
+  The opposite error turned up on two old candidates. The probe called HiBob
+  and Taleo boards "no postings" because their rendered cards are not links of
+  the shape it looks for, yet the rendered text held the postings (a stated
+  total of 4, and of 69). So its rung 1-2 failure says "no posting-shaped
+  link", not "no postings", and an old blocker of "no job content" should be
+  re-read from the rendered text before it is renewed. Neither correction is
+  built here. Both are proposed in SP5's result.

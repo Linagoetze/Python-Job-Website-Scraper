@@ -105,7 +105,7 @@ the ordering below.
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | done | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | done | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
-| 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
+| 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1 reported, none added (owner decisions pending) | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
 
@@ -3358,7 +3358,7 @@ so nothing else in it was reshuffled.
 
 - [x] Check the `eval --compare` diff the session quotes for removing `donor`
       and for any new match type. Both are quoted in the result above.
-- [ ] Skim `git diff` of `title_exclude_keywords.csv`: seven entries changed type
+- [x] Skim `git diff` of `title_exclude_keywords.csv`: seven entries changed type
       and `donor` is gone. A kept `contains` entry is the first place to look if a
       title is ever dropped that reads as unrelated.
 
@@ -3487,6 +3487,89 @@ names to any tracked file — see "Publishing this file".
 Branch sp5-add-sources. Commit, do not push. Update this plan file with one line
 per company: verdict, extractor reused, rows captured.
 ```
+
+### Result — batch 1, 2026-10-06, branch `sp5-add-sources`
+
+**Eleven companies probed, none added.** One earned a `reuse` verdict and failed
+the check that follows it, so it was taken back out. No source, registry line,
+fixture or test changed, so the README's test count did not move. The companies
+are named in chat, not here ("Publishing this file"); they are numbered in the
+order the owner gave them. None was tombstoned, four were existing candidates,
+and none runs on Ashby, Workable or Workday, so no platform rule from SP4d
+applied and SP3b was not needed.
+
+- **1. SmartRecruiters board.** Not feasible, rung 2: robots.txt on
+  `api.smartrecruiters.com` forbids the reader's request. `ignore_robots` is the
+  owner's judgement, as it was for the one SmartRecruiters source already
+  configured. Extractor reused: none. Rows captured: 0.
+- **2. Teamtailor board.** Verdict `reuse teamtailor`, 7 rows, and the capture
+  was taken. **The rows are wrong:** all seven have `location` set to the
+  card's visible title text (shortened with "..." when long), and `department`
+  empty. Not added; see
+  "Teamtailor image-card layout" below. Extractor reused: `teamtailor`, but
+  nothing pinned. Rows captured: 7, kept in the session scratchpad only.
+- **3. Own HTML careers page.** `needs a new extractor`, `static`: 13
+  posting-shaped links, no supported platform. Proposed as its own package, not
+  written. Rows captured: 0.
+- **4. Greenhouse board.** Not feasible, rung 5, for now: the board is empty.
+  Greenhouse's API answers `total: 0` and the board page lists nothing, so the
+  reader is not at fault. Extractor reused: `greenhouse`, which read 0 rows.
+- **5. Own site, a candidate.** Not feasible, rungs 1-2. The static fetch
+  failed (`HTTP/2 INTERNAL_ERROR`), and the rendered page is a 29-character
+  Nuxt shell with no job list. A Workday fingerprint appeared in the rendered
+  HTML with no board URL to read. The recorded blocker (bot protection) still
+  holds, on a check dated today where the old one was undated.
+- **6. HiBob board, a candidate.** Probe: not feasible, rungs 1-2. **But the
+  recorded blocker is out of date:** the rendered page now shows its postings
+  ("Total: 4", with titles and posting dates), where the blocker says there is
+  no job content in the DOM. The probe finds no posting-shaped link because
+  the cards are not links, and HiBob has no reader here. Not a blocker of
+  content; a missing reader.
+- **7. Taleo portal, a candidate.** Probe: not feasible, rungs 1-2. **The
+  recorded blocker (login, "No jobs") is out of date here too:** the rendered
+  page, not signed in, states "1 - 25 of 69 Job Openings". Taleo has no reader
+  here, so it is a candidate for one, not a login wall.
+- **8. CSOD board, a candidate.** `needs a new extractor`, `dynamic`: the
+  rendered page carries 25 posting-shaped links and a pager. The recorded
+  blocker called it bot-hostile, which the rendered fetch did not bear out. No
+  CSOD reader exists; proposed as its own package, not written.
+- **9. Own site, rendered.** `needs a new extractor`, `dynamic`: 16
+  posting-shaped links after rendering, none before. Proposed, not written.
+- **10. Own site, Next.js.** Not feasible, rungs 1-2: a stated total of 1,006
+  at 10 a page, no posting links in the static or rendered HTML, and a
+  SmartRecruiters fingerprint with no board URL to read.
+- **11. Own site over SmartRecruiters.** Not feasible, rung 2: the same
+  `api.smartrecruiters.com` robots.txt refusal as company 1, on the board the
+  page links to. The page also has a "Load more" control the reader does not
+  press.
+
+**Teamtailor image-card layout (found at company 2).** The board uses a grid
+of image cards. The title is a `<span title=...>` and the metadata is a `<div>`
+beside it, both inside one wrapper `<div>` that is the card's second child.
+`teamtailor.extract` takes that second child as the metadata block when it
+finds a `<span title>`, which was right for Storytel's older markup, and then
+`_content_segments` reads the wrapper's first direct `<span>`, which is the
+title. So location is the title, and the real "Internship · City · Hybrid" row
+is never read. Nothing failed, and the probe printed the rows without comment:
+it shows them but does not compare a location with its title. Every one of the
+seven was an internship, so this board would have lost nothing wanted, but the
+next employer on this layout may. Proposed: a Sonnet package, `think`, that
+reads the metadata `<div>` beside the title span and pins the capture as a
+second Teamtailor fixture (the seven existing golden tests guard the other
+layouts), and that gives the probe a plain check that no row's location equals
+its title. The capture is in the scratchpad and is the test case. Not folded
+in here, because SP5 adds sources.
+
+**Proposals for the owner**, none run (each needs a yes in chat):
+`candidate add` for companies 4, 10 and 11 (for now, each with its reason and
+today's date), `candidate recheck` for 5, 6 and 7 (for now, new blocker, dated
+today), and optionally `recheck` for 8 so its stale blocker stops saying
+"bot-hostile". Company 1 is the same `candidate add` unless the owner exempts
+`api.smartrecruiters.com`, in which case 1 and 11 become `reuse` and are
+re-probed. None is by design, so none is a tombstone.
+
+Layer 5's years reading, the remote-shape drops and the "Unreadable pages"
+check were not run: there is no new source to run them on.
 
 ### Your to-dos
 
