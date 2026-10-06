@@ -1571,7 +1571,9 @@ session — see `CLAUDE.md`.
   stays out of the live config until the reader carries the flag (SP4f's
   route), while its registry line, fixture and golden are committed so the
   repair has a test case. Adding the source later is one paste. Un-rejecting
-  rows is the owner's job by hand. The same check belongs to any first
+  rows is the owner's job by hand. **Resolved the same day:** the reader now
+  carries `hybrid` (and `remote`) into the snippet, a repeat of the scratch run
+  kept 4 of the 5 and the source went live. The same check belongs to any first
   run of a source on a platform with such a field: join the platform's flag to
   the rows Layer 5 rejects before the real run, not after. A run against a
   scratch store and a `--sources` file holding only the new entries does this
@@ -1583,4 +1585,9 @@ session — see `CLAUDE.md`.
   is added with the exemption and captured, not re-probed. A board of more than
   100 postings needs `capture_fixtures.py --pages all` or the replay fakes the
   end of the walk and the capture reports "UNPARSEABLE".
-
+- **A backup is never replaced by another backup (SP5 follow-up, 2026-10-06).**
+  `curated.backup_path_for` named a backup to the second, and `shutil.copy2`
+  overwrites, so two writes inside one second left only the later backup. Found
+  by running two `candidate` commands back to back. It returns the first free
+  name now, with `-2`, `-3` for a collision, and still ends in `.bak`. The
+  curated repository held every state, so nothing was lost.

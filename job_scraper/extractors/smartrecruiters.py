@@ -7,6 +7,13 @@ The org_slug is passed explicitly (not derived from the listing URL) because
 SmartRecruiters slugs are case-sensitive and not always predictable from the
 hosted career-site URL.
 
+Workplace: the posting's `location` object carries `remote` and `hybrid`
+booleans, and the description often says neither (SP5: five hybrid postings were
+rejected as non-hybrid on a first run). The word goes into `raw_snippet`, the
+text Layer 0's remote keywords and hybrid gate already read, as the Ashby and
+Workable readers do. A posting flagged both ways reads as Hybrid, the more
+specific of the two.
+
 Pagination: the API returns a JSON envelope with `totalFound` and `content`.
 Loop using offset until all postings are fetched. `totalFound` is authoritative,
 so an empty `content` before it is reached is a failure rather than the end of
@@ -23,6 +30,15 @@ from job_scraper.extractors import pagination
 
 _API_BASE = "https://api.smartrecruiters.com/v1/companies/{slug}/postings"
 _PAGE_SIZE = 100
+
+
+def _workplace(loc: dict[str, Any]) -> str:
+    """The word Layer 0 reads for the platform's workplace flags, or empty."""
+    if loc.get("hybrid"):
+        return "Hybrid"
+    if loc.get("remote"):
+        return "Remote"
+    return ""
 
 
 def extract(
@@ -79,7 +95,7 @@ def extract(
 
             apply_url = (posting.get("applyUrl") or detail_url).strip()
 
-            raw_snippet = " ".join(x for x in [title, department, location] if x)
+            raw_snippet = " ".join(x for x in [title, department, location, _workplace(loc)] if x)
             out.append(
                 {
                     "source_name": source_name,

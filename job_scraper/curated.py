@@ -266,7 +266,18 @@ def render_list(entries: list[dict[str, Any]], key: str, fields: tuple[str, ...]
 
 
 def backup_path_for(path: Path, *, now: str) -> Path:
-    return path.with_name(f"{path.name}.{now}.bak")
+    """The first free backup name for *path* at stamp *now*.
+
+    The stamp is to the second, so two writes inside one second share it. A copy
+    onto an existing backup would silently replace the older file, which is the
+    one thing a backup must not do; a counter keeps both.
+    """
+    candidate = path.with_name(f"{path.name}.{now}.bak")
+    n = 1
+    while candidate.exists():
+        n += 1
+        candidate = path.with_name(f"{path.name}.{now}-{n}.bak")
+    return candidate
 
 
 def _write_atomically(path: Path, text: str) -> None:

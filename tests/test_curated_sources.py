@@ -291,6 +291,29 @@ class TestBackups:
         assert backups[0].read_bytes() == first, "the backup is the file as it was before"
         assert backups[0].name.endswith("Z.bak")
 
+    def test_two_writes_in_the_same_second_keep_both_backups(self, tmp_path: Path) -> None:
+        """The stamp is to the second, so a second write used to overwrite the first backup."""
+        path = curated.excluded_path(tmp_path)
+        fields, key = curated.EXCLUDED_FIELDS, curated.EXCLUDED_KEY
+        entry = {f: None for f in fields} | {
+            "organisation": "Contoso Rail",
+            "url": "https://job-boards.greenhouse.io/contoso",
+            "reason": "403",
+        }
+        curated.save_list(path, [entry], key, fields, now="20261006T150212Z")
+        v1 = path.read_bytes()
+        second = entry | {
+            "organisation": "Fabrikam",
+            "url": "https://job-boards.greenhouse.io/fabrikam",
+        }
+        curated.save_list(path, [entry, second], key, fields, now="20261006T150212Z")
+        v2 = path.read_bytes()
+        curated.save_list(path, [entry], key, fields, now="20261006T150212Z")
+
+        backups = sorted(tmp_path.glob("excluded_sources.yaml.*.bak"))
+        assert len(backups) == 2, "one backup per overwritten file, none replaced"
+        assert {b.read_bytes() for b in backups} == {v1, v2}
+
     def test_promote_backs_up_both_files(self, tmp_path: Path) -> None:
         add_excluded(tmp_path)
         add_candidate(tmp_path, "Contoso Rail", "https://job-boards.greenhouse.io/contoso")
