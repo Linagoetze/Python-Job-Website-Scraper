@@ -17,6 +17,7 @@ from job_scraper.config_loader import (
 from job_scraper.filtering import (
     build_hybrid_pattern,
     build_non_place_pattern,
+    build_remote_region_pattern,
     load_title_exclude_keywords,
 )
 from job_scraper.pipeline import refilter_stored_jobs
@@ -54,7 +55,12 @@ def main() -> None:
         # The drop rows are discarded here on purpose: they belong to a run,
         # and this one-off script does not open one.
         counts, _ = refilter_stored_jobs(
-            store, rules, title_keywords, hybrid_pattern, non_place_pattern
+            store,
+            rules,
+            title_keywords,
+            hybrid_pattern,
+            non_place_pattern,
+            remote_region_pattern=build_remote_region_pattern(rules),
         )
 
     print(f"Marked {counts['title_keywords']} rows rejected by title keywords")

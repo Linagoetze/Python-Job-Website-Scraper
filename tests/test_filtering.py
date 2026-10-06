@@ -1,14 +1,20 @@
 """Tests for job_scraper.filtering."""
 
 from job_scraper.filtering import (
+    _EMPTY_PENDING_REASON,
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
     _LOCATION_EMPTY_ADMITTED_REASON,
+    _REMOTE_ANYWHERE_REASON,
+    _REMOTE_REGION_REASON,
     _UNRESOLVED_PENDING_REASON,
+    RULE_LOC_REMOTE_OVERRIDDEN,
+    RULE_LOC_UNLISTED_CITY,
     apply_title_keyword_filter,
     build_hybrid_pattern,
     build_location_pattern,
     build_non_place_pattern,
+    build_remote_region_pattern,
     matches_rules,
 )
 
@@ -179,7 +185,10 @@ class TestMatchesRules:
             assert _UNRESOLVED_PENDING_REASON in reasons, placeholder
 
     def test_region_only_location_is_pending(self):
-        for region in ("Home base - EMEA", "Home based - Worldwide", "Sweden"):
+        # "Home based - Worldwide" left this list in SP4f: worldwide is remote
+        # (the owner's Q3a). A region is deferred until rules.json says it
+        # includes the owner (remote_regions, tested below).
+        for region in ("Home base - EMEA", "Sweden"):
             ok, reasons = _unresolvable(_job(location=region))
             assert ok, region
             assert _UNRESOLVED_PENDING_REASON in reasons, region
@@ -195,11 +204,12 @@ class TestMatchesRules:
         # The wording is English, not a place list, so it must not depend on
         # rules.json. (The region *after* it still does — that is what
         # non_place_locations is for, and "Home base - EMEA" needs both halves.)
+        # Since SP4f a bare home base is remote (Q3a) rather than deferred.
         rules = {"locations": ["Malmö"], "remote_keywords": []}
         for spelling in ("Home base", "Home based", "home-based", "Homebased"):
             ok, reasons = matches_rules(_job(location=spelling), rules, None)
             assert ok, spelling
-            assert _UNRESOLVED_PENDING_REASON in reasons, spelling
+            assert reasons == [_REMOTE_ANYWHERE_REASON], spelling
 
     def test_a_field_of_only_remote_keywords_is_remote_not_unresolvable(self):
         # Under title_only the location field is outside the haystack, so
@@ -241,10 +251,11 @@ class TestMatchesRules:
             ok, _ = _unresolvable(_job(location=named))
             assert not ok, named
 
-    def test_empty_location_is_admitted_not_deferred(self):
-        # An extractor gap (WP8e) must not be laundered into "unresolvable"
-        # (WP8d) — there is nothing on the page to resolve it against, so
-        # WP8f settles it here, permanently, rather than deferring to Layer 2.
+    def test_empty_location_is_deferred_under_its_own_reason(self):
+        # SP4f (the owner's Q4) revised WP8f: the detail page is read anyway,
+        # and must name a listed place. Deferred like a placeholder, but not
+        # laundered into "unresolvable" (WP8d), so the drop log keeps the two
+        # causes apart.
         ok, reasons = matches_rules(
             _job(location="", raw_snippet="Analyst"),
             _UNRESOLVABLE,
@@ -252,8 +263,21 @@ class TestMatchesRules:
             non_place_pattern=_NON_PLACE_PATTERN,
         )
         assert ok
-        assert reasons == [_LOCATION_EMPTY_ADMITTED_REASON]
+        assert reasons == [_EMPTY_PENDING_REASON]
         assert _UNRESOLVED_PENDING_REASON not in reasons
+
+    def test_empty_location_is_admitted_when_there_is_no_list_to_settle_it(self):
+        # Layer 5 settles the deferral by finding a listed location in the
+        # description. With `locations` empty there is none to find, and the job
+        # could only ever come back unverified, so it is admitted as before.
+        rules = {
+            "locations": [],
+            "conditional_locations": ["Stockholm"],
+            "conditional_location_keywords": ["hybrid"],
+        }
+        ok, reasons = matches_rules(_job(location=""), rules, build_hybrid_pattern(rules))
+        assert ok
+        assert reasons == [_LOCATION_EMPTY_ADMITTED_REASON]
 
     def test_listed_city_never_becomes_pending(self):
         ok, reasons = _unresolvable(_job(location="Malmö, Sweden"))
@@ -268,10 +292,13 @@ class TestMatchesRules:
 
     def test_the_code_shapes_work_without_any_configured_terms(self):
         rules = {"locations": ["Malmö"], "remote_keywords": []}
-        for placeholder in ("3 Locations", "Home based"):
-            ok, reasons = matches_rules(_job(location=placeholder), rules, None)
-            assert ok, placeholder
-            assert _UNRESOLVED_PENDING_REASON in reasons, placeholder
+        ok, reasons = matches_rules(_job(location="3 Locations"), rules, None)
+        assert ok
+        assert _UNRESOLVED_PENDING_REASON in reasons
+        # A bare home base, deferred here until SP4f, is now remote (Q3a).
+        ok, reasons = matches_rules(_job(location="Home based"), rules, None)
+        assert ok
+        assert reasons == [_REMOTE_ANYWHERE_REASON]
 
     def test_conditional_city_keeps_its_own_pending_state(self):
         # A hybrid-gated city is resolvable — it names a place — so it must not
@@ -285,6 +312,134 @@ class TestMatchesRules:
         )
         assert ok
         assert _HYBRID_PENDING_REASON in reasons
+
+
+# ---------------------------------------------------------------------------
+# SP4f — remote, home-based and worldwide fields (the owner's SP4b Q3)
+# ---------------------------------------------------------------------------
+
+# The regions are invented: which real ones include the owner is private, and
+# lives only in rules.json (SP4f, as the chosen country did in SP3c).
+_REGIONS = {
+    "locations": ["Malmö", "Lund"],
+    "conditional_locations": ["Stockholm"],
+    "conditional_location_keywords": ["hybrid"],
+    "remote_keywords": ["remote", "anywhere"],
+    "non_place_locations": ["Wingtip Region", "Contoso Basin", "EMEA"],
+    "remote_regions": ["Wingtip Region"],
+}
+
+
+def _regional(location, rules=_REGIONS, **kw):
+    return matches_rules(
+        _job(location=location, **kw),
+        rules,
+        build_hybrid_pattern(rules),
+        non_place_pattern=build_non_place_pattern(rules),
+        remote_region_pattern=build_remote_region_pattern(rules),
+    )
+
+
+class TestRemoteRegions:
+    def test_home_based_across_a_region_that_includes_the_owner_is_admitted(self):
+        ok, reasons = _regional("Home based - Wingtip Region")
+        assert ok
+        assert reasons == [_REMOTE_REGION_REASON]
+
+    def test_the_option_admits_beside_an_office_city(self):
+        # Q3c. The office is a conditional city with no hybrid in sight, which
+        # alone would defer the job to Layer 5; the home-based option settles it.
+        ok, reasons = _regional("Home based - Wingtip Region; Office Based - Stockholm")
+        assert ok
+        assert reasons == [_REMOTE_REGION_REASON]
+
+    def test_remote_in_another_segment_counts_as_remote_wording(self):
+        # Impactpool's "Remote | <where>" shape, with a region for the where.
+        ok, reasons = _regional("Remote | Wingtip Region")
+        assert ok
+        assert reasons == [_REMOTE_REGION_REASON]
+
+    def test_remote_in_the_title_counts_as_remote_wording(self):
+        # As `remote_keywords` always have: anywhere in the haystack.
+        ok, reasons = _regional("Wingtip Region", title="Analyst (Remote)")
+        assert ok
+        assert reasons == [_REMOTE_REGION_REASON]
+
+    def test_a_bare_region_with_no_remote_wording_still_defers(self):
+        # A region is not remote by itself: it may hold an office. The owner
+        # kept bare regions and countries deferred (Q3).
+        ok, reasons = _regional("Wingtip Region")
+        assert ok
+        assert reasons == [_UNRESOLVED_PENDING_REASON]
+
+    def test_a_region_that_excludes_the_owner_still_defers(self):
+        for field in ("Home based - Contoso Basin", "Remote | Contoso Basin"):
+            ok, reasons = _regional(field)
+            assert ok, field
+            assert reasons == [_UNRESOLVED_PENDING_REASON], field
+
+    def test_a_region_beside_one_that_excludes_the_owner_is_not_enough_in_one_option(self):
+        # One option spanning both regions is not "across a region that includes
+        # the owner"; split into two options, the owner's one admits.
+        ok, reasons = _regional("Home based - Wingtip Region and Contoso Basin")
+        assert reasons != [_REMOTE_REGION_REASON]
+        ok, reasons = _regional("Home based - Contoso Basin; Home based - Wingtip Region")
+        assert ok
+        assert reasons == [_REMOTE_REGION_REASON]
+
+    def test_without_the_key_a_regional_field_behaves_as_before(self):
+        rules = {k: v for k, v in _REGIONS.items() if k != "remote_regions"}
+        ok, reasons = _regional("Home based - Wingtip Region", rules)
+        assert ok
+        assert reasons == [_UNRESOLVED_PENDING_REASON]
+        ok, _ = _regional("Home based - Wingtip Region; Office Based - Nairobi", rules)
+        assert not ok
+
+    def test_worldwide_admits_without_any_configuration(self):
+        rules = {"locations": ["Malmö"], "remote_keywords": []}
+        for field in ("Worldwide", "Home based - Worldwide", "Global", "Home Based - Global"):
+            ok, reasons = matches_rules(_job(location=field), rules, None)
+            assert ok, field
+            assert reasons == [_REMOTE_ANYWHERE_REASON], field
+
+    def test_worldwide_beside_an_office_city_admits(self):
+        ok, reasons = _regional("Home based - Worldwide; Office Based - Nairobi")
+        assert ok
+        assert reasons == [_REMOTE_ANYWHERE_REASON]
+
+    def test_a_bare_home_base_beside_a_city_is_the_city(self):
+        # The Impactpool guard, extended to the home-base wording: a bare tag
+        # beside a duty station says where the job is, not that it is anywhere.
+        ok, reasons = _regional("Home Based | Nairobi")
+        assert not ok
+        assert reasons == [RULE_LOC_UNLISTED_CITY]
+
+    def test_a_global_title_is_not_remote_wording(self):
+        # "Global" in a location field means everywhere; in a title it is a
+        # team's name and says nothing about where anyone works.
+        ok, reasons = _regional("Wingtip Region", title="Global Health Analyst")
+        assert ok
+        assert reasons == [_UNRESOLVED_PENDING_REASON]
+
+    def test_a_listed_city_still_wins_first(self):
+        ok, reasons = _regional("Home based - Contoso Basin; Office Based - Lund")
+        assert ok
+        assert reasons == ["locations: matched"]
+
+    def test_semicolon_separates_a_remote_tag_from_a_city(self):
+        # Before SP4f "Remote; Nairobi" was one segment holding a remote
+        # keyword, and so admitted as anywhere. It is two options now.
+        ok, reasons = _regional("Remote; Nairobi")
+        assert not ok
+        assert reasons == [RULE_LOC_REMOTE_OVERRIDDEN]
+
+    def test_a_remote_keyword_inside_a_regional_segment_is_still_admitted_loosely(self):
+        # Characterisation, not policy: `remote_keywords`' own test admits any
+        # segment holding a remote keyword, wherever its region is. SP4f left
+        # that as it was and put the question to the owner (SP4f's result).
+        ok, reasons = _regional("Contoso Basin - Remote")
+        assert ok
+        assert reasons == ["locations: matched via remote_keywords"]
 
 
 class TestMatchesRulesKeywords:

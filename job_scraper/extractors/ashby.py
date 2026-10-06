@@ -14,6 +14,15 @@ The detail URL is built from the board slug and the posting id, as it was from
 the board page, rather than taken from the API's `jobUrl`. It is the dedupe key,
 and the two agreed on every posting captured on 2026-10-02; building it keeps a
 change to `jobUrl` from making every stored job look new.
+
+The posting also says where and how the job is worked, which its description
+often does not (SP4f). `workplaceType` (OnSite, Hybrid or Remote) goes into
+`raw_snippet`, the text Layer 0's remote keywords and hybrid gate already read,
+so a posting Ashby marks Hybrid in a hybrid-gated city is confirmed there and
+not rejected because its prose never says the word. `isRemote` is not used: it
+is true on every Hybrid posting captured, so it says "remote is allowed", not
+"this is remote". `secondaryLocations` join the location field, so a listed
+city named only as a second office is not missed.
 """
 
 from __future__ import annotations
@@ -24,6 +33,10 @@ from typing import Any
 from urllib.parse import urlsplit
 
 _API = "https://api.ashbyhq.com/posting-api/job-board/"
+
+# The workplace types that say something Layer 0 can read, in the words its
+# remote keywords and hybrid gate look for. OnSite adds nothing to a location.
+_WORKPLACE_WORDS = {"remote": "Remote", "hybrid": "Hybrid"}
 
 
 def board_slug(listing_url: str) -> str:
@@ -59,9 +72,10 @@ def extract(
         if not title or not job_id or job.get("isListed") is False:
             continue
         dept = (job.get("department") or job.get("team") or "").strip()
-        location = (job.get("location") or "").strip()
+        location = _location(job)
         url = f"https://jobs.ashbyhq.com/{slug}/{job_id}"
-        raw_snippet = " ".join(x for x in [title, dept, location] if x)
+        workplace = _WORKPLACE_WORDS.get(str(job.get("workplaceType") or "").strip().lower(), "")
+        raw_snippet = " ".join(x for x in [title, dept, location, workplace] if x)
         out.append(
             {
                 "source_name": source_name,
@@ -76,3 +90,10 @@ def extract(
             }
         )
     return out
+
+
+def _location(job: dict[str, Any]) -> str:
+    """The primary location, then any secondary ones, one segment each."""
+    names = [str(job.get("location") or "").strip()]
+    names += [str(loc.get("location") or "").strip() for loc in job.get("secondaryLocations") or []]
+    return " | ".join(dict.fromkeys(n for n in names if n))

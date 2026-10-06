@@ -16,6 +16,14 @@ it ("extractor made no request") and the probe stubbed it at the module
 instead of through its own fetcher. A fetcher that cannot POST is refused
 rather than bypassed, so no caller reaches the network by a route it did not
 choose.
+
+The listing also says how and where each job is worked, which its description
+often does not (SP4f). `workplace` (remote, hybrid or on_site) goes into
+`raw_snippet`, the text Layer 0's remote keywords and hybrid gate already read.
+`remote` is the same fact as a boolean and is not read twice. The location
+field lists every location the posting shows (`locations`, without the ones
+marked `hidden`), one segment each. A posting that shows none keeps the single
+`location` Workable reports, as before.
 """
 
 from __future__ import annotations
@@ -28,6 +36,10 @@ _API_HEADERS = {
     "Accept": "application/json",
 }
 _EMPTY_BODY = {"query": "", "location": [], "department": [], "worktype": [], "remote": []}
+
+# The workplace values that say something Layer 0 can read, in the words its
+# remote keywords and hybrid gate look for. on_site adds nothing to a location.
+_WORKPLACE_WORDS = {"remote": "Remote", "hybrid": "Hybrid"}
 
 
 def extract(
@@ -57,16 +69,14 @@ def extract(
         depts = job.get("department") or []
         dept = depts[0].strip() if depts else ""
 
-        loc_obj = job.get("location") or {}
-        city = (loc_obj.get("city") or "").strip()
-        country = (loc_obj.get("country") or "").strip()
-        location = ", ".join(x for x in [city, country] if x)
+        location = _location(job)
+        workplace = _WORKPLACE_WORDS.get(str(job.get("workplace") or "").strip().lower(), "")
 
         detail_url = (
             f"https://apply.workable.com/{slug}/j/{shortcode}/" if shortcode else listing_url
         )
 
-        raw_snippet = " ".join(x for x in [title, dept, location] if x)
+        raw_snippet = " ".join(x for x in [title, dept, location, workplace] if x)
         out.append(
             {
                 "source_name": source_name,
@@ -80,3 +90,21 @@ def extract(
             }
         )
     return out
+
+
+def _place(loc: dict[str, Any]) -> str:
+    city = str(loc.get("city") or "").strip()
+    country = str(loc.get("country") or "").strip()
+    return ", ".join(x for x in [city, country] if x)
+
+
+def _location(job: dict[str, Any]) -> str:
+    """Every location the posting shows, one segment each.
+
+    Falls back to the single `location` when the posting shows none, which is
+    what this reader read before SP4f, so a posting whose locations are all
+    hidden reads as it always has.
+    """
+    shown = [_place(loc) for loc in job.get("locations") or [] if not loc.get("hidden")]
+    names = list(dict.fromkeys(n for n in shown if n))
+    return " | ".join(names) if names else _place(job.get("location") or {})

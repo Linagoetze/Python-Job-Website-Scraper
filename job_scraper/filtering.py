@@ -161,8 +161,18 @@ _GENERIC_LOCATION_TOKENS = tuple(
     sorted({"home based", "home-based", "homebased", "home base"}, key=len, reverse=True)
 )
 
-# Separators used inside a single location field, e.g. "Remote | Nairobi".
-_LOCATION_SPLIT = re.compile(r"[|/\n]+")
+# Words that say a role is open everywhere (SP4f, the owner's Q3a). English, like
+# the home-base tokens, so they live in code rather than in any rules.json:
+# "Home based - Worldwide" and a bare "Worldwide" need no configuration to be
+# read as remote. "International" is deliberately not one: "US + International"
+# names a country first and the rest of the world second.
+_EVERYWHERE = re.compile(r"\b(?:worldwide|global)\b")
+
+# Separators used inside a single location field, e.g. "Remote | Nairobi". `;`
+# joins the options of a field that offers several ("Home based - <region>;
+# Office Based - <city>"), and since SP4f an option is judged on its own
+# (Q3c), so it separates them too.
+_LOCATION_SPLIT = re.compile(r"[|/\n;]+")
 
 # Listing pages that will not name their duty stations: "2 Locations",
 # "Multiple locations". A shape rather than a list — no config key can
@@ -223,24 +233,42 @@ _UNRESOLVED_CONFIRMED_REASON = "locations: unresolvable field (place confirmed)"
 
 
 # ---------------------------------------------------------------------------
-# Empty locations (WP8f)
+# Empty locations (WP8f, revised by SP4f)
 # ---------------------------------------------------------------------------
 #
-# The fourth Layer 1 outcome. An empty location field is not a placeholder
-# that might name a place once read (WP8d's third state) and it is not a
-# conditional city awaiting a hybrid check — it is an extractor or listing
-# page that never had a location to give, and WP8e confirmed real postings
-# die here for want of one nobody ever had. Keyword and seniority filters
-# never get a turn to judge these jobs today; they die before Layer 2.
+# The fourth Layer 1 outcome. WP8f admitted an empty field outright, on the
+# premise that no page could supply a location the listing never gave. SP4b
+# found that premise false wherever the detail page is read anyway, which is
+# every source with empty fields today: 12 of impactpool's 13 empty-location
+# rows in the sheet named no listed place in their description. The owner's
+# answer (Q4, 2026-10-01): defer it to the description and fail closed, as a
+# placeholder is. So it is a pending state of its own, settled by Layer 5
+# exactly as the unresolvable one is, with its own pair of drop rules so the
+# drop log can tell an empty field from a placeholder.
 #
-# Unlike the two pending states above, this is settled here and permanently:
-# no description is going to retroactively supply a location that was never
-# on the listing, so there is nothing for Layer 5 to confirm. This reason is
-# therefore *not* wired into `_resolve_hybrid`/`_resolve_unresolved_location`
-# or `UNVERIFIED_KEY` — a job carrying it must not cost a detail fetch it
-# would not otherwise need, and must not be mistaken by Layer 5 for a marker
-# it is meant to settle.
+# It costs no extra detail fetch: every new job is fetched for its years
+# anyway, and a stored one is not re-judged.
+_EMPTY_PENDING_REASON = "locations: no location given (place unconfirmed)"
+_EMPTY_CONFIRMED_REASON = "locations: no location given (place confirmed)"
+
+# The one case still admitted unread: `locations` is empty, so there is no list
+# for Layer 5 to search a description for, and a deferred job could only ever
+# come back unverified. Same reasoning as the unresolvable branch's guard.
 _LOCATION_EMPTY_ADMITTED_REASON = "locations: no location given (admitted)"
+
+
+# ---------------------------------------------------------------------------
+# Remote regions (SP4f)
+# ---------------------------------------------------------------------------
+#
+# The owner's answers to SP4b Q3 (2026-10-01): a role that is not in one place
+# counts as remote. Home-based or worldwide (a), home-based across a region that
+# includes where the owner lives (b), and such an option beside an office city
+# (c). Which regions include the owner is private, so it is `remote_regions` in
+# rules.json, never a list in code. Without that key, (a) still holds and every
+# regional field is deferred to Layer 5 as before.
+_REMOTE_ANYWHERE_REASON = "locations: home-based or worldwide (remote)"
+_REMOTE_REGION_REASON = "locations: remote in a listed region"
 
 
 def build_non_place_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
@@ -255,6 +283,24 @@ def build_non_place_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
     """
     terms = sorted(
         {str(x).strip() for x in (rules.get("non_place_locations") or []) if str(x).strip()},
+        key=len,
+        reverse=True,
+    )
+    return _build_title_keyword_pattern([(t, "word") for t in terms])
+
+
+def build_remote_region_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
+    """Compile `remote_regions`: regions a remote role may span and still include you.
+
+    The owner's answer to SP4b Q3b. Matched whole-word and casefolded, longest
+    first, like `non_place_locations`, and usually a subset of it: a region
+    is a place nobody can be sent to, so it defers on its own, and it admits
+    only beside remote or home-based wording (`_remote_admission`).
+    Returns None when the key is absent or empty, and every regional field is
+    then deferred as it was before SP4f.
+    """
+    terms = sorted(
+        {str(x).strip() for x in (rules.get("remote_regions") or []) if str(x).strip()},
         key=len,
         reverse=True,
     )
@@ -330,8 +376,8 @@ def _location_names_no_place(
 
     The third state (WP8d): present, but unresolvable from the listing page —
     "2 Locations", "Home base - EMEA", a bare country. Distinct from an empty
-    field, which is WP8f's fourth state and is admitted outright rather than
-    deferred to Layer 5.
+    field, which is WP8f's fourth state: deferred too since SP4f, but under its
+    own reason, so the drop log can tell the two apart.
 
     A segment is judged by striking out every term that names no place — the
     remote keywords, the generic tokens, the configured `non_place_locations` —
@@ -376,6 +422,82 @@ def _location_names_no_place(
     return placeless_for_a_reason
 
 
+def _remote_admission(
+    loc_field_cf: str,
+    hay_cf: str,
+    remote_keywords: list[str],
+    remote_region_pattern: re.Pattern[str] | None,
+    *,
+    field_in_haystack: bool,
+) -> str | None:
+    """The reason a remote, home-based or worldwide field admits a job, or None.
+
+    The owner's answers to SP4b Q3 (2026-10-01). Each segment is read on its
+    own once the remote wording is struck out of it: the remote keywords, the
+    home-base tokens and the everywhere words. What is left decides.
+
+    - Nothing: a bare "Home Based" or "Remote". It admits only when every
+      segment is like that (Q3a). Beside a named city it is Impactpool's
+      "Remote | <duty station>" tag, and the city decides, as before.
+    - An everywhere word: "Home based - Worldwide". It admits (Q3a), even
+      beside an office city, since the world includes the owner (Q3c).
+    - Only `remote_regions` terms, with remote wording somewhere in the job:
+      "Home based - <region>", or "Remote | <region>". It admits (Q3b), even
+      beside an office city (Q3c). A region with no remote wording at all is a
+      bare region, which still defers to Layer 5, as the owner decided.
+    - Anything else (a city, another region, a placeholder) admits nothing
+      here, and the rest of `matches_rules` judges the field as before.
+
+    Deliberately separate from `remote_keywords`' own test in `matches_rules`,
+    which is looser: it admits any segment holding a remote keyword, so
+    "<country> - Remote" passes wherever the country is. Folding the home-base
+    tokens into that test would admit "Home based - <any region>", which Q3b
+    rules out.
+
+    A remote keyword is read wherever `match_in` reads it, so under
+    `title_only` one in the location field says nothing (`field_in_haystack`).
+    The home-base and everywhere words are location vocabulary, not configured
+    keywords, and are always read in the field. An everywhere word is read only
+    there: "Global" opens many a title ("Global Health ...") without saying
+    where anyone works.
+    """
+    remote_cf = [_lower(rk) for rk in remote_keywords]
+    wording = (
+        any(rk in hay_cf for rk in remote_cf)
+        or any(tok in hay_cf or tok in loc_field_cf for tok in _GENERIC_LOCATION_TOKENS)
+        or bool(_EVERYWHERE.search(loc_field_cf))
+    )
+    if not field_in_haystack:
+        remote_cf = []
+    bare = 0
+    other = 0
+    for raw_seg in _LOCATION_SPLIT.split(loc_field_cf):
+        seg = raw_seg.strip()
+        if not seg:
+            continue
+        remainder = seg
+        for term in (*remote_cf, *_GENERIC_LOCATION_TOKENS):
+            remainder = remainder.replace(term, " ")
+        everywhere = bool(_EVERYWHERE.search(remainder))
+        remainder = _EVERYWHERE.sub(" ", remainder)
+        if not _LETTER.search(remainder):
+            if everywhere:
+                return _REMOTE_ANYWHERE_REASON
+            bare += 1
+            continue
+        if (
+            wording
+            and remote_region_pattern is not None
+            and remote_region_pattern.search(remainder)
+            and not _LETTER.search(remote_region_pattern.sub(" ", remainder))
+        ):
+            return _REMOTE_REGION_REASON
+        other += 1
+    if bare and not other:
+        return _REMOTE_ANYWHERE_REASON
+    return None
+
+
 def _location_drop_rule(
     loc_field_cf: str,
     remote_kw_present: bool,
@@ -385,8 +507,8 @@ def _location_drop_rule(
 
     Reached only from the failing branch of `matches_rules`, so the listed
     locations are already known not to match, and — since WP8f — the field is
-    already known not to be empty: `matches_rules` intercepts that case before
-    this function is ever called. The order below is the order the remaining
+    already known not to be empty: `matches_rules` defers that case (SP4f)
+    before this function is ever called. The order below is the order the remaining
     cases are worth telling apart:
 
     - a remote keyword was present but the field also named a city, so the
@@ -418,6 +540,7 @@ def matches_rules(
     hybrid_pattern: re.Pattern[str] | None,
     *,
     non_place_pattern: re.Pattern[str] | None = None,
+    remote_region_pattern: re.Pattern[str] | None = None,
 ) -> tuple[bool, list[str]]:
     """
     Return (passes, reasons).
@@ -436,19 +559,24 @@ def matches_rules(
       "Home base - EMEA", a bare country) is not a city that failed to match.
       It passes with `_UNRESOLVED_PENDING_REASON`, again for Layer 5 to settle
       against the description.
-    - A field that is empty (WP8f: no location was ever given, an extractor or
-      listing-page gap rather than a placeholder) is not the same failure as
-      an unresolvable one — there is no page for Layer 5 to read it off, so it
-      is admitted outright with `_LOCATION_EMPTY_ADMITTED_REASON` rather than
-      deferred. This is settled here, permanently.
+    - A home-based, worldwide or remote field that is not in one place (SP4f,
+      the owner's Q3) is admitted: home-based or worldwide anywhere, or across a
+      region in `remote_regions`, even beside an office city. See
+      `_remote_admission`, which runs before the conditional cities so that a
+      home-based option is not gated on an office's hybrid arrangement.
+    - A field that is empty (WP8f, revised by SP4f's Q4) is deferred to Layer 5
+      with `_EMPTY_PENDING_REASON`, and fails closed there like a placeholder.
+      Only when `locations` is empty, so there is nothing to search for, is it
+      admitted outright with `_LOCATION_EMPTY_ADMITTED_REASON`.
 
-    `hybrid_pattern` gates `conditional_locations` and `non_place_pattern` carries
-    the configured `non_place_locations`. Both must be built once by the caller —
-    `build_hybrid_pattern(rules)` and `build_non_place_pattern(rules)` — and passed
-    down, never rebuilt here, since this runs once per job. `non_place_pattern` is
-    keyword-only and defaults to None so it can never be mistaken for the hybrid
-    one; None only narrows the third state to the shapes recognised in code, it
-    does not switch it off.
+    `hybrid_pattern` gates `conditional_locations`, `non_place_pattern` carries
+    the configured `non_place_locations` and `remote_region_pattern` the
+    configured `remote_regions`. All three must be built once by the caller —
+    `build_hybrid_pattern(rules)`, `build_non_place_pattern(rules)` and
+    `build_remote_region_pattern(rules)` — and passed down, never rebuilt here,
+    since this runs once per job. The last two are keyword-only and default to
+    None so they can never be mistaken for the hybrid one. None narrows each
+    state to the shapes recognised in code; it does not switch either off.
 
     On rejection the single returned reason is the drop rule: it names the
     keyword or the specific location case that fired, and the caller records it
@@ -493,6 +621,14 @@ def matches_rules(
             reasons.append("locations: matched")
         elif remote_ok:
             reasons.append("locations: matched via remote_keywords")
+        elif remote_reason := _remote_admission(
+            loc_field,
+            hay_cf,
+            remote_keywords,
+            remote_region_pattern,
+            field_in_haystack=match_in != "title_only",
+        ):
+            reasons.append(remote_reason)
         elif hybrid_pattern is not None and any(
             _lower(loc) in loc_field for loc in conditional_locations
         ):
@@ -516,12 +652,12 @@ def matches_rules(
             # only what can actually be settled.
             reasons.append(_UNRESOLVED_PENDING_REASON)
         elif not loc_field.strip():
-            # A genuinely empty field (WP8f), as opposed to WP8d's "present but
-            # names no place" — the branch above already refuses that case for
-            # an empty field, so this is reached only when the field truly has
-            # nothing in it. Settled here, permanently: see the reason's own
-            # comment for why this must not become a Layer 5 pending marker.
-            reasons.append(_LOCATION_EMPTY_ADMITTED_REASON)
+            # A genuinely empty field, as opposed to WP8d's "present but names
+            # no place" — the branch above already refuses that case for an
+            # empty field, so this is reached only when the field truly has
+            # nothing in it. Deferred to Layer 5 and failing closed there (SP4f,
+            # Q4), unless there is no list to settle it against.
+            reasons.append(_EMPTY_PENDING_REASON if locations else _LOCATION_EMPTY_ADMITTED_REASON)
         else:
             return False, [_location_drop_rule(loc_field, remote_kw_present, conditional_locations)]
 

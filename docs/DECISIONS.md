@@ -98,6 +98,13 @@ session — see `CLAUDE.md`.
   placeholder string and gets them judged on the posting instead. The price is
   a detail fetch for jobs that previously died at Layer 0, which [WP8d](REFACTOR-PLAN.md#wp8d--unresolvable-locations) must
   measure and report rather than assume is small.
+  **Amended by SP4f (2026-10-02), on the owner's SP4b Q3:** a home-based or
+  worldwide field, and a home-based or remote one across a region in
+  `remote_regions`, is no longer deferred. It is admitted at Layer 0 as remote,
+  because a role that is not in one place rarely names a listed city and
+  failing closed rejected 83 stored rows that way. Placeholders, bare countries,
+  bare regions and regions outside `remote_regions` still defer and fail closed
+  exactly as above.
 - **The gold set measures Layer 0 changes and is blind to extractor changes
   ([WP8d](REFACTOR-PLAN.md#wp8d--unresolvable-locations)/[WP8e](REFACTOR-PLAN.md#wp8e--extractor-location-gaps)).** `labels.csv`'s `location` column holds what the extractor
   produced at labelling time. So `eval.py` scores a `filtering.py` change
@@ -141,6 +148,17 @@ session — see `CLAUDE.md`.
   function is ever reached) and was deleted, per [WP8a](REFACTOR-PLAN.md#wp8a--drop-log-record-every-exclusion)'s rule that a drop-log
   rule string going silent is a contract change to call out, not a private
   implementation detail.
+  **Revised by SP4f (2026-10-02), on the owner's SP4b Q4:** the premise above
+  ("no page text a Layer 2 fetch could read a location off") was false for every
+  source with empty fields, because each one's detail page is read in full
+  anyway (SP4b F5). An empty field is now deferred to Layer 5 under its own
+  `_EMPTY_PENDING_REASON` and fails closed there, with drop rules of its own:
+  `location: no location given, description names no listed place` and
+  `..., could not read the description`. They are new rules, so the drop log
+  keeps an empty field apart from a placeholder. `_LOCATION_EMPTY_ADMITTED_REASON`
+  survives only for a rules.json with no `locations`, where there is nothing to
+  settle against. The fetch-cost argument above still holds: a new job is
+  fetched for its years whatever its location, so the deferral adds no request.
 - **A wrong location and a missing one are the same bug wearing different
   clothes ([WP8g](REFACTOR-PLAN.md#wp8g--iss-location-extraction)).** Found while reviewing [WP8f](REFACTOR-PLAN.md#wp8f--empty-location-passthrough), 2026-08-20. [WP8e](REFACTOR-PLAN.md#wp8e--extractor-location-gaps)'s population
   was "sources that captured no location", and [WP8f](REFACTOR-PLAN.md#wp8f--empty-location-passthrough) then admitted exactly that
@@ -1317,3 +1335,105 @@ session — see `CLAUDE.md`.
   still had the old code, it would also have rejected them again. Rows whose
   posting is closed, or whose fields a reader bug corrupted, are held back and
   put to the owner. They are not revived as a matter of course.
+- **A role that is not in one place is remote, and Layer 0 decides it (SP4f,
+  2026-10-02, the owner's SP4b Q3).** `filtering._remote_admission` reads each
+  segment of the location field once the remote wording is struck out (the
+  remote keywords, the home-base tokens and the everywhere words `worldwide` and
+  `global`). Nothing left: a bare "Home Based" or "Remote", admitted only when
+  every segment is like that, so Impactpool's "Remote | <duty station>" guard
+  holds for "Home Based | <city>" too. An everywhere word: admitted, even beside
+  an office city (Q3a, Q3c). Only `remote_regions` terms, with remote wording
+  somewhere in the job: admitted, even beside an office city (Q3b, Q3c). A
+  region with no remote wording anywhere in the job stays a bare region and
+  defers, because it may hold an office. The everywhere words live in code,
+  like the home-base tokens, because they are English and not a place list, so
+  Q3a needs no configuration. "International" is not one of them ("US +
+  International"). An everywhere word counts as remote wording only in the
+  location field, never in the title, where "Global" usually names a team.
+- **Which regions include the owner is `remote_regions` in rules.json, and
+  nowhere else (SP4f).** Like the chosen country (SP3c), the value is private:
+  no plan, decision, docstring, commit or test names it. The tests use invented
+  regions, and `rules.example.json` carries an invented one. A rules.json without
+  the key defers every regional field, as it did before SP4f, so the feature
+  cannot switch itself on. The terms usually also belong in
+  `non_place_locations`. A region is a place nobody can be sent to, so it defers
+  on its own, and admits only beside remote wording.
+- **`;` separates the options of a location field (SP4f).** SP4b found it changed
+  no verdict on its own. With Q3c it must: "Home based - <region>; Office Based
+  - <city>" offers two options, and the home-based one is judged on its own. The
+  one shape that changes against the old reading is "Remote; <city>", which was
+  one segment holding a remote keyword, and so admitted as anywhere. No source
+  writes that today. Only canonical uses `;`, always between options.
+- **The `remote_keywords` test stays loose within a segment, and that is a
+  question, not a decision (SP4f).** `_location_names_specific_city` treats any
+  segment holding a remote keyword as "not a city". So "USA - MA - Remote" and
+  "United States (Remote)" are admitted wherever they are, and two such rows sit
+  in the review sheet. Folding the home-base tokens into that test would have
+  admitted "Home based - <any region>", which Q3b rules out, so Q3 got its own
+  stricter reading beside it, and the old one was left unchanged. Tightening
+  it would cost no wanted job the store shows, but it is a narrowing the owner
+  did not ask for. It is put to them in SP4f's result.
+- **An empty field on an unreadable page is held back, and the summary says so
+  (SP4f, the owner's answer to the Q4/Q6 collision, 2026-10-02).** Q4 wins: the
+  job is unverified, dropped for the run, never stored and fetched again next
+  run, exactly as a placeholder is. The "Unreadable pages" line for its source
+  then adds "N of them held back this run: the location could not be checked".
+  The count covers every unverified deferred drop on an unreadable page (empty,
+  placeholder or hybrid), since all three are missing from the sheet for the
+  same reason. Population when decided: 0 live rows (the one stored row of that
+  shape was a run-2 row the owner had rejected), and 0 unverified drops in
+  run 34. **Widened in review (2026-10-06):** the first version counted only
+  jobs held back by an *unreadable* page. A failed fetch, a robots.txt refusal
+  and a missing URL hold a deferred job back just the same, and those three
+  dropped it in silence. For an empty field that was a regression, since WP8f
+  had kept such a job, marked unchecked. Placeholders and conditional cities
+  had been silent that way since WP8d. Every held-back job is now counted, by
+  cause, and a source with held-back jobs but no unreadable page is listed for
+  that alone. A refusal is its own page state (`PAGE_REFUSED`), apart from a
+  failed fetch, because it recurs on every run: such a job never reaches the
+  sheet until the owner exempts the host. The robots.txt WARNING, which said
+  every refused job "is kept", now gives kept and held back separately.
+- **The readers carry the platform's own workplace field into what Layer 0
+  already reads (SP4f).** Not a new layer and not a new pass: a reader sets
+  fields. Ashby: `workplaceType` Remote or Hybrid goes into `raw_snippet`, where the
+  remote keywords and the hybrid gate read it, and `secondaryLocations` joins the
+  location field as segments. Workable: `workplace` remote or hybrid into
+  `raw_snippet`. The location field lists the posting's shown `locations`, and a
+  posting that shows none keeps the single `location`, as before. Not mapped:
+  Ashby's `isRemote`, which was true on all 119 Hybrid postings in run 34's
+  cache, so it means "remote allowed", and Workable's `remote`, which repeats
+  `workplace`. jobsinlund's `remote_type` was `no` on all 829 cached postings,
+  and its API query already pins the city, so mapping it could change no verdict.
+  It was left unmapped. A Layer 0 hybrid confirmation is stored as
+  `hybrid_confirmed`, so a stored row is not re-checked. `raw_snippet` is not
+  stored, so the re-filter pass does not see these words (F13). It cannot reject
+  on them either: a conditional-city row re-filters as pending, and pending passes.
+- **simprints is remote within one country, not worldwide (SP4f, read from the
+  platform's data).** Its four stored rows are `workplace: remote` with the
+  United Kingdom shown (not hidden), and the posting text says "Location:
+  Remote" beside a UK grade. Remote across a country outside `remote_regions`
+  is Q3b's excluded case, so they stay deferred and rejected. Whether a country
+  belongs in `remote_regions` is the owner's to say.
+- **Workday states the workplace only on the detail page (SP4f).** path's and
+  irc's rendered pages say "remote type Fully Remote" or "Location: Global,
+  Remote", but the listing JSON SP3b reads has no such field: `title`,
+  `externalPath`, `timeType`, `locationsText`, `postedOn`, `bulletFields`. path's
+  `locationsText` is empty on many postings. So under Q4 a Workday posting
+  with an empty field is settled by its page naming a listed place, and a
+  worldwide remote roster whose page says so in its own label is dropped. One
+  stored `new` path row has that shape. Reading the label off the page would be
+  a per-source branch in Layer 5, and the per-job JSON is a request per posting.
+  Neither was built. It is proposed in SP4f's result.
+- **How SP4f was measured.** Offline and read-only, from scratch copies of the
+  store and the HTTP cache (run 34). Every stored row was judged by `main`'s
+  `filtering.py` and this branch's, from its stored title and location. The drop
+  log keeps no snippet, so a rule string that moves in such a replay may be the
+  replay's loss of the snippet, not a change: two run-34 rows did exactly that.
+  Each admission was netted against SP4e's reading of the stored description and
+  against today's title layers. Q3b was measured twice: with the live rules.json,
+  which has no `remote_regions`, and with a scratch copy holding the region and
+  country terms from `non_place_locations` that contain a listed location. The
+  readers were replayed over run 34's cached Ashby responses (old reader and
+  `filtering.py` against new) and Workable's fixtures, since no Workable POST is
+  cached.
+

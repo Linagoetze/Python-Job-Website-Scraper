@@ -31,14 +31,23 @@ def test_main_passes_a_non_place_pattern_built_from_the_same_rules(
     captured: dict[str, Any] = {}
 
     def fake_refilter_stored_jobs(
-        store: object, rules: dict[str, Any], title_keywords: object, *args: object
+        store: object,
+        rules: dict[str, Any],
+        title_keywords: object,
+        *args: object,
+        **kwargs: object,
     ) -> tuple[dict[str, int], list[Any]]:
         # non_place_pattern is the last positional argument the fixed call
-        # site passes, after hybrid_pattern.
+        # site passes, after hybrid_pattern. SP4f's region pattern is keyword-only.
         captured["non_place_pattern"] = args[-1] if args else None
+        captured["remote_region_pattern"] = kwargs.get("remote_region_pattern")
         return {"rules": 0, "title": 0, "title_keywords": 0}, []
 
-    monkeypatch.setattr(retrofilter, "load_rules", lambda: {"non_place_locations": ["Worldwide"]})
+    monkeypatch.setattr(
+        retrofilter,
+        "load_rules",
+        lambda: {"non_place_locations": ["Worldwide"], "remote_regions": ["Wingtip Region"]},
+    )
     monkeypatch.setattr(retrofilter, "default_jobs_db_path", lambda: "unused.sqlite3")
     monkeypatch.setattr(retrofilter, "default_jobs_xlsx_path", lambda: "unused.xlsx")
     monkeypatch.setattr(retrofilter, "JobStore", lambda db_path: _DummyStore())
@@ -51,3 +60,8 @@ def test_main_passes_a_non_place_pattern_built_from_the_same_rules(
     pattern = captured["non_place_pattern"]
     assert pattern is not None
     assert pattern.search("Worldwide") is not None
+    # Same for the regions a remote role may span (SP4f): a re-filter pass
+    # without them would judge "Home based - <region>" differently from a run.
+    regions = captured["remote_region_pattern"]
+    assert regions is not None
+    assert regions.search("Wingtip Region") is not None

@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import pytest
 
 from job_scraper.extractors import ashby, personio, workable
+from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
@@ -252,7 +253,8 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         # JS shell. The API's location matched the stored one on every posting
         # stored, and it adds a real department. The board page itself lives on
         # as kognity.listing.html, for the probe. 5 -> 4 is the board, which now
-        # lists four postings, not the move.
+        # lists four postings, not the move. SP4f: Ashby's `workplaceType` joins
+        # the snippet, where Layer 0's hybrid gate reads it ("Hybrid" here).
         "count": 4,
         "first_job": {
             "source_name": "kognity",
@@ -262,7 +264,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "listing_url": "https://jobs.ashbyhq.com/kognity",
             "detail_url": ("https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"),
             "apply_url": ("https://jobs.ashbyhq.com/kognity/c4574356-f612-4edb-b66c-811cf198b79e"),
-            "raw_snippet": "VP of Customer Success Commercial Stockholm",
+            "raw_snippet": "VP of Customer Success Commercial Stockholm Hybrid",
         },
         # Too long to inline, so pinned by length and opening words.
         "description": (3308, "This is not a typical Customer Success role."),
@@ -707,6 +709,9 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         # workable.py's second source. No bug: this row has no city, and the
         # extractor's `", ".join(x for x in [city, country] if x)` correctly
         # drops the empty part rather than leaving a stray leading comma.
+        # SP4f: `workplace` joins the snippet ("Remote"). Every location this
+        # posting lists is marked hidden, so the field keeps Workable's single
+        # `location`, as before.
         "count": 9,
         "first_job": {
             "source_name": "simprints",
@@ -716,7 +721,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "listing_url": "https://apply.workable.com/simprints/",
             "detail_url": "https://apply.workable.com/simprints/j/3CAA06941B/",
             "apply_url": "https://apply.workable.com/simprints/j/3CAA06941B/",
-            "raw_snippet": "Director of Strategic Partnerships Partnerships Ghana",
+            "raw_snippet": "Director of Strategic Partnerships Partnerships Ghana Remote",
         },
     },
 }
@@ -896,3 +901,117 @@ def test_ashby_detail_urls_are_the_stored_keys() -> None:
     raw = json.loads((FIXTURES_DIR / "kognity.json").read_text(encoding="utf-8"))
     built = [j["detail_url"] for j in parse_fixture("kognity")]
     assert built == [j["jobUrl"] for j in raw["jobs"]]
+
+
+# --- the platform's own workplace fields (SP4f) -------------------------------
+#
+# Invented postings. The readers carry the platform's statement of how and where
+# a job is worked into the fields Layer 0 already reads: the workplace into
+# `raw_snippet` (the remote keywords and the hybrid gate), every shown location
+# into `location`. Run 34 rejected an Ashby posting marked Hybrid as non-hybrid,
+# because its prose never said the word.
+
+
+def _ashby(*postings: dict[str, Any]) -> list[dict[str, Any]]:
+    body = json.dumps({"jobs": [{"isListed": True, **p} for p in postings]})
+    return ashby.extract("https://jobs.ashbyhq.com/contoso", lambda url, *a, **k: body, "contoso")
+
+
+def test_ashby_carries_the_workplace_type_into_the_snippet() -> None:
+    jobs = _ashby(
+        {"id": "1", "title": "Analyst", "location": "Fabrikam City", "workplaceType": "Hybrid"},
+        {"id": "2", "title": "Analyst", "location": "Fabrikam City", "workplaceType": "Remote"},
+        {"id": "3", "title": "Analyst", "location": "Fabrikam City", "workplaceType": "OnSite"},
+    )
+    assert [j["raw_snippet"] for j in jobs] == [
+        "Analyst Fabrikam City Hybrid",
+        "Analyst Fabrikam City Remote",
+        "Analyst Fabrikam City",
+    ]
+
+
+def test_ashby_does_not_read_is_remote() -> None:
+    # True on every Hybrid posting captured: it says remote is allowed, not that
+    # the job is remote, so reading it would admit hybrid office jobs as remote.
+    [job] = _ashby(
+        {"id": "1", "title": "Analyst", "location": "Fabrikam City", "isRemote": True},
+    )
+    assert job["raw_snippet"] == "Analyst Fabrikam City"
+
+
+def test_ashby_lists_secondary_locations_as_segments() -> None:
+    [job] = _ashby(
+        {
+            "id": "1",
+            "title": "Analyst",
+            "location": "Fabrikam City",
+            "secondaryLocations": [
+                {"location": "Northwind"},
+                {"location": "Fabrikam City"},
+                {"location": ""},
+            ],
+        }
+    )
+    assert job["location"] == "Fabrikam City | Northwind"
+
+
+def test_an_ashby_hybrid_posting_is_confirmed_at_layer_0() -> None:
+    rules = {
+        "locations": ["Northwind"],
+        "conditional_locations": ["Fabrikam City"],
+        "conditional_location_keywords": ["hybrid"],
+    }
+    [job] = _ashby(
+        {"id": "1", "title": "Analyst", "location": "Fabrikam City", "workplaceType": "Hybrid"}
+    )
+    ok, reasons = matches_rules(job, rules, build_hybrid_pattern(rules))
+    assert ok
+    assert reasons == [_HYBRID_CONFIRMED_REASON]
+
+
+def _workable(*postings: dict[str, Any]) -> list[dict[str, Any]]:
+    def fetch(url: str, *a: Any, **k: Any) -> str:
+        return ""
+
+    fetch.post_json = lambda url, body, headers=None: {
+        "results": [{"title": "Analyst", "shortcode": str(i), **p} for i, p in enumerate(postings)]
+    }
+    return workable.extract("https://apply.workable.com/contoso/", fetch, "contoso")
+
+
+def test_workable_carries_the_workplace_into_the_snippet() -> None:
+    place = {"location": {"city": "Fabrikam City", "country": "Contoso"}}
+    jobs = _workable(
+        {**place, "workplace": "remote", "remote": True},
+        {**place, "workplace": "hybrid", "remote": False},
+        {**place, "workplace": "on_site", "remote": False},
+    )
+    assert [j["raw_snippet"] for j in jobs] == [
+        "Analyst Fabrikam City, Contoso Remote",
+        "Analyst Fabrikam City, Contoso Hybrid",
+        "Analyst Fabrikam City, Contoso",
+    ]
+
+
+def test_workable_lists_every_shown_location_and_none_that_are_hidden() -> None:
+    [job] = _workable(
+        {
+            "location": {"city": "Fabrikam City", "country": "Contoso"},
+            "locations": [
+                {"city": "Fabrikam City", "country": "Contoso", "hidden": False},
+                {"city": "", "country": "Litware", "hidden": True},
+                {"city": "Northwind", "country": "Contoso", "hidden": False},
+            ],
+        }
+    )
+    assert job["location"] == "Fabrikam City, Contoso | Northwind, Contoso"
+
+
+def test_workable_keeps_its_single_location_when_every_location_is_hidden() -> None:
+    [job] = _workable(
+        {
+            "location": {"city": "", "country": "Litware"},
+            "locations": [{"city": "", "country": "Litware", "hidden": True}],
+        }
+    )
+    assert job["location"] == "Litware"

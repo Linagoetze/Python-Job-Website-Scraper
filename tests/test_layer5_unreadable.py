@@ -24,6 +24,7 @@ from job_scraper.experience_filter import (
     EXPERIENCE_UNREADABLE,
     MIN_READABLE_CHARS,
     PAGE_READ,
+    PAGE_REFUSED,
     PAGE_STATE_KEY,
     PAGE_UNREADABLE,
     UNVERIFIED_KEY,
@@ -32,6 +33,7 @@ from job_scraper.experience_filter import (
 )
 from job_scraper.filtering import _HYBRID_PENDING_REASON, _UNRESOLVED_PENDING_REASON
 from job_scraper.pipeline import UnreadablePages, count_unreadable_pages, run_pipeline
+from job_scraper.robots import RobotsDisallowed
 from job_scraper.run import format_summary
 from job_scraper.storage.db import JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
@@ -184,10 +186,54 @@ def test_the_block_renders_beside_the_other_warnings() -> None:
         )
     )
     assert (
-        "!  Unreadable pages: 2 sources had detail pages with no posting in them\n"
+        "!  Unreadable pages: 2 sources had detail pages that could not be read\n"
         "!  undp: 16 of 20 detail pages unreadable — those jobs are not experience-checked\n"
         "!  kognity: 1 of 4 detail pages unreadable — those jobs are not experience-checked"
     ) in text
+
+
+def test_a_source_with_jobs_held_back_says_so() -> None:
+    # The owner's answer to the Q4/Q6 collision (SP4f): a job whose location
+    # only its page could settle is dropped for the run when the page cannot be
+    # read. It is not in the sheet, so "kept and marked" must not cover it.
+    held = (("page unreadable", 1), ("fetch failed", 1))
+    text = format_summary(
+        _summary(unreadable_pages=(UnreadablePages("contoso", 3, 5, held_back=held),))
+    )
+    assert (
+        "!  contoso: 3 of 5 detail pages unreadable — those jobs are not experience-checked\n"
+        "!    2 jobs held back this run, location unchecked: page unreadable 1, fetch failed 1"
+    ) in text
+
+
+def test_a_source_whose_only_trouble_is_held_back_jobs_is_named() -> None:
+    # SP4f review: a refused or failed fetch holds a job back as surely as a
+    # shell does, with no unreadable page to hang the line on. No "0 of 0".
+    held = (("robots.txt refused", 2),)
+    text = format_summary(
+        _summary(unreadable_pages=(UnreadablePages("contoso", 0, 0, held_back=held),))
+    )
+    assert (
+        "!  contoso: 2 jobs held back this run, location unchecked: robots.txt refused 2"
+    ) in text
+    assert "0 of 0" not in text
+
+
+def test_held_back_counts_every_unverified_drop_by_cause() -> None:
+    jobs = [
+        {"source_name": "contoso", PAGE_STATE_KEY: "unreadable", UNVERIFIED_KEY: True},
+        {"source_name": "contoso", PAGE_STATE_KEY: "unreadable"},
+        {"source_name": "contoso", PAGE_STATE_KEY: "failed", UNVERIFIED_KEY: True},
+        {"source_name": "contoso", PAGE_STATE_KEY: "failed"},  # kept, unchecked
+        {"source_name": "contoso", PAGE_STATE_KEY: "read"},
+        {"source_name": "fabrikam", PAGE_STATE_KEY: PAGE_REFUSED, UNVERIFIED_KEY: True},
+        {"source_name": "fabrikam", UNVERIFIED_KEY: True},  # no URL, so no page state
+        {"source_name": "litware", PAGE_STATE_KEY: "read"},
+    ]
+    assert count_unreadable_pages(jobs) == (
+        UnreadablePages("contoso", 2, 3, held_back=(("page unreadable", 1), ("fetch failed", 1))),
+        UnreadablePages("fabrikam", 0, 0, held_back=(("robots.txt refused", 1), ("no URL", 1))),
+    )
 
 
 def test_no_block_when_every_page_was_read() -> None:
@@ -346,11 +392,16 @@ def test_a_rejected_unreadable_row_costs_no_request(env: dict[str, Any]) -> None
 
 
 def test_a_deferred_job_against_a_shell_is_not_stored_rejected(env: dict[str, Any]) -> None:
-    env["extracted"][0]["location"] = "Home based - Worldwide"
+    # A placeholder: "Home based - Worldwide" is remote since SP4f, not deferred.
+    env["extracted"][0]["location"] = "2 Locations"
     site, tmp_path = env["site"], env["tmp_path"]
     summary = _run(tmp_path)
     assert _URL not in _stored(tmp_path), "unverified: dropped this run, never rejected"
-    assert summary.unreadable_pages == (UnreadablePages(_SOURCE, 1, 1),)
+    # Held back, and the summary says so (SP4f, the owner's answer to the
+    # Q4/Q6 collision): unlike the kept unreadable jobs, this one is not shown.
+    assert summary.unreadable_pages == (
+        UnreadablePages(_SOURCE, 1, 1, held_back=(("page unreadable", 1),)),
+    )
 
     env["site"].page = posting("You will work from our Berlin office.")
     _run(tmp_path)
@@ -384,6 +435,32 @@ def test_a_stored_seen_job_that_a_recheck_rejects_keeps_the_owners_status(
     assert _stored(tmp_path)[_URL]["status"] == "shortlisted"
 
 
+@pytest.mark.parametrize(
+    ("error", "cause"),
+    [
+        (RuntimeError("network down"), "fetch failed"),
+        (RobotsDisallowed("robots.txt forbids it", url=_URL), "robots.txt refused"),
+    ],
+)
+def test_an_empty_location_whose_page_cannot_be_fetched_is_named_not_silent(
+    env: dict[str, Any], caplog: pytest.LogCaptureFixture, error: Exception, cause: str
+) -> None:
+    """SP4f review. Before SP4f this job was kept, marked unchecked; under Q4 it
+    is held back. That is the owner's answer, but only if the run says so: a
+    refusal recurs every run, so silence here would hide the job for good."""
+    env["extracted"][0]["location"] = ""
+    env["site"].page = error
+    with caplog.at_level("WARNING"):
+        summary = _run(env["tmp_path"])
+    assert _URL not in _stored(env["tmp_path"]), "held back: not stored, retried next run"
+    assert summary.unreadable_pages == (UnreadablePages(_SOURCE, 0, 0, held_back=((cause, 1),)),)
+    assert f"1 job held back this run, location unchecked: {cause} 1" in format_summary(summary)
+    if isinstance(error, RobotsDisallowed):
+        # The warning used to say every refused job was kept. This one was not.
+        assert "Kept, but unchecked and with no description stored: 0" in caplog.text
+        assert "because only the page could settle their location: 1" in caplog.text
+
+
 def test_a_stored_job_dropped_as_unverified_shows_as_unchecked_not_blank(
     env: dict[str, Any],
 ) -> None:
@@ -394,7 +471,8 @@ def test_a_stored_job_dropped_as_unverified_shows_as_unchecked_not_blank(
     _run(tmp_path)  # stored, unchecked
     with JobStore(tmp_path / "jobs.sqlite3") as store:
         store._c().execute("UPDATE jobs SET experience_level = ''")  # as after a revival
-    env["extracted"][0]["location"] = "Home based - Worldwide"
+    # A placeholder: "Home based - Worldwide" is remote since SP4f, not deferred.
+    env["extracted"][0]["location"] = "2 Locations"
     _run(tmp_path)
     job = _stored(tmp_path)[_URL]
     assert (job["status"], job["experience_level"]) == ("new", EXPERIENCE_UNREADABLE)

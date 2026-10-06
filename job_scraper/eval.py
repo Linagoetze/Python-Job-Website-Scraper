@@ -59,11 +59,13 @@ from job_scraper.drops import (
 )
 from job_scraper.experience_filter import apply_combined_title_filter
 from job_scraper.filtering import (
+    _EMPTY_PENDING_REASON,
     _HYBRID_PENDING_REASON,
     _UNRESOLVED_PENDING_REASON,
     DROP_RULE_KEY,
     build_hybrid_pattern,
     build_non_place_pattern,
+    build_remote_region_pattern,
     load_title_exclude_keywords,
     matches_rules,
 )
@@ -268,6 +270,7 @@ class LadderConfig:
     title_keywords: list[tuple[str, str]]
     hybrid_pattern: re.Pattern[str] | None
     non_place_pattern: re.Pattern[str] | None
+    remote_region_pattern: re.Pattern[str] | None = None
 
 
 def load_ladder_config(config_dir: Path, name: str | None = None) -> LadderConfig:
@@ -297,6 +300,7 @@ def load_ladder_config(config_dir: Path, name: str | None = None) -> LadderConfi
         title_keywords=title_keywords,
         hybrid_pattern=build_hybrid_pattern(rules),
         non_place_pattern=build_non_place_pattern(rules),
+        remote_region_pattern=build_remote_region_pattern(rules),
     )
 
 
@@ -353,6 +357,7 @@ def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
             config.rules,
             config.hybrid_pattern,
             non_place_pattern=config.non_place_pattern,
+            remote_region_pattern=config.remote_region_pattern,
         )
         if ok:
             kept.append(dict(record, matched_reasons=reasons))
@@ -382,7 +387,9 @@ def replay(jobs: list[LabelledJob], config: LadderConfig) -> list[Verdict]:
                 # gain reported over these jobs is an upper bound, not a
                 # result. Without the flag the harness would credit the ladder
                 # with every job it merely deferred.
-                pending_location=_UNRESOLVED_PENDING_REASON in reasons,
+                # An empty field is deferred the same way since SP4f (Q4).
+                pending_location=_UNRESOLVED_PENDING_REASON in reasons
+                or _EMPTY_PENDING_REASON in reasons,
             )
         )
 
@@ -773,8 +780,8 @@ def format_report(
     if unresolved:
         wanted = len(result.pending_location_wanted)
         lines.append(
-            f"  {_plural(len(unresolved), 'kept job')} with an unresolvable location field, "
-            f"which {layer_short(LAYER_DETAIL)} would"
+            f"  {_plural(len(unresolved), 'kept job')} with an unresolvable or empty location "
+            f"field, which {layer_short(LAYER_DETAIL)} would"
         )
         lines.append(
             "  still settle against the description — and it fails closed, so read these as "

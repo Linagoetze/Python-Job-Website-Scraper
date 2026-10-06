@@ -27,6 +27,8 @@ from bs4 import BeautifulSoup
 from job_scraper import JobRecord
 from job_scraper.drops import LAYER_DETAIL, layer_short
 from job_scraper.filtering import (
+    _EMPTY_CONFIRMED_REASON,
+    _EMPTY_PENDING_REASON,
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
     _UNRESOLVED_CONFIRMED_REASON,
@@ -80,6 +82,27 @@ RULE_HYBRID_UNVERIFIED = "hybrid: conditional city, could not read the descripti
 # and found to name no listed one.
 RULE_LOCATION_NOT_LISTED = "location: unresolvable field, description names no listed place"
 RULE_LOCATION_UNVERIFIED = "location: unresolvable field, could not read the description"
+# SP4f's pair for an empty field (the owner's Q4). Same state, same failure
+# direction, separate strings: an empty field and a placeholder have different
+# causes and different fixes, and the drop log must not merge them.
+RULE_LOCATION_EMPTY_NOT_LISTED = "location: no location given, description names no listed place"
+RULE_LOCATION_EMPTY_UNVERIFIED = "location: no location given, could not read the description"
+
+# Each deferred location state Layer 0 hands over, with what settles it: the
+# reason it becomes when the description names a listed place, and the rules
+# for a drop that was checked and one that could not be.
+_LOCATION_DEFERRALS = {
+    _UNRESOLVED_PENDING_REASON: (
+        _UNRESOLVED_CONFIRMED_REASON,
+        RULE_LOCATION_NOT_LISTED,
+        RULE_LOCATION_UNVERIFIED,
+    ),
+    _EMPTY_PENDING_REASON: (
+        _EMPTY_CONFIRMED_REASON,
+        RULE_LOCATION_EMPTY_NOT_LISTED,
+        RULE_LOCATION_EMPTY_UNVERIFIED,
+    ),
+}
 
 # Marks an exclusion this run could not actually verify — no URL, a fetch or
 # parse error, or no pattern configured — as opposed to one that was checked and
@@ -102,6 +125,10 @@ PAGE_STATE_KEY = "detail_page_state"
 PAGE_READ = "read"
 PAGE_UNREADABLE = "unreadable"
 PAGE_FAILED = "failed"
+# A fetch robots.txt refused, apart from one that merely failed (SP4f review):
+# a failure is retried and may succeed next run, a refusal recurs every run
+# until the owner exempts the host, so the summary has to name it as such.
+PAGE_REFUSED = "refused"
 
 # A detail page is unreadable when its stripped text is shorter than this (SP4c,
 # measured against the store on 2026-10-01). Every stored description of a shell
@@ -1003,6 +1030,8 @@ def _analyze(
 def _page_state(signals: _DetailSignals) -> dict[str, str]:
     if signals.unreadable:
         return {PAGE_STATE_KEY: PAGE_UNREADABLE}
+    if signals.robots_refused:
+        return {PAGE_STATE_KEY: PAGE_REFUSED}
     if signals.fetch_failed:
         return {PAGE_STATE_KEY: PAGE_FAILED}
     if signals.description_text:
@@ -1033,30 +1062,35 @@ def _resolve_hybrid(job: JobRecord, hybrid_found: bool | None) -> JobRecord | No
     )
 
 
+def _location_deferral(job: JobRecord) -> str | None:
+    """The deferred location state *job* carries, or None (WP8d, SP4f)."""
+    reasons = job.get("matched_reasons") or []
+    return next((pending for pending in _LOCATION_DEFERRALS if pending in reasons), None)
+
+
 def _resolve_unresolved_location(
     job: JobRecord, listed_location_found: bool | None
 ) -> JobRecord | None:
     """Settle a job whose location field named no place, against the description.
 
-    Returns the job with its pending marker rewritten to confirmed, or None if it
-    must be excluded. Jobs not awaiting a location decision are returned unchanged.
+    Covers both deferred location states: a field that names no place (WP8d) and
+    an empty one (SP4f, Q4). Returns the job with its pending marker rewritten to
+    confirmed, or None if it must be excluded. Jobs not awaiting a location
+    decision are returned unchanged.
 
     Fails closed, exactly as `_resolve_hybrid` does and for the same reason: the
     listing never established that this job is in range, so a description that
     names nothing on the list has not established it either. WP8d's point is that
     these jobs get *read* before they are dropped, not that they are kept.
     """
-    reasons = job.get("matched_reasons") or []
-    if _UNRESOLVED_PENDING_REASON not in reasons:
+    pending = _location_deferral(job)
+    if pending is None:
         return job
     if not listed_location_found:
         return None
-    return dict(
-        job,
-        matched_reasons=[
-            _UNRESOLVED_CONFIRMED_REASON if r == _UNRESOLVED_PENDING_REASON else r for r in reasons
-        ],
-    )
+    confirmed = _LOCATION_DEFERRALS[pending][0]
+    reasons = job.get("matched_reasons") or []
+    return dict(job, matched_reasons=[confirmed if r == pending else r for r in reasons])
 
 
 def apply_detail_filter(
@@ -1101,7 +1135,8 @@ def apply_detail_filter(
     the same case: nothing is read off it, so a deferred job is unverified, and
     any other job is kept with experience_level EXPERIENCE_UNREADABLE and no
     stored description, so the next run fetches it again. Each job also carries
-    PAGE_STATE_KEY saying whether its page was read, unreadable or failed.
+    PAGE_STATE_KEY saying whether its page was read, unreadable, refused by
+    robots.txt or failed.
     Every excluded job also carries the rule that dropped it under
     DROP_RULE_KEY — the years threshold that fired, the PhD requirement, or
     which of the two hybrid cases it was — for the run's exclusion log.
@@ -1188,19 +1223,21 @@ def apply_detail_filter(
             continue
 
         job = resolved
+        pending = _location_deferral(job)
         resolved = _resolve_unresolved_location(job, signals.listed_location_found)
-        if resolved is None:
+        if resolved is None and pending is not None:
             location_excluded += 1
             if signals.listed_location_found is None:
                 unverified += 1
+            _, checked_rule, unverified_rule = _LOCATION_DEFERRALS[pending]
             excluded.append(
                 _deferred_exclusion(
                     job,
                     signals,
                     "unresolvable_location",
                     signals.listed_location_found is not None,
-                    RULE_LOCATION_NOT_LISTED,
-                    RULE_LOCATION_UNVERIFIED,
+                    checked_rule,
+                    unverified_rule,
                 )
             )
             continue
@@ -1260,13 +1297,25 @@ def apply_detail_filter(
         # experience check, no PhD check, no description stored for scoring —
         # and the funnel counts them among the ones that passed this layer. A
         # run that quietly stops filtering a whole source must not look healthy.
+        # A job only its page could place (an empty or placeholder location, a
+        # conditional city) is not kept at all but held back, and since a
+        # refusal recurs, held back on every run (SP4f review): say which.
+        held_back = sum(
+            1
+            for job in excluded
+            if job.get(UNVERIFIED_KEY) and job.get(PAGE_STATE_KEY) == PAGE_REFUSED
+        )
         logger.warning(
-            "%s: robots.txt refused the detail pages of %d job(s) on %s. They are kept, "
-            "but unchecked and with no description stored. If those rules are not meant "
-            "for us, exempt the host in that source's `ignore_robots` list.",
+            "%s: robots.txt refused the detail pages of %d job(s) on %s. Kept, but "
+            "unchecked and with no description stored: %d. Held back from the sheet "
+            "until the page can be read, because only the page could settle their "
+            "location: %d. If those rules are not meant for us, exempt the host in "
+            "that source's `ignore_robots` list.",
             layer_short(LAYER_DETAIL),
             len(refused),
             ", ".join(hosts) or "an unparseable host",
+            len(refused) - held_back,
+            held_back,
         )
 
     if jobs:
