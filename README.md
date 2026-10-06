@@ -330,10 +330,11 @@ the pages behind the listing be read?":
 
 ```
 ────────────────────────────────────────────────────
-!  Unreadable pages: 2 sources had detail pages with no posting in them
+!  Unreadable pages: 3 sources had detail pages that could not be read
 !  acme_jobs: 4 of 9 detail pages unreadable — those jobs are not experience-checked
 !  contoso: 1 of 12 detail pages unreadable — those jobs are not experience-checked
-!    1 of them held back this run: the location could not be checked
+!    2 jobs held back this run, location unchecked: page unreadable 1, fetch failed 1
+!  fabrikam: 3 jobs held back this run, location unchecked: robots.txt refused 3
 ```
 
 Nothing in the funnel looks wrong when a source's detail pages are shells: the
@@ -341,11 +342,15 @@ listing was fine and the jobs were kept. That is exactly why they need a line of
 their own. The count is of pages that came back, so a request that failed is not
 in either number. Those jobs were not checked for years or a PhD; they sit in
 the review sheet marked `unchecked (page unreadable)` and are fetched again each
-run until the page reads. The indented line is the exception: a job whose
+run until the page reads. The "held back" lines are the exception: a job whose
 location only its page could settle (an empty field, a placeholder, or a
-conditional city's hybrid check) is held back for the run when the page cannot
-be read. It is not in the sheet, it is not stored as rejected, and it is
-fetched again next run.
+conditional city's hybrid check) is held back for the run when its page cannot
+be read, whatever the reason: a shell, a failed fetch, a robots.txt refusal or
+no URL at all. It is not in the sheet, it is not stored as rejected, and it is
+tried again next run. A source can appear here for held-back jobs alone, as
+`fabrikam` does. A failed fetch usually clears by itself. A robots.txt refusal
+does not: it holds the same jobs back on every run until you exempt the host in
+that source's `ignore_robots` list or decide the site means it.
 
 ### Why was something dropped?
 
@@ -956,7 +961,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1177 tests, about fifteen seconds, no network access required.
+1180 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

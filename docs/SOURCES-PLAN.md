@@ -3044,6 +3044,17 @@ use "2 Locations". One that pinned `title_only` caught a regression in the first
 draft (a "Remote" field under `title_only` must not count). Suite: **1,177
 passed, no expected failures** (was 1,143 + 2).
 
+**Review fix, 2026-10-06.** A reviewer found that the "held back" line covered
+only one of four cases. A deferred job whose page *downloaded but was
+unreadable* was named. One whose fetch failed, whose page robots.txt refused,
+or which had no URL was dropped for the run in silence. For an empty field that
+undid part of WP8f, which had kept such a job, marked unchecked. The robots.txt
+WARNING also still said every refused job "is kept". Now every held-back job is
+counted by cause, a source is listed for held-back jobs alone, a refusal has a
+page state of its own, and the warning gives kept and held back separately.
+The block is still the one block you chose, and its header now reads "had
+detail pages that could not be read". Suite: **1,180 passed**.
+
 ### Your to-dos
 
 - [ ] **Add the regions that include where you live to `rules.json`**, under

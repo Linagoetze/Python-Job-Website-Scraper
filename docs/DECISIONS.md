@@ -1382,9 +1382,17 @@ session — see `CLAUDE.md`.
   placeholder or hybrid), since all three are missing from the sheet for the
   same reason. Population when decided: 0 live rows (the one stored row of that
   shape was a run-2 row the owner had rejected), and 0 unverified drops in
-  run 34. A job with no URL at all would be held back too, without the summary
-  line, since no page came back to count. None exists, because every reader falls
-  back to its listing URL.
+  run 34. **Widened in review (2026-10-06):** the first version counted only
+  jobs held back by an *unreadable* page. A failed fetch, a robots.txt refusal
+  and a missing URL hold a deferred job back just the same, and those three
+  dropped it in silence. For an empty field that was a regression, since WP8f
+  had kept such a job, marked unchecked. Placeholders and conditional cities
+  had been silent that way since WP8d. Every held-back job is now counted, by
+  cause, and a source with held-back jobs but no unreadable page is listed for
+  that alone. A refusal is its own page state (`PAGE_REFUSED`), apart from a
+  failed fetch, because it recurs on every run: such a job never reaches the
+  sheet until the owner exempts the host. The robots.txt WARNING, which said
+  every refused job "is kept", now gives kept and held back separately.
 - **The readers carry the platform's own workplace field into what Layer 0
   already reads (SP4f).** Not a new layer and not a new pass: a reader sets
   fields. Ashby: `workplaceType` Remote or Hybrid goes into `raw_snippet`, where the
