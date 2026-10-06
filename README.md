@@ -717,7 +717,7 @@ afterwards.
 Layer 5 reads from a description: years of experience and a required PhD. These
 are re-read from the description the store already holds, with the same reading a
 run uses. A row whose page could not be read, or that holds no description, is
-left as it is. It does *not* re-judge a location or hybrid state that only a
+left as it is, as is one at the 20,000-character storage cap, which may be a prefix. It does *not* re-judge a location or hybrid state that only a
 run could read: a run also sees each posting's `raw_snippet` and `department`,
 which the store does not keep, so such a row is passed through rather than
 rejected on a guess. If the reading moves a row's level while the posting stays
@@ -992,7 +992,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1219 tests, about fifteen seconds, no network access required.
+1220 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

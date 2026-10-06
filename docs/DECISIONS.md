@@ -1515,8 +1515,9 @@ session — see `CLAUDE.md`.
   whole transaction rolls back. The first dry run, on a copy of the store as of
   2026-10-06 (31 `new` rows, 30 with a description), showed no change of either
   kind, as expected. A stored description is capped at 20,000 characters and a
-  run reads the whole page, so a very long posting could read differently here.
-  The dry run is where that would show.
+  run reads the whole page, so one at the cap may be a prefix, and a route
+  figure past the cut could read higher here than in the run. The pass does not
+  judge a description of that length: a rejection is never undone.
 - **`retrofilter` logs its rejections in a run of its own (SP4g, closing
   SP4b's F13).** It opens a run only when there are drops, because an empty run
   would become the latest exclusion run and hide the last real one from

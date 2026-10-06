@@ -26,6 +26,7 @@ import pytest
 from job_scraper import drops as drops_mod
 from job_scraper.drops import LAYER_DETAIL, REFILTER_PREFIX
 from job_scraper.experience_filter import (
+    _MAX_DESCRIPTION_CHARS,
     EXPERIENCE_UNREADABLE,
     RULE_PHD_REQUIRED,
     judge_experience,
@@ -131,6 +132,17 @@ def test_a_short_stored_description_is_judged_not_taken_for_a_shell() -> None:
     """jobsinlund's supplied text runs from 397 characters: length decides nothing."""
     assert len(_SENIOR) < 100
     verdict = rejudge_stored_description({"description_text": _SENIOR, "experience_level": ""})
+    assert verdict == ("senior (6+yr)", "experience: 6+ years required")
+
+
+def test_a_description_at_the_storage_cap_is_not_judged() -> None:
+    """It may be a prefix of what a run read, so a figure past the cut is unseen."""
+    cap = _MAX_DESCRIPTION_CHARS
+    at_cap = (_SENIOR + " ").ljust(cap, "x")
+    just_under = (_SENIOR + " ").ljust(cap - 1, "x")
+    assert len(at_cap) == cap
+    assert rejudge_stored_description({"description_text": at_cap, "experience_level": ""}) is None
+    verdict = rejudge_stored_description({"description_text": just_under, "experience_level": ""})
     assert verdict == ("senior (6+yr)", "experience: 6+ years required")
 
 

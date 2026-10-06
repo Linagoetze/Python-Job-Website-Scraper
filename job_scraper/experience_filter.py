@@ -1064,7 +1064,8 @@ def rejudge_stored_description(job: JobRecord) -> tuple[str, str | None] | None:
     EXPERIENCE_UNREADABLE (SP4c). That is decided from the level and not from the
     description's length (SP4d), because the store cannot tell a description a
     reader supplied from one that was fetched, and a supplied one can be short
-    and still a real posting. A description is only ever stored once it passed
+    and still a real posting. A description at the storage cap may be cut short
+    and is not judged either. A description is only ever stored once it passed
     `is_unreadable`, so there is no shell here to mistake for a posting.
 
     Years and PhD only. The location and hybrid states are settled by what a run
@@ -1073,6 +1074,11 @@ def rejudge_stored_description(job: JobRecord) -> tuple[str, str | None] | None:
     """
     text = str(job.get("description_text") or "")
     if not text or job.get("experience_level") == EXPERIENCE_UNREADABLE:
+        return None
+    if len(text) >= _MAX_DESCRIPTION_CHARS:
+        # Stored text is cut at the cap and a run read the whole page, so this
+        # may be a prefix. A route figure past the cut could read higher here
+        # than it did there, and a rejection is never undone: leave it be.
         return None
     return judge_experience(_read_years_requirement(text), _has_phd_required(text))
 

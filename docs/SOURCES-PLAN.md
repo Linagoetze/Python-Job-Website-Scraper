@@ -3243,11 +3243,12 @@ Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
 - **Step 3.** `retrofilter` records its drops in a run of its own, under the
   `refilter/` layer prefix, and only when there are any. `refilter_stored_jobs`
   returns a `RefilterResult` (counts, drops, level changes) instead of a tuple.
-- **23 new tests** (1196 to 1219), in `tests/test_refilter_layer5.py`. One older
+- **24 new tests** (1196 to 1220), in `tests/test_refilter_layer5.py`. One older
   test used `--dry-run` as its example of an unrecognised argument; it now uses
-  `--wet-run`. Not fixed, only noted: a posting over 20,000 characters is read
-  whole by a run but from its capped stored text here, so a route figure past the
-  cap could read differently. The dry run is where it would show.
+  `--wet-run`. **A description at the 20,000-character storage cap is not
+  judged**: a run reads the whole page, the store keeps a prefix, and a route
+  figure past the cut could read higher here and reject a row a run kept. Found
+  in review of this package and fixed on the branch.
 
 ### Your to-dos
 
