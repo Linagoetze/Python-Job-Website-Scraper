@@ -15,7 +15,10 @@ from job_scraper.filtering import (
     build_location_pattern,
     build_non_place_pattern,
     build_remote_region_pattern,
+    build_title_keyword_matchers,
+    load_title_exclude_keywords,
     matches_rules,
+    title_keyword_rule,
 )
 
 
@@ -563,3 +566,66 @@ class TestTitleKeywordFilter:
         kept, excluded = apply_title_keyword_filter([_job(), _job()], [])
         assert len(kept) == 2
         assert len(excluded) == 0
+
+
+class TestContainsMatch:
+    """`contains` is for family words German and Swedish put at a compound's end (SP4h)."""
+
+    def test_matches_family_word_at_the_end_of_a_compound(self):
+        entries = [("techniker", "contains")]
+        for title in ("Prüftechniker (m/w/d)", "Instandhaltungstechniker:in", "Techniker"):
+            _, excluded = apply_title_keyword_filter([_job(title=title)], entries)
+            assert len(excluded) == 1, title
+
+    def test_matches_an_inflected_ending_where_a_word_end_match_would_not(self):
+        # The reason it is `contains` and not a word-end type.
+        entries = [("ingenjör", "contains")]
+        for title in ("Mjukvaruingenjörer", "Elektronikingenjör", "Ingenjör till Lund"):
+            _, excluded = apply_title_keyword_filter([_job(title=title)], entries)
+            assert len(excluded) == 1, title
+
+    def test_prefix_still_misses_the_compound(self):
+        _, excluded = apply_title_keyword_filter(
+            [_job(title="Prüftechniker")], [("techniker", "prefix")]
+        )
+        assert excluded == []
+
+    def test_unrelated_word_is_kept(self):
+        kept, _ = apply_title_keyword_filter(
+            [_job(title="Product Owner")], [("techniker", "contains")]
+        )
+        assert len(kept) == 1
+
+    def test_loader_accepts_contains_and_falls_back_to_word_for_an_unknown_type(self, tmp_path):
+        path = tmp_path / "kw.csv"
+        path.write_text("keyword,match\nchaufför,contains\nfoo,suffix\n", encoding="utf-8")
+        assert load_title_exclude_keywords(path) == [("chaufför", "contains"), ("foo", "word")]
+
+    def test_attribution_names_the_match_type(self):
+        matchers = build_title_keyword_matchers([("chaufför", "contains")])
+        assert (
+            title_keyword_rule("Fjärrchaufför till DSV", matchers)
+            == "title_keyword: 'chaufför' (contains)"
+        )
+
+    def test_shipped_list_catches_the_compounds_it_was_changed_for(self):
+        from job_scraper.config_loader import default_title_keywords_path
+
+        entries = load_title_exclude_keywords(default_title_keywords_path())
+        titles = [
+            "Distributionschaufför till DSV Haulage AB, Stockholm",
+            "Instandhaltungstechniker:in (f/m/d)",
+            "Industriemechaniker:in (f/m/d)",
+            "Frontendutvecklare",
+            "Elektronikingenjör",
+            "Physiotherapist",
+            "Lasbil- og trailermekaniker søges til værksted i Horsens",
+        ]
+        kept, _ = apply_title_keyword_filter([_job(title=t) for t in titles], entries)
+        assert kept == []
+
+    def test_donor_is_no_longer_a_keyword(self):
+        from job_scraper.config_loader import default_title_keywords_path
+
+        entries = load_title_exclude_keywords(default_title_keywords_path())
+        assert "donor" not in {kw.lower() for kw, _ in entries}

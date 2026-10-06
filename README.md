@@ -580,8 +580,9 @@ tax,word
 | --- | --- |
 | `word` | Whole word. `sales` drops "Sales Manager" but not "Salesforce Admin". |
 | `prefix` | Word start. `design` drops "Designer" and "Design Lead". |
+| `contains` | Anywhere inside a word. `techniker` drops "Prüftechniker" and "Technikerin". For a family word German, Swedish and Danish put at the end of a compound. Use it only for a long, distinctive keyword. |
 
-Anything other than `prefix` is treated as `word`.
+Anything other than `prefix` or `contains` is treated as `word`.
 
 ### `data/curated/blocklist.csv` — legacy, not read
 
@@ -993,7 +994,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1224 tests, about fifteen seconds, no network access required.
+1232 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

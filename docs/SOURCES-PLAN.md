@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4g are done** (as of 2026-10-06); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4h are done** (as of 2026-10-06); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -104,7 +104,7 @@ the ordering below.
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | done | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | done | `sp4f-location-policy` |
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | done | `sp4g-refilter-inputs` |
-| 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | not started | `sp4h-keyword-compounds` |
+| 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
@@ -3305,10 +3305,62 @@ DOCS. Test count. docs/DECISIONS.md if a match type is added.
 Branch sp4h-keyword-compounds. Commit, do not push. Update this plan file.
 ```
 
+### Result (2026-10-06)
+
+Read the whole of `title_exclude_keywords.csv` (102 entries) first. The file's
+structure still fits: the defect was one missing match type, not a drifted list,
+so nothing else in it was reshuffled.
+
+- **New match type `contains`: the keyword anywhere inside a word.** Not a
+  word-end type, because the compounds F9 found inflect after the family word.
+  `ingenjör` has to catch "Mjukvaruingenjörer", `techniker` "Technikerin", and
+  `chaufför` "Chaufförer" (the stored "CE-Chaufförer" titles were never caught
+  by the old `word` entry). A match anchored at the word's end loses those.
+  Judgement call: `contains` has no boundary at all, so it is only safe for a
+  long, distinctive keyword. It is applied to seven: `techniker`, `Mechaniker`,
+  `mekaniker`, `chaufför`, `utvecklare`, `ingenjör`, `therapist`. A scan of
+  every keyword against every distinct title in the gold set, the store and the
+  drop log (11,708) found no other family word with a compound it missed;
+  the rest of the hits were short keywords (`IT`, `AI`, `SEA`, `Sr`) that must
+  stay whole-word. `prefix` was not widened.
+- **`eval --compare`, each change on its own against the 0.822 / 0.353 / 13
+  baseline (reproduced before any edit):**
+  - `donor` removed: precision 0.353 to 0.355, recall 0.822 to 0.836, FN 13 to
+    12, kept 170 to 172. Newly kept: one `review` ("Two internships: Global
+    Foundations Team and Institutional Donor Unit (Spring 2027)") and one
+    `discard` ("Donor Service Assistant"). **1 wanted job recovered for 1
+    unwanted one let in**, SP4b's figure. No stored row has "donor" in its title.
+  - Each of the seven `contains` changes: **no job treated differently**, all
+    seven. The gold set cannot tell `contains` from the old types: it holds none
+    of these compounds in a place another layer does not already reach. That is
+    a statement about the gold set, not evidence of safety. The safety evidence
+    is the corpus scan above, where every compound it newly catches is the
+    family the keyword already names.
+  - All together: precision 0.355, recall 0.836, F2 0.657, FN 12. `AI`,
+    `Student` and seniority `Director` stay, by the owner's Q7 answer.
+- **Stored rows, counted again.** Titles in the store that the new matches reach
+  and the old ones did not: 13, of which 9 `rejected` and 4 `delisted`, **none
+  `new`**. F9's 8 are all out of reach of the pass now.
+  `python -m job_scraper.tools.retrofilter --dry-run` before and after the edit:
+  **status changes (new to rejected): 0, level-only changes: 0**, both times. So
+  the end-of-run pass changes no stored row; the next scrape applies the keywords
+  to what it fetches. The real pass was not run.
+- **8 new tests** (1224 to 1232), in `tests/test_filtering.py`: the type itself,
+  inflected endings, `prefix` still missing the compound, the loader's fallback
+  for an unknown type, the attribution naming `(contains)`, the shipped list
+  catching seven real compounds, and `donor` being gone.
+- **Noticed, out of scope:** other family words have only `prefix` or `word`
+  entries (`Verkäufer`, `prüfer`, `Vertrieb`, `barberare`, `frisör`, `testare`,
+  `elmontör`) and would miss a compound the same way. None occurs in the 11,708
+  titles, so none was changed; converting one wants its own measurement.
+
 ### Your to-dos
 
-- [ ] Check the `eval --compare` diff the session quotes for removing `donor`
-      and for any new match type.
+- [x] Check the `eval --compare` diff the session quotes for removing `donor`
+      and for any new match type. Both are quoted in the result above.
+- [ ] Skim `git diff` of `title_exclude_keywords.csv`: seven entries changed type
+      and `donor` is gone. A kept `contains` entry is the first place to look if a
+      title is ever dropped that reads as unrelated.
 
 ---
 
@@ -3407,6 +3459,12 @@ remote shapes: "remote keyword overridden by a named city", and the deferred
 "unresolvable field" rules at Layer 5. If a new source writes its remote roles
 as single countries, list those countries for the owner in CHAT only. Whether
 to add them to remote_regions is the owner's private edit, never tracked prose.
+
+GERMAN, SWEDISH AND DANISH TITLES (SP4h). The keyword list has a `contains` match
+type for a family word at the end of a compound ("Prüftechniker"). If a new
+source in one of those languages keeps a title with such a compound in the
+spreadsheet, list the titles in the report. Do not widen a keyword here: a
+`contains` entry is measured with `eval --compare` in a package of its own.
 
 PLATFORM WORKPLACE FIELDS (SP4f). If the platform's own data carries a
 workplace or remote field the reader discards, report it and propose mapping it
