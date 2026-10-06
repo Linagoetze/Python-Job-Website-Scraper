@@ -3260,7 +3260,7 @@ Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
 - [x] Choose between storing `raw_snippet` and `department` and documenting the
       pass as title-and-location only. **Decided 2026-10-06: document it, no
       schema change.**
-- [ ] Run `python -m job_scraper.tools.retrofilter --dry-run` yourself after the
+- [x] Run `python -m job_scraper.tools.retrofilter --dry-run` yourself after the
       next run or after any reading change, and read it before the real run.
 
 ---
