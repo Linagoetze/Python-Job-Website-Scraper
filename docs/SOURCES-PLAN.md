@@ -3294,9 +3294,10 @@ remote_regions in rules.json, `python -m job_scraper.eval` reads recall 0.822,
 precision 0.353, 13 false negatives. Quote diffs against that, not SP4b's 0.808.
 
 STORED ROWS (SP4g). A changed keyword reaches stored `new` rows through the
-re-filter pass, and now only after you have looked: run
+re-filter pass, which also runs at the end of EVERY pipeline run, so the owner's
+next scrape applies it without anyone running `retrofilter`. Run
 `python -m job_scraper.tools.retrofilter --dry-run` and quote its status changes
-beside the eval diff. The 8 stored rows F9 counted are `rejected` or not exported
+beside the eval diff, so the owner has seen them before that scrape. The 8 stored rows F9 counted are `rejected` or not exported
 by now, so count them again. Do not run the real pass; the owner does.
 
 DOCS. Test count. docs/DECISIONS.md if a match type is added.
@@ -3415,8 +3416,10 @@ WHAT THE RE-FILTER PASS CAN AND CANNOT SEE (SP4g). It re-judges a stored `new`
 row's years and PhD from its stored description, and never a location or hybrid
 state, because the store has no `raw_snippet`. A new source's first run stores its
 rows and the pass leaves them as they are. If a misreading you report is later
-fixed, the owner reaches the stored rows with `retrofilter --dry-run`. Do not run
-the real pass here, and do not run either against `data/jobs.sqlite3` itself: copy
+fixed, the stored rows are reached by the pass that ends every run, so say in the
+report that `retrofilter --dry-run` shows the owner what the next scrape would
+reject. `drops --refilter` shows what a `retrofilter` pass logged; a bare `drops`
+shows the last scrape. Do not run the real pass here, and do not run either against `data/jobs.sqlite3` itself: copy
 the store to the scratchpad with SQLite's backup, read-only, and point the tool at
 the copy.
 
@@ -3607,7 +3610,9 @@ COUNTING RUNS (SP4g). `retrofilter` now opens a run of its own when it logs
 drops (SP4g), and that run has no `source_health` rows. The one-page rule counts
 a source's consecutive runs from `source_health`, never from `runs`, or a
 maintenance pass would break a streak or pad one. Test it: a store with a
-`retrofilter` run between two identical runs must read as two runs.
+`retrofilter` run between two identical runs must read as two runs. That run is
+`runs.kind = 'refilter'` (SP4g), so filtering on the kind does the same, and a
+store made before SP4g reads every old run as `scrape`, which is right.
 
 Tests: each block from stubbed summaries and a temp store. Include a dry run
 with a failed source, a run of identical counts broken by one different run
