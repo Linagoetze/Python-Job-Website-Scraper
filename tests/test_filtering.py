@@ -288,7 +288,7 @@ class TestMatchesRules:
         # Cheaper than deferring: a genuine anywhere role needs no detail page.
         ok, reasons = _unresolvable(_job(location="Remote", raw_snippet="Analyst remote"))
         assert ok
-        assert reasons == ["locations: matched via remote_keywords"]
+        assert reasons == [_REMOTE_ANYWHERE_REASON]
 
     def test_the_code_shapes_work_without_any_configured_terms(self):
         rules = {"locations": ["Malmö"], "remote_keywords": []}
@@ -433,13 +433,64 @@ class TestRemoteRegions:
         assert not ok
         assert reasons == [RULE_LOC_REMOTE_OVERRIDDEN]
 
-    def test_a_remote_keyword_inside_a_regional_segment_is_still_admitted_loosely(self):
-        # Characterisation, not policy: `remote_keywords`' own test admits any
-        # segment holding a remote keyword, wherever its region is. SP4f left
-        # that as it was and put the question to the owner (SP4f's result).
+    # --- tightened on 2026-10-06: remote counts only where it is open to the owner
+
+    def test_remote_in_a_region_outside_the_list_is_not_admitted(self):
+        # Until the tightening, any option holding a remote keyword passed,
+        # wherever it was. A country or region outside the list now defers like
+        # a bare one; a place is dropped.
         ok, reasons = _regional("Contoso Basin - Remote")
         assert ok
-        assert reasons == ["locations: matched via remote_keywords"]
+        assert reasons == [_UNRESOLVED_PENDING_REASON]
+        ok, reasons = _regional("Fabrikam City - Remote")
+        assert not ok
+        assert reasons == [RULE_LOC_REMOTE_OVERRIDDEN]
+
+    def test_remote_in_a_listed_region_is_admitted_whichever_way_round(self):
+        for field in (
+            "Wingtip Region - Remote",
+            "Remote - Wingtip Region",
+            "Wingtip Region (Remote)",
+        ):
+            ok, reasons = _regional(field)
+            assert ok, field
+            assert reasons == [_REMOTE_REGION_REASON], field
+
+    def test_remote_somewhere_else_and_worldwide_is_admitted(self):
+        # The owner's case: remote in one country, and remote worldwide too.
+        for field in (
+            "Remote - Contoso Basin; Remote - Worldwide",
+            "Contoso Basin - Remote, Global - Remote",
+            "Contoso Basin + International (Remote)",
+        ):
+            ok, reasons = _regional(field)
+            assert ok, field
+            assert reasons == [_REMOTE_ANYWHERE_REASON], field
+
+    def test_international_without_remote_wording_is_not_worldwide(self):
+        ok, reasons = _regional("Fabrikam City + International")
+        assert not ok
+        assert reasons == [RULE_LOC_UNLISTED_CITY]
+
+    def test_a_remote_option_that_names_no_region_is_still_admitted(self):
+        # The owner kept these (2026-10-06): no region is named, so none is ruled
+        # out. "Fully" and Impactpool's "May require travel" are noise, not places.
+        for field in ("Remote", "Fully Remote", "Remote | Home Based - May require travel"):
+            ok, reasons = _regional(field)
+            assert ok, field
+            assert reasons == [_REMOTE_ANYWHERE_REASON], field
+
+    def test_noise_words_do_not_make_a_place_vanish(self):
+        # Struck only beside remote wording: without it, they are left in place.
+        ok, _ = _regional("May require travel")
+        assert not ok
+
+    def test_an_empty_field_with_remote_in_the_title_is_remote(self):
+        ok, reasons = _regional("", title="Analyst (Remote)")
+        assert ok
+        assert reasons == [_REMOTE_ANYWHERE_REASON]
+        ok, reasons = _regional("")
+        assert reasons == [_EMPTY_PENDING_REASON]
 
 
 class TestMatchesRulesKeywords:

@@ -1364,8 +1364,9 @@ session — see `CLAUDE.md`.
   one shape that changes against the old reading is "Remote; <city>", which was
   one segment holding a remote keyword, and so admitted as anywhere. No source
   writes that today. Only canonical uses `;`, always between options.
-- **The `remote_keywords` test stays loose within a segment, and that is a
-  question, not a decision (SP4f).** `_location_names_specific_city` treats any
+- **The `remote_keywords` test stayed loose within a segment, as a question, not
+  a decision (SP4f). Decided and superseded on 2026-10-06: see the tightening
+  entry below.** `_location_names_specific_city` treats any
   segment holding a remote keyword as "not a city". So "USA - MA - Remote" and
   "United States (Remote)" are admitted wherever they are, and two such rows sit
   in the review sheet. Folding the home-base tokens into that test would have
@@ -1436,4 +1437,45 @@ session — see `CLAUDE.md`.
   readers were replayed over run 34's cached Ashby responses (old reader and
   `filtering.py` against new) and Workable's fixtures, since no Workable POST is
   cached.
+- **Remote counts only where it is open to the owner: one remote reading at
+  Layer 0 (the owner's decision, 2026-10-06, SP4f's question 1).** The loose
+  `remote_keywords` test (`_location_names_specific_city`) is gone.
+  `_remote_admission` is the only remote reading, and its rules are as follows.
+  A remote option naming a `remote_regions` term admits ("Remote - <region>",
+  either way round). One naming worldwide, global, or international beside
+  remote wording admits, even beside another country. That is the owner's
+  "Remote - US and Remote - Global" case, and GiveWell writes it as "United
+  States + International (Remote)". A remote option naming no region at all
+  ("Remote", "Fully Remote", an empty field with "remote" in the title, and
+  Impactpool's "Remote | Home Based - May require travel") still admits, as
+  Q3a's bare home base does. The owner kept that, because no region is ruled
+  out. Anything else is not remote for the owner. A country or region outside
+  `remote_regions` defers like a bare one, and a place is dropped under the
+  existing "remote keyword overridden by a named city". "Fully" and "May
+  require travel" are noise, struck only inside an option that already says
+  remote. "International" counts as everywhere only there, so "US +
+  International" with no remote word is still a place. A country is matched as
+  itself: "Europe" in `remote_regions` does not cover "Germany - Remote".
+  Measured on 2026-10-06: 34 stored rows change, all already `rejected`. Most
+  are wrike's remote roles in single European countries. No stored `new` row
+  changes, so the re-filter pass rejects none of the rows revived that day.
+- **An empty field may be settled by its page saying remote for the owner
+  (2026-10-06, SP4f's question 2, the owner's choice).** Besides a listed
+  place, two things count, and only for an empty field, never a placeholder or
+  a conditional city. One is Workday's exact label "remote type Fully Remote".
+  It names no region, so it counts as a bare remote field does. The other is an
+  employer's own "Location: <value>" line, judged by `_remote_admission`, and
+  only when the value names worldwide, global or international, or a
+  `remote_regions` term. A bare "Location: Remote" does not count. A stripped
+  page has no line breaks, so the value is the longest run of remote, everywhere
+  and region words that ends at the text's end, a full stop, or the next
+  "Label:". "Location: Remote, <country> Languages: ..." would otherwise read as
+  remote anywhere. The cost of that rule: a value that opens with a place
+  ("Location: United States + International (Remote)") is not read. Loose
+  "remote" in prose is never read, because Impactpool's texts speak of
+  travelling to "remote locations" constantly. path's pages carry no Workday
+  label at all (0 of 35 stored). The label is irc's. The path worldwide roster is
+  settled by its "Location: Global, Remote" line instead. On the store as of
+  2026-10-06, it settles 5 empty-location rows, all `rejected` by then: path 1
+  and irc 4, 2 of which SP4e excludes on years anyway.
 

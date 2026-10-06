@@ -501,6 +501,24 @@ def test_an_empty_location_costs_no_fetch_it_did_not_cost_before(
     assert env["fetches"][url] == 1, "judged once, then skipped as any stored job is"
 
 
+def test_a_workday_fully_remote_label_settles_an_empty_location(env: dict[str, Any]) -> None:
+    """The pipeline hands Layer 5 the page reader (SP4f follow-up, 2026-10-06)."""
+    tmp_path = env["tmp_path"]
+    job = _job("Data Analyst", location="", slug="empty-remote")
+    env["extracted"][:] = [job]
+
+    def fake_fetch(u: str, *a: Any, **k: Any) -> str:
+        return posting("Apply remote type Fully Remote time type Full time. No experience needed.")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", fake_fetch)
+        summary = _run(tmp_path)
+
+    assert summary.jobs_kept_new == 1
+    assert _db_jobs(tmp_path)[job["detail_url"]]["status"] == "new"
+
+
 def test_unverified_unresolvable_location_is_retried_not_permanently_dropped(
     env: dict[str, Any],
 ) -> None:

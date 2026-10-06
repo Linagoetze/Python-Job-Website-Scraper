@@ -3017,7 +3017,20 @@ they stay deferred.
   today's Layer 0 under your rules.json, kept by SP4e's reading). The count is
   printed for you to confirm first.
 
-**Questions for you.**
+**Follow-up, 2026-10-06: both questions answered and built** (branch
+`sp4f-remote-follow-up`). (1) The loose remote test is gone. Remote counts in
+your `remote_regions` or worldwide ("US - Remote; Global - Remote", "United
+States + International (Remote)"), and a remote option naming no region still
+counts, by your choice. 34 stored rows change, all already rejected, most of
+them wrike's remote roles in single European countries. A country is matched as
+itself, so list the countries you want beside the regions. (2) path's pages
+carry no Workday label (0 of 35), so the exact label alone would have missed
+the roster that raised the question. On your choice, Layer 5 also reads an
+employer's "Location:" line, judged by the same rule. It settles 5 stored
+empty-location rows (path 1, irc 4), all rejected by then. No stored `new` row
+changes. Suite: **1,196 passed**.
+
+**Questions for you** (answered, see the follow-up above).
 
 1. **Remote within a segment is admitted anywhere.** "USA - MA - Remote" and
    "Estonia - Remote" pass today's `remote_keywords` test, because a segment
@@ -3057,19 +3070,39 @@ detail pages that could not be read". Suite: **1,180 passed**.
 
 ### Your to-dos
 
-- [ ] **Add the regions that include where you live to `rules.json`**, under
+- [x] **Add the regions that include where you live to `rules.json`**, under
       the key `remote_regions`, beside `locations`. Use the region names your
       sources write ("Home based - <region>"), and keep them in
       `non_place_locations` too. `rules.json` is never-touch for a session,
       so this is your hand edit; `rules.example.json` shows the shape with an
       invented value. Then `python -m job_scraper.eval` should print recall
-      0.822 if your terms match the ones measured.
+      0.822 if your terms match the ones measured. **Done 2026-10-06:**
+      eval prints 0.822.
 - [x] Answer the collision: a job with an empty location whose page cannot be
       read. **Answered 2026-10-02: Q4 wins, and the summary says so.**
-- [ ] Confirm or decline the kognity revival (1 row), **after merging**.
-- [ ] Decide whether to revive the canonical Q3 rows, after your hand edit.
-- [ ] Decide on the two questions above (loose remote segments, Workday's
-      workplace label).
+- [x] Confirm or decline the kognity revival (1 row), **after merging**.
+- [x] Decide whether to revive the canonical Q3 rows, after your hand edit.
+      **Both written 2026-10-06, after the merge and your hand edit.** Selected
+      by query against run 35, the latest run. kognity 1 row, by SP4c's method:
+      `new`, description, level and fetch time cleared, so that the next run
+      re-reads Ashby's supplied text. canonical 30 rows, by SP4e's method: `new`,
+      description kept, and the reading's level written (29 `unspecified`, 1
+      `junior (<=2yr)`). The query found 31 canonical rows. You left out one
+      whose location field says worldwide while its title restricts it to one
+      region. Three others the query admitted stay rejected on years. One
+      transaction; `rejected` 1,456 → 1,425, `new` 0 → 31, nothing else
+      touched. Backup at
+      `~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp4f-20261006-144600`.
+      The store held no `new` rows beforehand, because you had rejected the
+      whole sheet on 2026-10-05 after run 35. A first attempt stopped on a
+      check that assumed some `new` rows existed and rolled back, unwritten.
+- [x] Decide on the two questions above (loose remote segments, Workday's
+      workplace label). **Decided 2026-10-06, built on branch
+      `sp4f-remote-follow-up`:** remote counts only in your `remote_regions`
+      or worldwide, while a remote option naming no region still counts. An
+      empty field is also settled by Workday's exact "Fully Remote" label, or a
+      "Location:" line naming worldwide or one of your regions. See
+      `docs/DECISIONS.md` and the follow-up note below.
 - [ ] Optionally, `review --reject` the empty-location `new` rows that Q4
       would now drop (35, impactpool 24, path 8, irc 3), keeping the path
       worldwide roster. Otherwise they stay until SP4g re-judges stored rows.
