@@ -32,8 +32,8 @@ chief,word
 Accountant,word
 Producer,word
 Cloud,word
-Mechaniker,prefix
-techniker,prefix
+Mechaniker,contains
+techniker,contains
 Meister,word
 technologe,prefix
 prüfer,prefix
@@ -59,7 +59,6 @@ videographer,word
 caseworker,word
 scientist,word
 interpreter,word
-donor,word
 modeling,word
 bio,prefix
 key account,word
@@ -70,7 +69,7 @@ doctoral,prefix
 PhD,word
 professor,word
 power,word
-therapist,word
+therapist,contains
 Sr,word
 concierge,word
 pricing,word
@@ -79,21 +78,21 @@ SaaS,word
 chemistry,word
 thesis,word
 driver,word
-chaufför,word
+chaufför,contains
 chauffeur,word
 barber,word
 barberare,word
 frisör,word
 hairdresser,word
 elmontör,word
-mekaniker,prefix
+mekaniker,contains
 mechanic,word
 testare,word
 buyer,word
 purchaser,word
 commodity,word
-utvecklare,prefix
-ingenjör,prefix
+utvecklare,contains
+ingenjör,contains
 systemintegratör,prefix
 DevOps,word
 Scrum Master,word

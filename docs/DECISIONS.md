@@ -1531,3 +1531,19 @@ session — see `CLAUDE.md`.
   so anything that counts runs for a source's history must count `source_health`
   or filter on `kind`, not read `runs` whole. `refilter_stored_jobs` now returns
   a `RefilterResult`, not a tuple.
+- **Title keywords have a third match type, `contains`, and it is not a word-end
+  match (SP4h, 2026-10-06).** `prefix` anchors at a word's start, and German,
+  Swedish and Danish put the family word at the end of a compound
+  ("Prüftechniker", "Distributionschaufför", "Frontendutvecklare"), so it never
+  matched. A match that had to end at the word's edge would not do either: those
+  words inflect after the family word ("Mjukvaruingenjörer", "Technikerin",
+  "Chaufförer"). `contains` has no boundary, which makes it safe only for a long,
+  distinctive keyword; never for `IT`, `AI`, `SEA` or `Sr`. Applied to
+  `techniker`, `Mechaniker`, `mekaniker`, `chaufför`, `utvecklare`, `ingenjör`
+  and `therapist`. `eval --compare` moved no gold-set job for any of the seven,
+  because the gold set holds none of these compounds where no other layer
+  reaches them: that is a gap in the gold set, so a future `contains` entry
+  should be backed by a scan of the stored titles too, as this one was. An
+  unknown match type still falls back to `word`. `donor` was removed by the
+  owner's Q7 answer (1 wanted job recovered for 1 unwanted, measured). The
+  re-filter pass found no stored `new` row either change touches.

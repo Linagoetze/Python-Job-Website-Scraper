@@ -43,11 +43,15 @@ def _with_rule(job: JobRecord, rule: str) -> JobRecord:
 # ---------------------------------------------------------------------------
 
 
+MATCH_TYPES = ("word", "prefix", "contains")
+
+
 def load_title_exclude_keywords(path: Path) -> list[tuple[str, str]]:
     """Read title_exclude_keywords.csv and return a list of (keyword, match_type) pairs.
 
-    match_type is either 'word' (whole-word, default) or 'prefix' (start-of-word).
-    Returns an empty list if the file is missing or empty.
+    match_type is 'word' (whole-word, default), 'prefix' (start-of-word) or
+    'contains' (anywhere inside a word, for family words German and Swedish
+    put at the end of a compound). Returns an empty list if the file is missing or empty.
     """
     if not path.is_file():
         return []
@@ -58,7 +62,7 @@ def load_title_exclude_keywords(path: Path) -> list[tuple[str, str]]:
             kw = str(row.get("keyword") or "").strip()
             match_type = str(row.get("match") or "word").strip().lower()
             if kw:
-                entries.append((kw, match_type if match_type in ("word", "prefix") else "word"))
+                entries.append((kw, match_type if match_type in MATCH_TYPES else "word"))
     return entries
 
 
@@ -69,12 +73,21 @@ def _build_title_keyword_pattern(
 
     'word'   → \\bkeyword\\b  (exact whole word; 'sales' won't match 'Salesforce')
     'prefix' → \\bkeyword     (word-start prefix; 'design' matches 'Designer')
+    'contains' → keyword     (anywhere in a word; 'techniker' matches 'Prüftechniker')
+
+    'contains' rather than a word-end type because the compounds it exists for
+    inflect after the family word: 'Mjukvaruingenjörer', 'Technikerin'. A match
+    that had to end at the word's edge would lose those. It is only safe for a
+    long, distinctive keyword, so each use is measured with eval --compare.
     """
     if not entries:
         return None
     word_parts = [re.escape(kw) for kw, m in entries if m == "word"]
     prefix_parts = [re.escape(kw) for kw, m in entries if m == "prefix"]
+    contains_parts = [re.escape(kw) for kw, m in entries if m == "contains"]
     fragments: list[str] = []
+    if contains_parts:
+        fragments.append("(?:" + "|".join(contains_parts) + ")")
     if word_parts:
         fragments.append(r"\b(?:" + "|".join(word_parts) + r")\b")
     if prefix_parts:
