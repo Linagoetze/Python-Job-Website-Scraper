@@ -33,6 +33,7 @@ from job_scraper.experience_filter import (
     UNVERIFIED_KEY,
     apply_combined_title_filter,
     apply_detail_filter,
+    rejudge_stored_description,
     supplied_description,
 )
 from job_scraper.extractors.registry import get_extractor
@@ -272,6 +273,36 @@ class RunSummary:
     dry_run: bool = False
 
 
+@dataclass(frozen=True)
+class LevelChange:
+    """A stored 'new' job whose experience_level the re-filter pass rewrote (SP4g).
+
+    `rejected` says whether the new reading also excludes it. The dry run lists
+    both kinds, so a level that moved and a status that flipped read apart.
+    """
+
+    dedupe_key: str
+    title: str
+    source_name: str
+    was: str
+    now: str
+    rejected: bool
+
+
+@dataclass(frozen=True)
+class RefilterResult:
+    """What the re-filter pass did: counts per filter, drop-log rows, level changes.
+
+    `level_changes` holds every row whose level moved, flipped or not. It is a
+    report as much as a record: a store opened with `dry_run` rolls the writes
+    back, and this is what the owner then reads.
+    """
+
+    counts: dict[str, int]
+    drops: list[dict[str, Any]]
+    level_changes: tuple[LevelChange, ...] = ()
+
+
 def refilter_stored_jobs(
     store: JobStore,
     rules: dict[str, Any],
@@ -280,7 +311,7 @@ def refilter_stored_jobs(
     non_place_pattern: Any = None,
     *,
     remote_region_pattern: Any = None,
-) -> tuple[dict[str, int], list[dict[str, Any]]]:
+) -> RefilterResult:
     """Re-apply the filter layers to stored unreviewed jobs, marking failures.
 
     The database replacement for the old CSV clean_existing_rows: when the
@@ -291,24 +322,33 @@ def refilter_stored_jobs(
     'rejected' are review history — a rule change must not silently rewrite
     what the owner already decided — and 'delisted' rows are not shown anyway.
 
-    Returns (per-filter rejection counts, drop-log rows). The drop-log rows are
-    tagged with the `refilter/` layer prefix: a stored row rejected by a
-    tightened rule is a real exclusion and belongs in the log, but it is a
-    different population from this run's scrape.
+    This pass is **title, location, years and PhD**, and nothing more (SP4g). It
+    reads the fields the store holds. A run also reads `raw_snippet` and
+    `department`, which the store does not, so a verdict that depends on them is
+    one this pass cannot reproduce: it hands such a row back as pending and never
+    judges it. Layer 5's years and PhD are re-judged from the stored description
+    with no HTTP (`rejudge_stored_description`). Its location and hybrid states
+    are not: a job a run kept on a platform's own "Hybrid" or "Remote" would
+    otherwise be rejected here for a description that never claimed it.
+
+    Returns a RefilterResult. The drop-log rows are tagged with the `refilter/`
+    layer prefix: a stored row rejected by a tightened rule is a real exclusion
+    and belongs in the log, but it is a different population from this run's
+    scrape.
     """
     jobs = store.jobs_with_status(("new",))
-    counts = {"rules": 0, "title": 0, "title_keywords": 0}
+    counts = {"rules": 0, "title": 0, "title_keywords": 0, "experience": 0}
     rejected_keys: list[str] = []
     drops: list[dict[str, Any]] = []
 
     kept: list[dict[str, Any]] = []
     for job in jobs:
-        # A stored conditional-city job re-enters matches_rules without its
-        # matched_reasons; the pending reason it gets passes, so the persisted
-        # hybrid_confirmed flag is not needed here — Layer 5 owns that check.
-        # A stored job with an unresolvable or empty location field passes the
-        # same way, and for the same reason: Layer 5 already settled it once,
-        # and a re-filter pass has no description to settle it against.
+        # A stored job carrying a deferred state (a conditional city, an
+        # unresolvable or empty location field) re-enters matches_rules without
+        # its matched_reasons or raw_snippet, so it gets the pending reason and
+        # passes. Layer 5 settled it once, from what a run could read, and this
+        # pass cannot read that again: it leaves the row alone. A hybrid job a
+        # run confirmed is still hybrid_confirmed in the store.
         ok, reasons = matches_rules(
             job,
             rules,
@@ -330,9 +370,37 @@ def refilter_stored_jobs(
     drops += _exclusions(kw_excluded, refiltered(LAYER_TITLE_KEYWORD))
     drops += _exclusions(title_excluded, refiltered(LAYER_SENIORITY))
 
+    # Layer 5 — years and PhD, from the stored description. Only rows still in
+    # the running: one already rejected above is not worth a level rewrite.
+    new_levels: dict[str, str] = {}
+    level_changes: list[LevelChange] = []
+    for job in kept:
+        verdict = rejudge_stored_description(job)
+        if verdict is None:
+            continue
+        level, drop_rule = verdict
+        if drop_rule is not None:
+            counts["experience"] += 1
+            rejected_keys.append(job["dedupe_key"])
+            drops.append(exclusion(job, refiltered(LAYER_DETAIL), drop_rule))
+        if level != job.get("experience_level"):
+            new_levels[job["dedupe_key"]] = level
+            level_changes.append(
+                LevelChange(
+                    job["dedupe_key"],
+                    str(job.get("title") or ""),
+                    str(job.get("source_name") or ""),
+                    str(job.get("experience_level") or ""),
+                    level,
+                    rejected=drop_rule is not None,
+                )
+            )
+
+    if new_levels:
+        store.set_experience_levels(new_levels)
     if rejected_keys:
         store.set_status(rejected_keys, "rejected")
-    return counts, drops
+    return RefilterResult(counts, drops, tuple(level_changes))
 
 
 def _robots_overrides(sources: list[dict[str, Any]]) -> set[str]:
@@ -918,7 +986,7 @@ def _run_pipeline(
 
         # Re-filter stored unreviewed rows against the current rules (the old
         # clean_existing_rows, minus the deletions).
-        refilter_counts, refilter_drops = refilter_stored_jobs(
+        refiltered_stored = refilter_stored_jobs(
             store,
             rules,
             title_keywords,
@@ -926,8 +994,8 @@ def _run_pipeline(
             non_place_pattern,
             remote_region_pattern=remote_region_pattern,
         )
-        drops += refilter_drops
-        for filter_name, count in refilter_counts.items():
+        drops += refiltered_stored.drops
+        for filter_name, count in refiltered_stored.counts.items():
             if count:
                 logger.debug("Marked %d stored jobs rejected by the %s filter", count, filter_name)
 

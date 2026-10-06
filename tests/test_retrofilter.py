@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from job_scraper.pipeline import RefilterResult
 from job_scraper.tools import retrofilter
 
 
@@ -36,12 +37,12 @@ def test_main_passes_a_non_place_pattern_built_from_the_same_rules(
         title_keywords: object,
         *args: object,
         **kwargs: object,
-    ) -> tuple[dict[str, int], list[Any]]:
+    ) -> RefilterResult:
         # non_place_pattern is the last positional argument the fixed call
         # site passes, after hybrid_pattern. SP4f's region pattern is keyword-only.
         captured["non_place_pattern"] = args[-1] if args else None
         captured["remote_region_pattern"] = kwargs.get("remote_region_pattern")
-        return {"rules": 0, "title": 0, "title_keywords": 0}, []
+        return RefilterResult({"rules": 0, "title": 0, "title_keywords": 0, "experience": 0}, [])
 
     monkeypatch.setattr(
         retrofilter,
@@ -50,7 +51,7 @@ def test_main_passes_a_non_place_pattern_built_from_the_same_rules(
     )
     monkeypatch.setattr(retrofilter, "default_jobs_db_path", lambda: "unused.sqlite3")
     monkeypatch.setattr(retrofilter, "default_jobs_xlsx_path", lambda: "unused.xlsx")
-    monkeypatch.setattr(retrofilter, "JobStore", lambda db_path: _DummyStore())
+    monkeypatch.setattr(retrofilter, "JobStore", lambda db_path, **kw: _DummyStore())
     monkeypatch.setattr(retrofilter, "refilter_stored_jobs", fake_refilter_stored_jobs)
     monkeypatch.setattr(retrofilter, "write_xlsx", lambda db_path, xlsx_path: 0)
     monkeypatch.setattr("sys.argv", ["retrofilter"])

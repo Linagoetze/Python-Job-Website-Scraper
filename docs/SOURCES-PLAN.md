@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4f are done** (as of 2026-10-02); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4g are done** (as of 2026-10-06); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -103,7 +103,7 @@ the ordering below.
 | 4d | Feed Layer 5 the text the starved readers can reach | 3 hr | Sonnet 5 | `think` | done | `sp4d-feed-layer5` |
 | 4e | Read the years requirement, not the smallest number | 3 hr | Opus 5 | `think hard` | done | `sp4e-years-reading` |
 | 4f | Where is a job whose location field does not say? | 2.5 hr | Opus 5 | `think hard` | done | `sp4f-location-policy` |
-| 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | not started | `sp4g-refilter-inputs` |
+| 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | done | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | not started | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | not started | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
@@ -3210,10 +3210,58 @@ docs/DECISIONS.md.
 Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-06, branch `sp4g-refilter-inputs`
+
+- **Step 1, decided with the owner: no schema change.** The pass is documented
+  as title, location, years and PhD. `raw_snippet` and `department` are not
+  stored. Rows stored before a new column would have it empty, so the pass
+  would still need to refuse a verdict on them; storing helps only rows from
+  now on, and adds a migration for a pass that flips nothing today.
+- **Step 2.** `refilter_stored_jobs` re-reads Layer 5's years and PhD from the
+  stored `description_text` for `new` rows only, with no HTTP. The verdict is a
+  new `experience_filter.judge_experience`, which `apply_detail_filter` now
+  calls too, so a run and the pass cannot disagree on the same figures. A row
+  with no description, or at "unchecked (page unreadable)", is skipped, decided
+  from the level and never the length (SP4d). **The pass rewrites a level when
+  the status stays** (the owner's choice), through the new
+  `JobStore.set_experience_levels`. It runs inside every pipeline run as well as
+  from `retrofilter`; on rows a run has just judged it reproduces the run's
+  verdict and changes nothing.
+- **The hazard, avoided by not walking into it.** The pass never settles a
+  deferred location or hybrid state. It hands such a row back as pending and
+  leaves it, so kognity's Hybrid-by-field row cannot be rejected for a
+  description that never claimed it. That makes `hybrid_confirmed` and
+  `build_page_remote_reader` unnecessary here; both are recorded in
+  `docs/DECISIONS.md` for whoever makes the pass settle location, which needs
+  `raw_snippet` stored first.
+- **A dry run exists.** `retrofilter --dry-run` opens the store with
+  `dry_run=True`, so the whole transaction rolls back, prints every status flip
+  and every level-only change, and skips `jobs.xlsx`. **Measured on a copy of
+  the real store (31 `new`, 30 with a description, no run since 2026-10-06):
+  zero status flips and zero level changes**, exactly as the prompt expected.
+  The original was opened read-only.
+- **Step 3.** `retrofilter` records its drops in a run of its own, under the
+  `refilter/` layer prefix, and only when there are any. `refilter_stored_jobs`
+  returns a `RefilterResult` (counts, drops, level changes) instead of a tuple.
+- **28 new tests** (1196 to 1224), in `tests/test_refilter_layer5.py`. One older
+  test used `--dry-run` as its example of an unrecognised argument; it now uses
+  `--wet-run`. **A description at the 20,000-character storage cap is not
+  judged**: a run reads the whole page, the store keeps a prefix, and a route
+  figure past the cut could read higher here and reject a row a run kept. Found
+  in review of this package and fixed on the branch. The same review found that
+  `retrofilter`'s run hid the last scrape's drop log and used a retention slot.
+  Fixed with a `runs.kind` column (`scrape` or `refilter`): the latest run and the
+  retention count scrapes only, and `drops --refilter` shows the pass. That is a
+  schema change to `runs`, added in place like the other columns, though step 1
+  decided against one for `jobs`.
+
 ### Your to-dos
 
-- [ ] Choose between storing `raw_snippet` and `department` (a schema
-      change) and documenting the re-filter pass as title-and-location only.
+- [x] Choose between storing `raw_snippet` and `department` and documenting the
+      pass as title-and-location only. **Decided 2026-10-06: document it, no
+      schema change.**
+- [x] Run `python -m job_scraper.tools.retrofilter --dry-run` yourself after the
+      next run or after any reading change, and read it before the real run.
 
 ---
 
@@ -3244,6 +3292,13 @@ stay, by the same answer. Never prune from the printed attribution table.
 BASELINE (2026-10-06). After SP4f and its follow-up, with the owner's
 remote_regions in rules.json, `python -m job_scraper.eval` reads recall 0.822,
 precision 0.353, 13 false negatives. Quote diffs against that, not SP4b's 0.808.
+
+STORED ROWS (SP4g). A changed keyword reaches stored `new` rows through the
+re-filter pass, which also runs at the end of EVERY pipeline run, so the owner's
+next scrape applies it without anyone running `retrofilter`. Run
+`python -m job_scraper.tools.retrofilter --dry-run` and quote its status changes
+beside the eval diff, so the owner has seen them before that scrape. The 8 stored rows F9 counted are `rejected` or not exported
+by now, so count them again. Do not run the real pass; the owner does.
 
 DOCS. Test count. docs/DECISIONS.md if a match type is added.
 
@@ -3357,6 +3412,17 @@ PLATFORM WORKPLACE FIELDS (SP4f). If the platform's own data carries a
 workplace or remote field the reader discards, report it and propose mapping it
 into raw_snippet, as Ashby's and Workable's readers do. Do not fold it in here.
 
+WHAT THE RE-FILTER PASS CAN AND CANNOT SEE (SP4g). It re-judges a stored `new`
+row's years and PhD from its stored description, and never a location or hybrid
+state, because the store has no `raw_snippet`. A new source's first run stores its
+rows and the pass leaves them as they are. If a misreading you report is later
+fixed, the stored rows are reached by the pass that ends every run, so say in the
+report that `retrofilter --dry-run` shows the owner what the next scrape would
+reject. `drops --refilter` shows what a `retrofilter` pass logged; a bare `drops`
+shows the last scrape. Do not run the real pass here, and do not run either against `data/jobs.sqlite3` itself: copy
+the store to the scratchpad with SQLite's backup, read-only, and point the tool at
+the copy.
+
 DOCS. Update the test count in README.md (it has no fixture count). Do NOT add the company
 names to any tracked file — see "Publishing this file".
 
@@ -3416,6 +3482,10 @@ states a workplace (remote, hybrid, on-site) or more locations than the reader
 keeps. If the reader discards one, record it in the SP6 table and propose the
 mapping (into raw_snippet and the location field, as SP4f did for Ashby and
 Workable). Do not build it in the same instalment.
+Also note whether the reader supplies a description. If it does, the re-filter
+pass (SP4g) re-judges years and PhD from it as stored, but never a location or
+hybrid state, since the store keeps no `raw_snippet`; say so if a reader's
+workplace field would matter there.
 
 DOCS. Update README.md's uncovered-reader sentence and test count (it has no
 fixture count) on EVERY instalment — the number is the point of the exercise, and a
@@ -3535,6 +3605,14 @@ per warning.
    plus board slug, never host alone; six sources share one Greenhouse
    hostname, and a host match would warn on all of them). It WARNS. The
    owner may have re-added something deliberately.
+
+COUNTING RUNS (SP4g). `retrofilter` now opens a run of its own when it logs
+drops (SP4g), and that run has no `source_health` rows. The one-page rule counts
+a source's consecutive runs from `source_health`, never from `runs`, or a
+maintenance pass would break a streak or pad one. Test it: a store with a
+`retrofilter` run between two identical runs must read as two runs. That run is
+`runs.kind = 'refilter'` (SP4g), so filtering on the kind does the same, and a
+store made before SP4g reads every old run as `scrape`, which is right.
 
 Tests: each block from stubbed summaries and a temp store. Include a dry run
 with a failed source, a run of identical counts broken by one different run

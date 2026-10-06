@@ -82,6 +82,9 @@ def job_to_row(job: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+RUN_KIND_SCRAPE = "scrape"
+RUN_KIND_REFILTER = "refilter"
+
 # jobs.status is a TEXT column with a CHECK rather than a lookup table: five
 # fixed values, one user, and a constraint violation is the loud failure we
 # want if a typo'd status ever reaches the store.
@@ -89,7 +92,10 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
     run_id      INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at  TEXT NOT NULL,
-    finished_at TEXT
+    finished_at TEXT,
+    -- 'scrape' for a pipeline run, 'refilter' for `retrofilter`'s own run (SP4g).
+    -- The drop log's "latest run" and its retention count scrapes only.
+    kind        TEXT NOT NULL DEFAULT 'scrape'
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
@@ -198,6 +204,8 @@ class JobStore:
         conn.executescript(_SCHEMA)
         # A database created by an earlier WP predates newer columns; add them
         # in place rather than losing the first_seen history it has accrued.
+        if "kind" not in {row[1] for row in conn.execute("PRAGMA table_info(runs)")}:
+            conn.execute("ALTER TABLE runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'scrape'")
         have = {row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
         for column in ("misses", "hybrid_confirmed"):
             if column not in have:
@@ -238,10 +246,12 @@ class JobStore:
 
     # -- runs -----------------------------------------------------------------
 
-    def begin_run(self, started_at: str | None = None) -> int:
+    def begin_run(self, started_at: str | None = None, *, kind: str = RUN_KIND_SCRAPE) -> int:
+        if kind not in (RUN_KIND_SCRAPE, RUN_KIND_REFILTER):
+            raise ValueError(f"unknown run kind {kind!r}")
         cur = self._c().execute(
-            "INSERT INTO runs (started_at) VALUES (?)",
-            (started_at or utc_now_iso(),),
+            "INSERT INTO runs (started_at, kind) VALUES (?, ?)",
+            (started_at or utc_now_iso(), kind),
         )
         assert cur.lastrowid is not None
         return cur.lastrowid
@@ -483,6 +493,22 @@ class JobStore:
         )
         return cur.rowcount
 
+    def set_experience_levels(self, levels: dict[str, str]) -> int:
+        """Overwrite experience_level for each key in *levels*. Returns rows updated.
+
+        Unlike `mark_unlabelled` this replaces a level that is there: the re-filter
+        pass (SP4g) uses it when a changed reading gives a stored description a
+        different level. An empty level is refused, because an empty one means
+        "never judged" everywhere else and must not be written over a real one.
+        """
+        if any(not level for level in levels.values()):
+            raise ValueError("refusing to write an empty experience_level")
+        cur = self._c().executemany(
+            "UPDATE jobs SET experience_level = ? WHERE dedupe_key = ?",
+            ((level, key) for key, level in levels.items()),
+        )
+        return cur.rowcount
+
     def mark_all_new(self, status: str) -> int:
         """Flip every unreviewed ('new') job to *status*. Returns the number flipped.
 
@@ -630,26 +656,62 @@ class JobStore:
         return len(exclusions)
 
     def prune_exclusions(self, keep_runs: int) -> int:
-        """Keep only the *keep_runs* most recent runs' exclusions. Returns rows deleted.
+        """Keep only the *keep_runs* most recent scrapes' exclusions. Returns rows deleted.
 
-        Counted over the runs that actually logged exclusions, not over `runs`:
+        Counted over the scrapes that actually logged exclusions, not over `runs`:
         a run that dropped nothing should not push a useful one out of the
         window. A full scrape logs thousands of rows, so without this the table
         would be the largest thing in the database within a month.
+
+        A re-filter run (SP4g) never counts against the window, or a few
+        maintenance passes would push real scrapes out of it. It ages out with
+        the scrapes instead: it is deleted once it is older than the oldest
+        scrape kept.
         """
         if keep_runs < 1:
             raise ValueError(f"keep_runs must be >= 1, got {keep_runs}")
-        cur = self._c().execute(
-            "DELETE FROM run_exclusions WHERE run_id NOT IN ("
-            " SELECT run_id FROM (SELECT DISTINCT run_id FROM run_exclusions"
-            "  ORDER BY run_id DESC LIMIT ?))",
-            (keep_runs,),
+        conn = self._c()
+        kept = [
+            r["run_id"]
+            for r in conn.execute(
+                "SELECT DISTINCT e.run_id FROM run_exclusions e"
+                " JOIN runs r ON r.run_id = e.run_id WHERE r.kind != ?"
+                " ORDER BY e.run_id DESC LIMIT ?",
+                (RUN_KIND_REFILTER, keep_runs),
+            )
+        ]
+        placeholders = ", ".join("?" for _ in kept)
+        cur = conn.execute(
+            "DELETE FROM run_exclusions WHERE run_id IN ("
+            " SELECT run_id FROM runs WHERE kind != ?)"
+            + (f" AND run_id NOT IN ({placeholders})" if kept else ""),
+            (RUN_KIND_REFILTER, *kept),
         )
-        return cur.rowcount
+        deleted = cur.rowcount
+        if kept:
+            cur = conn.execute(
+                "DELETE FROM run_exclusions WHERE run_id IN ("
+                " SELECT run_id FROM runs WHERE kind = ?) AND run_id < ?",
+                (RUN_KIND_REFILTER, min(kept)),
+            )
+            deleted += cur.rowcount
+        return deleted
 
-    def latest_exclusion_run(self) -> int | None:
-        """The most recent run_id that logged any exclusion, or None."""
-        row = self._c().execute("SELECT MAX(run_id) AS r FROM run_exclusions").fetchone()
+    def latest_exclusion_run(self, kind: str = RUN_KIND_SCRAPE) -> int | None:
+        """The most recent run_id of *kind* that logged any exclusion, or None.
+
+        Scrapes by default, so a re-filter pass does not hide the last scrape's
+        drop log from `python -m job_scraper.drops`.
+        """
+        row = (
+            self._c()
+            .execute(
+                "SELECT MAX(e.run_id) AS r FROM run_exclusions e"
+                " JOIN runs r ON r.run_id = e.run_id WHERE r.kind = ?",
+                (kind,),
+            )
+            .fetchone()
+        )
         return None if row is None or row["r"] is None else int(row["r"])
 
     def exclusions(
