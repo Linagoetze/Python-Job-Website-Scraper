@@ -210,22 +210,29 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         lines.append(_RULE)
         lines.append(
             f"!  Unreadable pages: {n} source{'' if n == 1 else 's'} had detail pages "
-            "with no posting in them"
+            "that could not be read"
         )
         for page in summary.unreadable_pages:
-            lines.append(
-                f"!  {page.source_name}: {page.unreadable:,} of {page.fetched:,} detail pages "
-                "unreadable — those jobs are not experience-checked"
-            )
+            indent = "!  "
+            if page.unreadable:
+                lines.append(
+                    f"!  {page.source_name}: {page.unreadable:,} of {page.fetched:,} detail "
+                    "pages unreadable — those jobs are not experience-checked"
+                )
+                indent = "!    "
             if page.held_back:
                 # The owner's answer to the Q4/Q6 collision (SP4f): a job whose
-                # location could only be settled by its page is dropped for the
-                # run when the page is unreadable, never stored and never in
-                # the sheet. Said here, so that "kept and marked" above is not
-                # read as covering it.
+                # location only its page could settle is dropped for the run
+                # when the page cannot be read, never stored and never in the
+                # sheet. Said here, so that "kept and marked" above is not read
+                # as covering it, and with the cause, since a robots.txt refusal
+                # recurs every run while a failed fetch may not (SP4f review).
+                total = page.held_back_total
+                who = "" if page.unreadable else f"{page.source_name}: "
+                causes = ", ".join(f"{cause} {count:,}" for cause, count in page.held_back)
                 lines.append(
-                    f"!    {page.held_back:,} of them held back this run: the location "
-                    "could not be checked"
+                    f"{indent}{who}{total:,} job{'' if total == 1 else 's'} held back this "
+                    f"run, location unchecked: {causes}"
                 )
     if summary.dry_run:
         lines.append(_RULE)

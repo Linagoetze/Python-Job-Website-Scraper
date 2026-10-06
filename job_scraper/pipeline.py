@@ -26,6 +26,8 @@ from job_scraper.experience_filter import (
     EXPERIENCE_UNREADABLE,
     MIN_READABLE_CHARS,
     PAGE_FAILED,
+    PAGE_READ,
+    PAGE_REFUSED,
     PAGE_STATE_KEY,
     PAGE_UNREADABLE,
     UNVERIFIED_KEY,
@@ -137,46 +139,81 @@ def _log_untitled(untitled: list[JobRecord], stored: dict[str, dict[str, Any]]) 
         )
 
 
+# Why a job was held back (SP4f review), in the order the summary lists them.
+# Every one is a deferred job (an empty or placeholder location, a conditional
+# city) that only its detail page could settle, and this run could not read it.
+HELD_BACK_UNREADABLE = "page unreadable"
+HELD_BACK_FAILED = "fetch failed"
+HELD_BACK_REFUSED = "robots.txt refused"
+HELD_BACK_NO_URL = "no URL"
+_HELD_BACK_CAUSES = {
+    PAGE_UNREADABLE: HELD_BACK_UNREADABLE,
+    PAGE_FAILED: HELD_BACK_FAILED,
+    PAGE_REFUSED: HELD_BACK_REFUSED,
+    None: HELD_BACK_NO_URL,
+}
+_HELD_BACK_ORDER = (HELD_BACK_UNREADABLE, HELD_BACK_FAILED, HELD_BACK_REFUSED, HELD_BACK_NO_URL)
+
+
 @dataclass(frozen=True)
 class UnreadablePages:
-    """One source's detail pages that held no posting this run (SP4c).
+    """One source's detail pages that this run could not read (SP4c, SP4f).
 
     `fetched` counts the pages that came back, readable or not, so "3 of 40" is
     a share of what was actually reached rather than of what was attempted.
-    `held_back` counts the unreadable ones whose job was dropped for the run
-    because a deferred location or hybrid check could not be made (SP4f, the
-    owner's answer to the Q4/Q6 collision): those jobs are not in the sheet at
-    all, unlike the rest, which are kept and marked.
+    `held_back` counts, by cause, the jobs dropped for the run because a
+    deferred location or hybrid check could not be made (SP4f, the owner's
+    answer to the Q4/Q6 collision): those jobs are not in the sheet at all,
+    unlike the rest, which are kept and marked. A held-back job need not have
+    an unreadable page — a failed fetch, a robots.txt refusal or a missing URL
+    hold it back just the same — so a source can be here for that alone.
     """
 
     source_name: str
     unreadable: int
     fetched: int
-    held_back: int = 0
+    held_back: tuple[tuple[str, int], ...] = ()
+
+    @property
+    def held_back_total(self) -> int:
+        return sum(n for _, n in self.held_back)
 
 
 def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]:
-    """Per-source unreadable-page counts, for sources with at least one.
+    """Per-source counts, for sources with an unreadable page or a held-back job.
 
     Takes every job Layer 5 returned, kept and excluded alike: a deferred job
-    that was dropped as unverified is still a page that could not be read.
+    that was dropped as unverified is still a page that could not be read, and
+    whatever the reason, it is a job the owner will not see this run.
     """
     fetched: dict[str, int] = {}
     unreadable: dict[str, int] = {}
-    held_back: dict[str, int] = {}
+    held_back: dict[str, dict[str, int]] = {}
     for job in jobs:
         state = job.get(PAGE_STATE_KEY)
-        if state is None or state == PAGE_FAILED:
-            continue
         name = str(job.get("source_name") or "")
+        if job.get(UNVERIFIED_KEY):
+            cause = _HELD_BACK_CAUSES.get(state)
+            if cause is not None:
+                causes = held_back.setdefault(name, {})
+                causes[cause] = causes.get(cause, 0) + 1
+        if state not in (PAGE_READ, PAGE_UNREADABLE):
+            continue
         fetched[name] = fetched.get(name, 0) + 1
         if state == PAGE_UNREADABLE:
             unreadable[name] = unreadable.get(name, 0) + 1
-            if job.get(UNVERIFIED_KEY):
-                held_back[name] = held_back.get(name, 0) + 1
     return tuple(
-        UnreadablePages(n, unreadable[n], fetched[n], held_back.get(n, 0))
-        for n in sorted(unreadable)
+        UnreadablePages(
+            n,
+            unreadable.get(n, 0),
+            fetched.get(n, 0),
+            tuple(
+                (cause, held_back[n][cause])
+                for cause in _HELD_BACK_ORDER
+                if cause in held_back.get(n, {})
+            ),
+        )
+        for n in sorted({*unreadable, *held_back})
     )
 
 
@@ -859,7 +896,7 @@ def _run_pipeline(
                 k
                 for j in detail_excluded
                 if j.get(UNVERIFIED_KEY)
-                and j.get(PAGE_STATE_KEY) in (PAGE_UNREADABLE, PAGE_FAILED)
+                and j.get(PAGE_STATE_KEY) in (PAGE_UNREADABLE, PAGE_FAILED, PAGE_REFUSED)
                 and (k := dedupe_key_for_job(j))
                 and k in stored
             ],

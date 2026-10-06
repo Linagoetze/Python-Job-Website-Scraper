@@ -125,6 +125,10 @@ PAGE_STATE_KEY = "detail_page_state"
 PAGE_READ = "read"
 PAGE_UNREADABLE = "unreadable"
 PAGE_FAILED = "failed"
+# A fetch robots.txt refused, apart from one that merely failed (SP4f review):
+# a failure is retried and may succeed next run, a refusal recurs every run
+# until the owner exempts the host, so the summary has to name it as such.
+PAGE_REFUSED = "refused"
 
 # A detail page is unreadable when its stripped text is shorter than this (SP4c,
 # measured against the store on 2026-10-01). Every stored description of a shell
@@ -1026,6 +1030,8 @@ def _analyze(
 def _page_state(signals: _DetailSignals) -> dict[str, str]:
     if signals.unreadable:
         return {PAGE_STATE_KEY: PAGE_UNREADABLE}
+    if signals.robots_refused:
+        return {PAGE_STATE_KEY: PAGE_REFUSED}
     if signals.fetch_failed:
         return {PAGE_STATE_KEY: PAGE_FAILED}
     if signals.description_text:
@@ -1129,7 +1135,8 @@ def apply_detail_filter(
     the same case: nothing is read off it, so a deferred job is unverified, and
     any other job is kept with experience_level EXPERIENCE_UNREADABLE and no
     stored description, so the next run fetches it again. Each job also carries
-    PAGE_STATE_KEY saying whether its page was read, unreadable or failed.
+    PAGE_STATE_KEY saying whether its page was read, unreadable, refused by
+    robots.txt or failed.
     Every excluded job also carries the rule that dropped it under
     DROP_RULE_KEY — the years threshold that fired, the PhD requirement, or
     which of the two hybrid cases it was — for the run's exclusion log.
@@ -1290,13 +1297,25 @@ def apply_detail_filter(
         # experience check, no PhD check, no description stored for scoring —
         # and the funnel counts them among the ones that passed this layer. A
         # run that quietly stops filtering a whole source must not look healthy.
+        # A job only its page could place (an empty or placeholder location, a
+        # conditional city) is not kept at all but held back, and since a
+        # refusal recurs, held back on every run (SP4f review): say which.
+        held_back = sum(
+            1
+            for job in excluded
+            if job.get(UNVERIFIED_KEY) and job.get(PAGE_STATE_KEY) == PAGE_REFUSED
+        )
         logger.warning(
-            "%s: robots.txt refused the detail pages of %d job(s) on %s. They are kept, "
-            "but unchecked and with no description stored. If those rules are not meant "
-            "for us, exempt the host in that source's `ignore_robots` list.",
+            "%s: robots.txt refused the detail pages of %d job(s) on %s. Kept, but "
+            "unchecked and with no description stored: %d. Held back from the sheet "
+            "until the page can be read, because only the page could settle their "
+            "location: %d. If those rules are not meant for us, exempt the host in "
+            "that source's `ignore_robots` list.",
             layer_short(LAYER_DETAIL),
             len(refused),
             ", ".join(hosts) or "an unparseable host",
+            len(refused) - held_back,
+            held_back,
         )
 
     if jobs:
