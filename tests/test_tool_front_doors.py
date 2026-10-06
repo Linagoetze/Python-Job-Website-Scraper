@@ -48,7 +48,7 @@ def test_help_prints_the_docstring_and_exits_zero(
 
 
 @_TOOLS
-@pytest.mark.parametrize("argument", ["--seen-all", "-x", "everything", "--dry-run"])
+@pytest.mark.parametrize("argument", ["--seen-all", "-x", "everything", "--wet-run"])
 def test_an_unrecognised_argument_exits_non_zero_having_done_nothing(
     module: object, argument: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

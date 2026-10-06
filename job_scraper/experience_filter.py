@@ -117,6 +117,7 @@ UNVERIFIED_KEY = "unverified_this_run"
 # posting was read in full and states no requirement, and an unreadable page
 # says nothing of the kind.
 EXPERIENCE_UNREADABLE = "unchecked (page unreadable)"
+LEVEL_UNSPECIFIED = "unspecified"
 
 # What this run learnt about a job's detail page, carried on the job dict like
 # UNVERIFIED_KEY and DROP_RULE_KEY so the pipeline can count per source without
@@ -1039,6 +1040,43 @@ def _analyze(
     )
 
 
+def judge_experience(years: int | None, phd_required: bool) -> tuple[str, str | None]:
+    """The level a posting reads as, and the rule that excludes it, if one does.
+
+    The verdict half of Layer 5, kept apart from the reading so that a run and
+    the re-filter pass (SP4g) cannot come to different verdicts on the same
+    figures. A doctorate is checked first, as it always was. The rule is None
+    when the job stays.
+    """
+    if phd_required:
+        return "phd_required", RULE_PHD_REQUIRED
+    if years is None:
+        return LEVEL_UNSPECIFIED, None
+    if years <= _MAX_JUNIOR_YEARS:
+        return f"junior (<={_MAX_JUNIOR_YEARS}yr)", None
+    return f"senior ({years}+yr)", f"experience: {years}+ years required"
+
+
+def rejudge_stored_description(job: JobRecord) -> tuple[str, str | None] | None:
+    """Layer 5's years and PhD verdict on a stored job, from its stored description.
+
+    None when there is nothing to judge: no stored description, or a level of
+    EXPERIENCE_UNREADABLE (SP4c). That is decided from the level and not from the
+    description's length (SP4d), because the store cannot tell a description a
+    reader supplied from one that was fetched, and a supplied one can be short
+    and still a real posting. A description is only ever stored once it passed
+    `is_unreadable`, so there is no shell here to mistake for a posting.
+
+    Years and PhD only. The location and hybrid states are settled by what a run
+    read at the time (a field the store does not hold: raw_snippet), so a stored
+    row cannot reproduce them and the pass never judges them (docs/DECISIONS.md).
+    """
+    text = str(job.get("description_text") or "")
+    if not text or job.get("experience_level") == EXPERIENCE_UNREADABLE:
+        return None
+    return judge_experience(_read_years_requirement(text), _has_phd_required(text))
+
+
 def _page_state(signals: _DetailSignals) -> dict[str, str]:
     if signals.unreadable:
         return {PAGE_STATE_KEY: PAGE_UNREADABLE}
@@ -1281,29 +1319,16 @@ def apply_detail_filter(
             else:
                 unreadable += 1
             kept.append(dict(job, experience_level=EXPERIENCE_UNREADABLE, **extra))
-        elif phd_req:
-            excluded.append(
-                dict(
-                    job,
-                    experience_level="phd_required",
-                    **extra,
-                    **{DROP_RULE_KEY: RULE_PHD_REQUIRED},
-                )
-            )
-        elif years is None:
-            no_requirement += 1
-            kept.append(dict(job, experience_level="unspecified", **extra))
-        elif years <= _MAX_JUNIOR_YEARS:
-            kept.append(dict(job, experience_level=f"junior (<={_MAX_JUNIOR_YEARS}yr)", **extra))
         else:
-            excluded.append(
-                dict(
-                    job,
-                    experience_level=f"senior ({years}+yr)",
-                    **extra,
-                    **{DROP_RULE_KEY: f"experience: {years}+ years required"},
+            level, drop_rule = judge_experience(years, phd_req)
+            if drop_rule is None:
+                if level == LEVEL_UNSPECIFIED:
+                    no_requirement += 1
+                kept.append(dict(job, experience_level=level, **extra))
+            else:
+                excluded.append(
+                    dict(job, experience_level=level, **extra, **{DROP_RULE_KEY: drop_rule})
                 )
-            )
 
     refused = [sig.job for sig in results if sig.robots_refused]
     if refused:

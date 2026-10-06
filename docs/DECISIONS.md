@@ -1478,4 +1478,48 @@ session — see `CLAUDE.md`.
   settled by its "Location: Global, Remote" line instead. On the store as of
   2026-10-06, it settles 5 empty-location rows, all `rejected` by then: path 1
   and irc 4, 2 of which SP4e excludes on years anyway.
-
+- **What the re-filter pass judges, and what it will not (SP4g, 2026-10-06,
+  the owner's choice).** `refilter_stored_jobs` is title, location, years and
+  PhD. It does not store `raw_snippet` or `department`, and there is no schema
+  change. Layer 5's years and PhD are re-read from the stored `description_text`
+  for `new` rows only, with `_read_years_requirement` and `_has_phd_required`, so
+  a fixed reading reaches stored rows without HTTP. The verdict is
+  `experience_filter.judge_experience`, called by a run and by the pass, so the
+  two cannot come to different answers on the same figures. The reason for not
+  storing the fields: a row stored before a new column has it empty, so the
+  pass would still need to refuse a verdict on those rows. Storing only helps
+  rows from now on and adds a migration. The pass is the title, years and PhD
+  judge, and the docstring and README say so.
+- **The pass never settles a deferred location or hybrid state (SP4g).** A run
+  settles a conditional city, a placeholder and an empty field from what it
+  read: the description, and since SP4f the platform's own "Hybrid" or "Remote"
+  in `raw_snippet`. The store holds neither the snippet nor a column for the
+  deferred state, so the pass hands such a row back as pending and leaves it.
+  Re-settling one from its description would reject a row a run kept
+  (kognity's revived row is Hybrid by Ashby's field and never by its text).
+  `hybrid_confirmed` is honoured only in the sense that nothing here reads or
+  clears it. Consequence for the page-remote reader
+  (`filtering.build_page_remote_reader`): the pass never needs it, because it
+  never judges an empty field. If a later package makes the pass settle
+  location, it must store `raw_snippet` first and pass the reader.
+- **"Nothing to judge" comes from the level and the description, not the length
+  (SP4g).** A stored row is skipped when `description_text` is empty or its
+  `experience_level` is "unchecked (page unreadable)". A description is stored
+  only after it passed `is_unreadable`, so a stored one is a posting. A short
+  one is judged: jobsinlund's supplied text runs from 397 characters, and a
+  length test would call it a shell (SP4d).
+- **The pass rewrites a level when the status stays (SP4g, the owner's
+  choice).** `JobStore.set_experience_levels` replaces a stored level, and
+  refuses an empty one. Both a flip and a level-only change are reported by
+  `retrofilter --dry-run`, which opens the store with `dry_run=True` so the
+  whole transaction rolls back. The first dry run, on a copy of the store as of
+  2026-10-06 (31 `new` rows, 30 with a description), showed no change of either
+  kind, as expected. A stored description is capped at 20,000 characters and a
+  run reads the whole page, so a very long posting could read differently here.
+  The dry run is where that would show.
+- **`retrofilter` logs its rejections in a run of its own (SP4g, closing
+  SP4b's F13).** It opens a run only when there are drops, because an empty run
+  would become the latest exclusion run and hide the last real one from
+  `python -m job_scraper.drops`. That run has no `source_health` rows. Anything
+  that counts runs for a source's history must count `source_health`, not
+  `runs`. `refilter_stored_jobs` now returns a `RefilterResult`, not a tuple.

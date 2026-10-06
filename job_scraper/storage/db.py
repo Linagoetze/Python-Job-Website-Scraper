@@ -483,6 +483,22 @@ class JobStore:
         )
         return cur.rowcount
 
+    def set_experience_levels(self, levels: dict[str, str]) -> int:
+        """Overwrite experience_level for each key in *levels*. Returns rows updated.
+
+        Unlike `mark_unlabelled` this replaces a level that is there: the re-filter
+        pass (SP4g) uses it when a changed reading gives a stored description a
+        different level. An empty level is refused, because an empty one means
+        "never judged" everywhere else and must not be written over a real one.
+        """
+        if any(not level for level in levels.values()):
+            raise ValueError("refusing to write an empty experience_level")
+        cur = self._c().executemany(
+            "UPDATE jobs SET experience_level = ? WHERE dedupe_key = ?",
+            ((level, key) for key, level in levels.items()),
+        )
+        return cur.rowcount
+
     def mark_all_new(self, status: str) -> int:
         """Flip every unreviewed ('new') job to *status*. Returns the number flipped.
 

@@ -701,15 +701,34 @@ postings were unreviewed. None of them ever deletes a row, but the first two
 change review state, so read before running.
 
 ```bash
+python -m job_scraper.tools.retrofilter --dry-run
 python -m job_scraper.tools.retrofilter
 ```
 
 Re-applies the current filters to the unreviewed postings already in the store,
-without scraping. Run it after editing `rules.json` or
-`title_exclude_keywords.csv` to clear out rows that no longer qualify. Failing
-rows are marked `rejected`, never deleted, and postings you have already
-reviewed are left alone — a rule change must not silently rewrite a decision you
-made. `jobs.xlsx` is regenerated afterwards.
+without scraping and without any request. Run it after editing `rules.json` or
+`title_exclude_keywords.csv`, or after a change to how experience is read, to
+clear out rows that no longer qualify. Failing rows are marked `rejected`, never
+deleted, and postings you have already reviewed are left alone — a rule change
+must not silently rewrite a decision you made. `jobs.xlsx` is regenerated
+afterwards.
+
+**What it judges.** Title keywords, seniority, location, and the two things
+Layer 5 reads from a description: years of experience and a required PhD. These
+are re-read from the description the store already holds, with the same reading a
+run uses. A row whose page could not be read, or that holds no description, is
+left as it is. It does *not* re-judge a location or hybrid state that only a
+run could read: a run also sees each posting's `raw_snippet` and `department`,
+which the store does not keep, so such a row is passed through rather than
+rejected on a guess. If the reading moves a row's level while the posting stays
+(`unspecified` to `junior (<=2yr)`), the level is rewritten.
+
+**`--dry-run`** prints every row that would be rejected and every level that
+would change, and writes nothing: the store is rolled back and `jobs.xlsx` is not
+touched. Read it before the real run.
+
+Every rejection is logged to the drop log under a `refilter/` layer, in a run of
+its own, so `python -m job_scraper.drops` shows it beside the rest.
 
 ```bash
 python -m job_scraper.tools.blocklist_all
@@ -973,7 +992,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1196 tests, about fifteen seconds, no network access required.
+1219 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
