@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,15 @@ _GENERIC_LOCATION_TOKENS = tuple(
 # read as remote. "International" is deliberately not one: "US + International"
 # names a country first and the rest of the world second.
 _EVERYWHERE = re.compile(r"\b(?:worldwide|global)\b")
+# "International" means everywhere only beside remote wording (the owner's answer,
+# 2026-10-06): "United States + International (Remote)" is open beyond the US,
+# while a plain "US + International" names a country first and is read as one.
+_INTERNATIONAL = re.compile(r"\binternational\b")
+
+# Words that sit in a remote option without naming a place: "Fully Remote", and
+# Impactpool's "Remote | Home Based - May require travel". Struck out only in an
+# option that already carries remote wording, so they never make a place vanish.
+_REMOTE_NOISE = re.compile(r"\bfully\b|\bmay\s+require\s+travel\b")
 
 # Separators used inside a single location field, e.g. "Remote | Nairobi". `;`
 # joins the options of a field that offers several ("Home based - <region>;
@@ -267,7 +277,7 @@ _LOCATION_EMPTY_ADMITTED_REASON = "locations: no location given (admitted)"
 # (c). Which regions include the owner is private, so it is `remote_regions` in
 # rules.json, never a list in code. Without that key, (a) still holds and every
 # regional field is deferred to Layer 5 as before.
-_REMOTE_ANYWHERE_REASON = "locations: home-based or worldwide (remote)"
+_REMOTE_ANYWHERE_REASON = "locations: remote, anywhere or worldwide"
 _REMOTE_REGION_REASON = "locations: remote in a listed region"
 
 
@@ -307,6 +317,73 @@ def build_remote_region_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None
     return _build_title_keyword_pattern([(t, "word") for t in terms])
 
 
+# Workday's own workplace label, as its rendered detail page shows it (SP4f
+# follow-up, the owner's choice of 2026-10-06). Exact, not a loose "remote":
+# Impactpool's descriptions speak of travelling to "remote locations" constantly.
+_WORKDAY_FULLY_REMOTE = re.compile(r"\bremote\s+type\s+fully\s+remote\b", re.IGNORECASE)
+
+
+def build_page_remote_reader(rules: dict[str, Any]) -> Callable[[str], bool]:
+    """Compile what Layer 5 may read off a page to settle an empty location field.
+
+    The owner's choice (2026-10-06): an empty field is settled by its page naming
+    a listed place (`build_location_pattern`), or by the page saying the job is
+    remote where the owner can work. Two things count, and nothing looser:
+
+    - Workday's exact label "remote type Fully Remote", which names no region,
+      so it counts as a bare remote field does at Layer 0.
+    - An employer's own "Location: <value>" line, judged by Layer 0's reading
+      (`_remote_admission`), but only when the value names worldwide, global or
+      international, or a `remote_regions` term. A bare "Location: Remote" does
+      not count here. A stripped page has no line breaks, so the value's end is
+      found by the vocabulary running out, and "Location: Remote, <country>
+      Languages: ..." would otherwise read as remote anywhere.
+
+    The value is the longest run of remote, everywhere and region words (with
+    "and", "or" and punctuation between them) that is followed by the end of the
+    text, a full stop, or the next "Label:". Built once per run, like the other
+    patterns. It can only settle a job, never reject one.
+    """
+    remote_keywords = [str(x) for x in (rules.get("remote_keywords") or []) if str(x).strip()]
+    region_pattern = build_remote_region_pattern(rules)
+    terms = {
+        *(_lower(t) for t in remote_keywords),
+        *_GENERIC_LOCATION_TOKENS,
+        *(_lower(str(t).strip()) for t in (rules.get("remote_regions") or []) if str(t).strip()),
+        "worldwide",
+        "global",
+        "international",
+        "fully",
+        "may require travel",
+        "and",
+        "or",
+    }
+    words = "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
+    line = re.compile(
+        r"\b(?i:locations?)\s*:\s*"
+        rf"(?P<value>(?:(?i:{words})\b|[\s,/&+()\-–])+)"
+        r"(?=$|[.;|•]|[A-Z][^\s:]*(?:\s+[^\s:]+){0,4}\s*:)"
+    )
+
+    def says_remote_for_the_owner(text: str) -> bool:
+        if _WORKDAY_FULLY_REMOTE.search(text):
+            return True
+        for match in line.finditer(text):
+            value = _lower(match.group("value"))
+            reason = _remote_admission(
+                value, value, remote_keywords, region_pattern, field_in_haystack=True
+            )
+            if reason == _REMOTE_REGION_REASON:
+                return True
+            if reason == _REMOTE_ANYWHERE_REASON and (
+                _EVERYWHERE.search(value) or _INTERNATIONAL.search(value)
+            ):
+                return True
+        return False
+
+    return says_remote_for_the_owner
+
+
 def build_location_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
     """Compile `locations` for searching a *description* (Layer 5's copy).
 
@@ -343,30 +420,6 @@ def _has_confirmed_hybrid(job: JobRecord) -> bool:
     return _HYBRID_CONFIRMED_REASON in str(job.get("matched_reasons") or "")
 
 
-def _location_names_specific_city(loc_field_cf: str, remote_keywords: list[str]) -> bool:
-    """Return True if the (casefolded) location field names a concrete place.
-
-    A location like "Remote" or "Remote | Home Based - May require travel" names
-    no specific city, so it qualifies as a genuine anywhere/remote role. But
-    "Remote | Nairobi" names Nairobi as the duty station, so the leading "Remote"
-    tag must not be treated as "located anywhere".
-
-    A segment is non-specific if it contains a configured remote_keyword or a
-    generic token like "home based"; any other non-empty segment is a city.
-    """
-    remote_cf = [_lower(rk) for rk in remote_keywords]
-    for raw_seg in _LOCATION_SPLIT.split(loc_field_cf):
-        seg = raw_seg.strip()
-        if not seg:
-            continue
-        if any(rk in seg for rk in remote_cf):
-            continue
-        if any(tok in seg for tok in _GENERIC_LOCATION_TOKENS):
-            continue
-        return True
-    return False
-
-
 def _location_names_no_place(
     loc_field_cf: str,
     remote_keywords: list[str],
@@ -386,10 +439,10 @@ def _location_names_no_place(
     (Barcelona is a place whatever country follows it), *without* splitting on
     dashes: real city names contain them.
 
-    Deliberately not `_location_names_specific_city`'s inverse. That function
-    answers a different question — may a remote tag stand? — and widening its
-    idea of "not a city" would quietly admit "Remote | Berlin, EMEA" as a
-    genuine anywhere role. Two questions, two classifiers.
+    Deliberately not `_remote_admission`'s inverse. That function answers a
+    different question — may a remote option stand? — and a field this one
+    calls placeless ("Remote | <country>") is one that function may still
+    decline to admit. Two questions, two classifiers.
     """
     if not loc_field_cf.strip():
         return False
@@ -398,9 +451,9 @@ def _location_names_no_place(
     # rules already have an answer for — it must not be re-labelled
     # unresolvable and sent to Layer 5 for a fetch. That distinction is
     # invisible under `match_in: title_and_description`, where the location
-    # field is part of the haystack and `remote_ok` settles such a job before
-    # this function is reached, and it is the whole story under `title_only`,
-    # where it is not.
+    # field is part of the haystack and `_remote_admission` settles such a job
+    # before this function is reached, and it is the whole story under
+    # `title_only`, where it is not.
     placeless_for_a_reason = False
     for raw_seg in _LOCATION_SPLIT.split(loc_field_cf):
         seg = raw_seg.strip()
@@ -432,27 +485,32 @@ def _remote_admission(
 ) -> str | None:
     """The reason a remote, home-based or worldwide field admits a job, or None.
 
-    The owner's answers to SP4b Q3 (2026-10-01). Each segment is read on its
-    own once the remote wording is struck out of it: the remote keywords, the
-    home-base tokens and the everywhere words. What is left decides.
+    The owner's answers to SP4b Q3 (2026-10-01), tightened on 2026-10-06: remote
+    work counts only where it is open to the owner. It is the one remote reading
+    at Layer 0. Each option of the field is read on its own once its remote
+    wording is struck out: the remote keywords, the home-base tokens, and the
+    noise that travels with them ("Fully", "May require travel"). What is left
+    decides.
 
-    - Nothing: a bare "Home Based" or "Remote". It admits only when every
-      segment is like that (Q3a). Beside a named city it is Impactpool's
-      "Remote | <duty station>" tag, and the city decides, as before.
-    - An everywhere word: "Home based - Worldwide". It admits (Q3a), even
-      beside an office city, since the world includes the owner (Q3c).
+    - Nothing: a bare "Remote", "Fully Remote" or "Home Based" names no region,
+      and admits when every option is like that (Q3a). Beside a named place it
+      is Impactpool's "Remote | <duty station>" tag, and the place decides.
+    - An everywhere word, alone or beside remote wording: "Worldwide", "Home
+      based - Worldwide", "US - Remote, Global - Remote", "United States +
+      International (Remote)". It admits, even beside an office city or another
+      region, because the world includes the owner (Q3a, Q3c). "International"
+      counts only with remote wording in the same option.
     - Only `remote_regions` terms, with remote wording somewhere in the job:
-      "Home based - <region>", or "Remote | <region>". It admits (Q3b), even
-      beside an office city (Q3c). A region with no remote wording at all is a
-      bare region, which still defers to Layer 5, as the owner decided.
-    - Anything else (a city, another region, a placeholder) admits nothing
-      here, and the rest of `matches_rules` judges the field as before.
+      "Home based - <region>", "<region> - Remote", "Remote | <region>". It
+      admits (Q3b), even beside an office city (Q3c). A region with no remote
+      wording at all is a bare region, which still defers to Layer 5.
+    - Anything else admits nothing here: a city, a country or region outside
+      `remote_regions` ("Germany - Remote", "USA - MA - Remote"), a placeholder.
+      The rest of `matches_rules` judges the field: a bare country or region
+      defers to Layer 5, and a place is dropped.
 
-    Deliberately separate from `remote_keywords`' own test in `matches_rules`,
-    which is looser: it admits any segment holding a remote keyword, so
-    "<country> - Remote" passes wherever the country is. Folding the home-base
-    tokens into that test would admit "Home based - <any region>", which Q3b
-    rules out.
+    An empty field admits when a remote keyword is in the job, as one always
+    has: a remote role whose listing gives no place at all names no region.
 
     A remote keyword is read wherever `match_in` reads it, so under
     `title_only` one in the location field says nothing (`field_in_haystack`).
@@ -462,8 +520,11 @@ def _remote_admission(
     where anyone works.
     """
     remote_cf = [_lower(rk) for rk in remote_keywords]
+    keyword_in_job = any(rk in hay_cf for rk in remote_cf)
+    if not loc_field_cf.strip():
+        return _REMOTE_ANYWHERE_REASON if keyword_in_job else None
     wording = (
-        any(rk in hay_cf for rk in remote_cf)
+        keyword_in_job
         or any(tok in hay_cf or tok in loc_field_cf for tok in _GENERIC_LOCATION_TOKENS)
         or bool(_EVERYWHERE.search(loc_field_cf))
     )
@@ -478,11 +539,17 @@ def _remote_admission(
         remainder = seg
         for term in (*remote_cf, *_GENERIC_LOCATION_TOKENS):
             remainder = remainder.replace(term, " ")
-        everywhere = bool(_EVERYWHERE.search(remainder))
-        remainder = _EVERYWHERE.sub(" ", remainder)
-        if not _LETTER.search(remainder):
-            if everywhere:
+        option_says_remote = remainder != seg
+        if option_says_remote:
+            remainder = _REMOTE_NOISE.sub(" ", remainder)
+        everywhere = bool(_EVERYWHERE.search(remainder)) or (
+            option_says_remote and bool(_INTERNATIONAL.search(remainder))
+        )
+        if everywhere:
+            remainder = _INTERNATIONAL.sub(" ", _EVERYWHERE.sub(" ", remainder))
+            if option_says_remote or not _LETTER.search(remainder):
                 return _REMOTE_ANYWHERE_REASON
+        if not _LETTER.search(remainder):
             bare += 1
             continue
         if (
@@ -609,18 +676,13 @@ def matches_rules(
 
     if locations or conditional_locations:
         loc_ok = any(_lower(loc) in loc_field for loc in locations)
-        # A remote_keyword only admits a job when its location field does not
-        # name a specific (non-listed) city. This stops sources like Impactpool —
-        # which tag every posting "Remote | <duty station>" — from bypassing the
-        # location filter on city-specific roles (e.g. "Remote | Nairobi").
+        # Only names the drop rule now. Until 2026-10-06 a remote keyword also
+        # admitted any field none of whose options named a city outright, so
+        # "Germany - Remote" passed wherever Germany was; `_remote_admission`
+        # is the one remote reading since (the owner's tightening).
         remote_kw_present = any(_lower(rk) in hay_cf for rk in remote_keywords)
-        remote_ok = remote_kw_present and not _location_names_specific_city(
-            loc_field, remote_keywords
-        )
         if loc_ok:
             reasons.append("locations: matched")
-        elif remote_ok:
-            reasons.append("locations: matched via remote_keywords")
         elif remote_reason := _remote_admission(
             loc_field,
             hay_cf,
