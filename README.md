@@ -728,7 +728,8 @@ would change, and writes nothing: the store is rolled back and `jobs.xlsx` is no
 touched. Read it before the real run.
 
 Every rejection is logged to the drop log under a `refilter/` layer, in a run of
-its own, so `python -m job_scraper.drops` shows it beside the rest.
+its own. `python -m job_scraper.drops --refilter` shows it; a bare `drops` still
+shows the last scrape.
 
 ```bash
 python -m job_scraper.tools.blocklist_all
@@ -992,7 +993,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1220 tests, about fifteen seconds, no network access required.
+1224 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

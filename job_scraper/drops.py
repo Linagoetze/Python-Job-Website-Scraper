@@ -31,7 +31,12 @@ from pathlib import Path
 from typing import Any
 
 from job_scraper.config_loader import default_jobs_db_path
-from job_scraper.storage.db import JobStore, dedupe_key_for_job
+from job_scraper.storage.db import (
+    RUN_KIND_REFILTER,
+    RUN_KIND_SCRAPE,
+    JobStore,
+    dedupe_key_for_job,
+)
 
 # Stored ids for `run_exclusions.layer` — opaque, stable identifiers. They
 # record the order the filters were *added*, not the order they run (WP8
@@ -352,6 +357,11 @@ def main() -> None:
             + "; ".join(f"{layer.id} ({layer_display(layer.id)})" for layer in LAYERS)
         ),
     )
+    parser.add_argument(
+        "--refilter",
+        action="store_true",
+        help="Show the latest `retrofilter` run instead of the latest scrape",
+    )
     parser.add_argument("--rule", help="Only exclusions whose rule contains this text")
     parser.add_argument("--source", help="Only exclusions from sources matching this text")
     parser.add_argument(
@@ -376,10 +386,12 @@ def main() -> None:
             raise SystemExit(problem)
 
     with JobStore(args.db) as store:
-        run_id = store.latest_exclusion_run()
+        run_id = store.latest_exclusion_run(RUN_KIND_REFILTER if args.refilter else RUN_KIND_SCRAPE)
         if run_id is None:
             raise SystemExit(
-                "No exclusions recorded yet. Run `python -m job_scraper.run` first — "
+                "No re-filter run has logged any exclusion yet."
+                if args.refilter
+                else "No exclusions recorded yet. Run `python -m job_scraper.run` first — "
                 "the drop log is written as part of a run."
             )
         rows = store.exclusions(run_id, layer=args.layer, rule=args.rule, source=args.source)

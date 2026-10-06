@@ -6,8 +6,9 @@ stored description with no HTTP. It cannot re-judge what a run reads from a
 posting's raw_snippet or department, which the store does not hold, so a row a
 run kept on those is left alone.
 
-Each rejection is logged under a `refilter/` layer in a run of its own, so
-`python -m job_scraper.drops` shows it like any other exclusion.
+Each rejection is logged under a `refilter/` layer in a run of its own, which
+`python -m job_scraper.drops --refilter` shows. A bare `drops` still shows the
+last scrape.
 
 --dry-run prints every status change and every level change, writes nothing
 (the whole transaction is rolled back) and leaves jobs.xlsx as it is.
@@ -32,7 +33,7 @@ from job_scraper.filtering import (
     load_title_exclude_keywords,
 )
 from job_scraper.pipeline import RefilterResult, refilter_stored_jobs
-from job_scraper.storage.db import JobStore
+from job_scraper.storage.db import RUN_KIND_REFILTER, JobStore
 from job_scraper.storage.xlsx_store import write_xlsx
 
 
@@ -90,11 +91,12 @@ def main() -> None:
             remote_region_pattern=build_remote_region_pattern(rules),
         )
         # The drops belong to a run, and this one opens its own so they are
-        # logged like any other exclusion (WP8a). Opened only when there is
-        # something to log: an empty run would become the "latest exclusion
-        # run" and hide the last real one from `drops`.
+        # logged like any other exclusion (WP8a). It is a `refilter` run: the
+        # drop log's latest run and its retention count scrapes only, so this
+        # one neither hides the last scrape's log nor uses up a retention slot.
+        # Opened only when there is something to log.
         if result.drops:
-            run_id = store.begin_run()
+            run_id = store.begin_run(kind=RUN_KIND_REFILTER)
             store.record_exclusions(run_id, result.drops)
             store.finish_run(run_id)
 

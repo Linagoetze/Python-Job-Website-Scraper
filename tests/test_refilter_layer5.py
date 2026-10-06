@@ -38,7 +38,7 @@ from job_scraper.filtering import (
     build_remote_region_pattern,
 )
 from job_scraper.pipeline import refilter_stored_jobs
-from job_scraper.storage.db import JobStore
+from job_scraper.storage.db import RUN_KIND_REFILTER, JobStore
 from job_scraper.tools import retrofilter
 
 _RULES: dict[str, Any] = {
@@ -335,7 +335,7 @@ def test_a_real_pass_logs_its_drops_in_a_run_of_its_own(
     retrofilter.main()
 
     with JobStore(db) as store:
-        latest = store.latest_exclusion_run()
+        latest = store.latest_exclusion_run(RUN_KIND_REFILTER)
         assert latest is not None
         logged = store.exclusions(latest)
         runs = store._c().execute("SELECT COUNT(*) FROM runs").fetchone()[0]
@@ -360,3 +360,59 @@ def test_a_pass_with_nothing_to_log_opens_no_run(
 
     with JobStore(db) as store:
         assert store._c().execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
+
+
+# --- the refilter run does not disturb the scrape's drop log ------------------
+
+
+def _log(store: JobStore, kind: str, rule: str = "r") -> int:
+    run_id = store.begin_run(kind=kind)
+    store.record_exclusions(
+        run_id, [{"dedupe_key": f"k{run_id}", "layer": "0-rules", "rule": rule}]
+    )
+    store.finish_run(run_id)
+    return run_id
+
+
+def test_a_refilter_run_does_not_hide_the_last_scrape(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        scrape = _log(store, "scrape")
+        refilter = _log(store, RUN_KIND_REFILTER)
+        assert store.latest_exclusion_run() == scrape
+        assert store.latest_exclusion_run(RUN_KIND_REFILTER) == refilter
+
+
+def test_a_refilter_run_uses_no_retention_slot(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        first = _log(store, "scrape")
+        second = _log(store, "scrape")
+        for _ in range(3):
+            _log(store, RUN_KIND_REFILTER)
+        store.prune_exclusions(2)
+        assert store.exclusions(first) and store.exclusions(second)
+
+
+def test_a_refilter_run_ages_out_with_the_scrapes(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        old_pass = _log(store, RUN_KIND_REFILTER)
+        _log(store, "scrape")
+        last = _log(store, "scrape")
+        recent_pass = _log(store, RUN_KIND_REFILTER)
+        store.prune_exclusions(1)
+        assert not store.exclusions(old_pass)
+        assert store.exclusions(recent_pass) and store.exclusions(last)
+
+
+def test_a_store_without_the_run_kind_column_is_migrated(tmp_path: Path) -> None:
+    db = tmp_path / "old.sqlite3"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE runs (run_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " started_at TEXT NOT NULL, finished_at TEXT)"
+    )
+    conn.execute("INSERT INTO runs (started_at) VALUES ('2026-01-01')")
+    conn.commit()
+    conn.close()
+    with JobStore(db) as store:
+        kinds = [r[0] for r in store._c().execute("SELECT kind FROM runs")]
+    assert kinds == ["scrape"]

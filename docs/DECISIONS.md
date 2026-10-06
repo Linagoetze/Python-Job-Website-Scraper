@@ -1518,9 +1518,16 @@ session — see `CLAUDE.md`.
   run reads the whole page, so one at the cap may be a prefix, and a route
   figure past the cut could read higher here than in the run. The pass does not
   judge a description of that length: a rejection is never undone.
-- **`retrofilter` logs its rejections in a run of its own (SP4g, closing
-  SP4b's F13).** It opens a run only when there are drops, because an empty run
-  would become the latest exclusion run and hide the last real one from
-  `python -m job_scraper.drops`. That run has no `source_health` rows. Anything
-  that counts runs for a source's history must count `source_health`, not
-  `runs`. `refilter_stored_jobs` now returns a `RefilterResult`, not a tuple.
+- **`retrofilter` logs its rejections in a run of its own, of a different kind
+  (SP4g, closing SP4b's F13).** `runs` gained a `kind` column, `'scrape'` by
+  default (added in place to an existing store, as the other columns were) and
+  `'refilter'` for this tool's run. The drop log's "latest run" and its
+  retention both count scrapes only. Without that, the run would have become the
+  latest exclusion run and hidden the last scrape's log from a bare
+  `python -m job_scraper.drops`, and each pass would have used one of the
+  retained slots (found in review). A re-filter run is read with
+  `drops --refilter`, and it is pruned once it is older than the oldest scrape
+  kept. It is opened only when there are drops. It has no `source_health` rows,
+  so anything that counts runs for a source's history must count `source_health`
+  or filter on `kind`, not read `runs` whole. `refilter_stored_jobs` now returns
+  a `RefilterResult`, not a tuple.

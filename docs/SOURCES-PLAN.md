@@ -3243,12 +3243,17 @@ Branch sp4g-refilter-inputs. Commit, do not push. Update this plan file.
 - **Step 3.** `retrofilter` records its drops in a run of its own, under the
   `refilter/` layer prefix, and only when there are any. `refilter_stored_jobs`
   returns a `RefilterResult` (counts, drops, level changes) instead of a tuple.
-- **24 new tests** (1196 to 1220), in `tests/test_refilter_layer5.py`. One older
+- **28 new tests** (1196 to 1224), in `tests/test_refilter_layer5.py`. One older
   test used `--dry-run` as its example of an unrecognised argument; it now uses
   `--wet-run`. **A description at the 20,000-character storage cap is not
   judged**: a run reads the whole page, the store keeps a prefix, and a route
   figure past the cut could read higher here and reject a row a run kept. Found
-  in review of this package and fixed on the branch.
+  in review of this package and fixed on the branch. The same review found that
+  `retrofilter`'s run hid the last scrape's drop log and used a retention slot.
+  Fixed with a `runs.kind` column (`scrape` or `refilter`): the latest run and the
+  retention count scrapes only, and `drops --refilter` shows the pass. That is a
+  schema change to `runs`, added in place like the other columns, though step 1
+  decided against one for `jobs`.
 
 ### Your to-dos
 
