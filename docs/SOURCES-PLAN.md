@@ -3174,6 +3174,36 @@ The owner may have rejected some of them with `review` already, so count again
 first. The expected dry run above then changes: those rows flip, except one path
 roster whose page says it is worldwide (SP4f's question 2).
 
+SINCE THE SP4f FOLLOW-UP (2026-10-06). This supersedes the expected dry runs in
+the two notes above. The owner rejected the whole review sheet on 2026-10-05,
+after run 35. The 94 'new' rows and the 35 empty-location rows those notes
+counted are 'rejected' now, and must not be touched (WP5). The store then held
+31 'new' rows, all revived by SP4f. canonical 30 have their description kept
+and SP4e's level already written. kognity 1 has its description and level
+cleared, and the next run re-judges it from Ashby's supplied text. On that
+store the expected dry run is ZERO status flips and ZERO level changes. The
+kognity row has nothing to judge until a run has filled it. Runs since then add
+rows, so count again first.
+
+A HAZARD STEP 2 MUST NOT WALK INTO. Since SP4f, Ashby's and Workable's readers
+put the platform's workplace ("Hybrid", "Remote") into raw_snippet. Layer 0
+reads it there: a hybrid-gated city can be confirmed by it, and a region in
+remote_regions admitted by it. The store has no raw_snippet (F13). So the
+re-filter pass's matches_rules hands such a row back as PENDING (hybrid, or an
+unresolvable region). If step 2 then settles that pending state from the
+description, it rejects a row a run kept. kognity's revived row is exactly
+this: Hybrid by Ashby's field, and never by its text.
+- Hybrid: honour the stored hybrid_confirmed column, as a run does. Never
+  re-settle a row where it is 1.
+- A deferred location: there is no column. Either store raw_snippet (step 1's
+  schema option now has a correctness argument as well as F13's), or step 2
+  re-judges years and PhD only, and never rejects on a deferred location state
+  it cannot reproduce. Put this to the owner together with step 1.
+- An empty location field: if step 2 settles it, it must pass Layer 5's
+  page_remote_reader (filtering.build_page_remote_reader), as the pipeline does.
+  Otherwise a page that says "remote type Fully Remote" or "Location: Global,
+  Remote" is wrongly rejected.
+
 DOCS. README's maintenance-commands entry for retrofilter, test count,
 docs/DECISIONS.md.
 
@@ -3210,6 +3240,10 @@ marginally, per the WP8 method. Also remove `donor`, the owner's Q7 answer
 (2026-10-01). SP4b measured it at 1 wanted job kept out for 1 unwanted; confirm
 with eval --compare and quote the diff. `AI`, `Student` and seniority `Director`
 stay, by the same answer. Never prune from the printed attribution table.
+
+BASELINE (2026-10-06). After SP4f and its follow-up, with the owner's
+remote_regions in rules.json, `python -m job_scraper.eval` reads recall 0.822,
+precision 0.353, 13 false negatives. Quote diffs against that, not SP4b's 0.808.
 
 DOCS. Test count. docs/DECISIONS.md if a match type is added.
 
@@ -3309,6 +3343,20 @@ misreading comes back as an invented test case and a report, not as a patch
 here. SP5 adds sources; it does not redesign Layer 5. If a misreading excluded
 a job, say so first: that is the expensive direction.
 
+REMOTE IS NOW REGION-BOUND (2026-10-06, SP4f follow-up). Remote counts only in
+remote_regions or worldwide. A country is matched as itself, so a broader
+region in the list does not cover "<country> - Remote". After the pipeline
+run, for each new source, run
+`python -m job_scraper.drops --source <name> --layer 0-rules` and look for
+remote shapes: "remote keyword overridden by a named city", and the deferred
+"unresolvable field" rules at Layer 5. If a new source writes its remote roles
+as single countries, list those countries for the owner in CHAT only. Whether
+to add them to remote_regions is the owner's private edit, never tracked prose.
+
+PLATFORM WORKPLACE FIELDS (SP4f). If the platform's own data carries a
+workplace or remote field the reader discards, report it and propose mapping it
+into raw_snippet, as Ashby's and Workable's readers do. Do not fold it in here.
+
 DOCS. Update the test count in README.md (it has no fixture count). Do NOT add the company
 names to any tracked file — see "Publishing this file".
 
@@ -3362,6 +3410,12 @@ the page, then pin the golden. Do not reason about the layout before capturing.
 
 Resolve reader names to source names via registry.py before capturing — seven of
 these eight share a name with their source, but `coefficient` does not.
+
+WHILE THE CAPTURE IS OPEN (2026-10-06, SP4f). Note whether the page or its data
+states a workplace (remote, hybrid, on-site) or more locations than the reader
+keeps. If the reader discards one, record it in the SP6 table and propose the
+mapping (into raw_snippet and the location field, as SP4f did for Ashby and
+Workable). Do not build it in the same instalment.
 
 DOCS. Update README.md's uncovered-reader sentence and test count (it has no
 fixture count) on EVERY instalment — the number is the point of the exercise, and a
