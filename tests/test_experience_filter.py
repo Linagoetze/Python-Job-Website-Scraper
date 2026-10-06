@@ -23,6 +23,7 @@ from job_scraper.filtering import (
     _UNRESOLVED_PENDING_REASON,
     build_hybrid_pattern,
     build_location_pattern,
+    build_page_remote_reader,
 )
 from tests.pages import posting
 
@@ -622,3 +623,60 @@ class TestEmptyLocationResolution:
         assert not kept
         assert excluded[0][UNVERIFIED_KEY] is True
         assert excluded[0]["drop_rule"] == RULE_LOCATION_EMPTY_UNVERIFIED
+
+    # --- the page saying the job is remote (SP4f follow-up, 2026-10-06) ---------
+
+    # staticmethod: a plain function stored on the class would be bound to self.
+    _READER = staticmethod(
+        build_page_remote_reader(
+            {"remote_keywords": ["remote", "anywhere"], "remote_regions": ["Wingtip Region"]}
+        )
+    )
+
+    def _settle(self, page, reasons=None):
+        job = dict(self._job(), matched_reasons=reasons or [_EMPTY_PENDING_REASON])
+        return apply_detail_filter(
+            [job],
+            lambda _url: posting(page),
+            location_pattern=self._PATTERN,
+            page_remote_reader=self._READER,
+        )
+
+    @pytest.mark.parametrize(
+        "page",
+        [
+            "Apply remote type Fully Remote time type Full time.",
+            "Position Type: Roster Location: Global, Remote Languages Required: English",
+            "Location: Remote, Wingtip Region Duration: six months",
+        ],
+    )
+    def test_a_page_saying_remote_for_the_owner_settles_an_empty_field(self, page):
+        kept, excluded = self._settle(page)
+        assert not excluded
+        assert kept[0]["matched_reasons"] == [_EMPTY_CONFIRMED_REASON]
+
+    @pytest.mark.parametrize(
+        "page",
+        [
+            # Remote somewhere else, or remote with no region in prose.
+            "Location: Contoso, Remote Languages Required: English",
+            "Location: Remote, Contoso Languages Required: English",
+            "Location: Remote Languages Required: English",
+            # Prose about remote places, not remote work.
+            "Willingness to travel to remote locations is essential.",
+            "remote type Hybrid time type Full time",
+        ],
+    )
+    def test_anything_less_does_not(self, page):
+        kept, excluded = self._settle(page)
+        assert not kept
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_EMPTY_NOT_LISTED
+
+    def test_the_page_settles_only_an_empty_field(self):
+        # A placeholder ("2 Locations") names places the page did not; the
+        # label does not say which. It is settled by a listed place, as before.
+        kept, excluded = self._settle(
+            "Apply remote type Fully Remote time type Full time.", [_UNRESOLVED_PENDING_REASON]
+        )
+        assert not kept
+        assert excluded[0]["drop_rule"] == RULE_LOCATION_NOT_LISTED

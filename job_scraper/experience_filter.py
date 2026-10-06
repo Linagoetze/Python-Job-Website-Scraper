@@ -957,6 +957,11 @@ class _DetailSignals:
     # deferred states fail closed, so the caller must tell the two apart.
     hybrid_found: bool | None = None
     listed_location_found: bool | None = None
+    # The page says the job is remote where the owner can work: Workday's exact
+    # "Fully Remote" label, or a "Location:" line naming worldwide or one of the
+    # owner's regions (`filtering.build_page_remote_reader`). Settles only an
+    # empty location field, never a placeholder or a conditional city.
+    page_says_remote: bool | None = None
     description_text: str = ""
 
 
@@ -965,6 +970,7 @@ def _fetch_and_analyze(
     fn: Callable[[str], str],
     hybrid_pattern: re.Pattern[str] | None = None,
     location_pattern: re.Pattern[str] | None = None,
+    page_remote_reader: Callable[[str], bool] | None = None,
 ) -> _DetailSignals:
     """Fetch a job's detail page and extract experience/PhD/deferred-state signals.
 
@@ -983,13 +989,17 @@ def _fetch_and_analyze(
     if supplied:
         # The reader already holds the posting (SP4d): read it, and spend no
         # request on a detail page that would only say the same thing, or less.
-        return _analyze(job, supplied, hybrid_pattern, location_pattern, supplied=True)
+        return _analyze(
+            job, supplied, hybrid_pattern, location_pattern, page_remote_reader, supplied=True
+        )
     url = str(job.get("detail_url") or job.get("apply_url") or "").strip()
     if not url:
         return _DetailSignals(job=job)
     try:
         html = fn(url)
-        return _analyze(job, _strip_html(html), hybrid_pattern, location_pattern)
+        return _analyze(
+            job, _strip_html(html), hybrid_pattern, location_pattern, page_remote_reader
+        )
     except RobotsDisallowed as exc:
         logger.debug("%s: robots.txt refused %r — keeping job", layer_short(LAYER_DETAIL), exc)
         return _DetailSignals(job=job, fetch_failed=True, robots_refused=True)
@@ -1008,6 +1018,7 @@ def _analyze(
     text: str,
     hybrid_pattern: re.Pattern[str] | None,
     location_pattern: re.Pattern[str] | None,
+    page_remote_reader: Callable[[str], bool] | None = None,
     supplied: bool = False,
 ) -> _DetailSignals:
     """Every Layer 5 signal from one posting's text, fetched or supplied."""
@@ -1023,6 +1034,7 @@ def _analyze(
         listed_location_found=(
             bool(location_pattern.search(text)) if location_pattern is not None else None
         ),
+        page_says_remote=(page_remote_reader(text) if page_remote_reader is not None else None),
         description_text=text[:_MAX_DESCRIPTION_CHARS],
     )
 
@@ -1099,6 +1111,7 @@ def apply_detail_filter(
     source_fetch_map: dict[str, Callable[[str], str]] | None = None,
     hybrid_pattern: re.Pattern[str] | None = None,
     location_pattern: re.Pattern[str] | None = None,
+    page_remote_reader: Callable[[str], bool] | None = None,
 ) -> tuple[list[JobRecord], list[JobRecord]]:
     """Fetch each job's detail page and filter by experience requirement and PhD.
 
@@ -1118,6 +1131,9 @@ def apply_detail_filter(
     location or the job is dropped — see _resolve_unresolved_location. Unlike
     the hybrid case these jobs *are* an extra HTTP request, because they died at
     Layer 1 before this package and never reached here at all.
+    page_remote_reader settles an *empty* location field too: a page that says
+    the job is remote where the owner can work confirms it, though it names no
+    listed place (SP4f follow-up; see `filtering.build_page_remote_reader`).
     Fetches run in parallel with up to _DETAIL_WORKERS threads.
     Each returned job dict is annotated with description_text and
     description_fetched_at from this fetch (both '' when nothing was fetched),
@@ -1155,7 +1171,7 @@ def apply_detail_filter(
     def _task(job: JobRecord) -> _DetailSignals:
         source = str(job.get("source_name") or "")
         fn = (source_fetch_map or {}).get(source, fetch_text)
-        return _fetch_and_analyze(job, fn, hybrid_pattern, location_pattern)
+        return _fetch_and_analyze(job, fn, hybrid_pattern, location_pattern, page_remote_reader)
 
     with ThreadPoolExecutor(max_workers=_DETAIL_WORKERS) as pool:
         results = list(pool.map(_task, jobs))
@@ -1224,10 +1240,15 @@ def apply_detail_filter(
 
         job = resolved
         pending = _location_deferral(job)
-        resolved = _resolve_unresolved_location(job, signals.listed_location_found)
+        found = signals.listed_location_found
+        if pending == _EMPTY_PENDING_REASON and signals.page_says_remote:
+            # An empty field is settled by the page saying the job is remote
+            # where the owner can work, as well as by its naming a listed place.
+            found = True
+        resolved = _resolve_unresolved_location(job, found)
         if resolved is None and pending is not None:
             location_excluded += 1
-            if signals.listed_location_found is None:
+            if found is None:
                 unverified += 1
             _, checked_rule, unverified_rule = _LOCATION_DEFERRALS[pending]
             excluded.append(
@@ -1235,7 +1256,7 @@ def apply_detail_filter(
                     job,
                     signals,
                     "unresolvable_location",
-                    signals.listed_location_found is not None,
+                    found is not None,
                     checked_rule,
                     unverified_rule,
                 )

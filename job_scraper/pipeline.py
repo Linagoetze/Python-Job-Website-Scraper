@@ -45,6 +45,7 @@ from job_scraper.filtering import (
     build_hybrid_pattern,
     build_location_pattern,
     build_non_place_pattern,
+    build_page_remote_reader,
     build_remote_region_pattern,
     load_title_exclude_keywords,
     matches_rules,
@@ -461,6 +462,7 @@ def _run_pipeline(
     non_place_pattern = build_non_place_pattern(rules)
     remote_region_pattern = build_remote_region_pattern(rules)
     location_pattern = build_location_pattern(rules)
+    page_remote_reader = build_page_remote_reader(rules)
 
     jobs_extracted = 0
     jobs_kept = 0
@@ -777,6 +779,7 @@ def _run_pipeline(
             source_fetch_map=source_fetch_map,
             hybrid_pattern=hybrid_pattern,
             location_pattern=location_pattern,
+            page_remote_reader=page_remote_reader,
         )
 
         jobs_phd_excluded = sum(
