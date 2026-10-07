@@ -138,6 +138,7 @@ REGISTRY: dict[str, ExtractorFn] = {
     "deloitte_nordic": partial(
         smartrecruiters.extract, source_name="deloitte_nordic", org_slug="DeloitteNordic"
     ),
+    "ramboll": partial(smartrecruiters.extract, source_name="ramboll", org_slug="Ramboll3"),
     # --- Sida ---
     "sida": partial(sida.extract, source_name="sida"),
     # --- NIRAS (dynamic) ---

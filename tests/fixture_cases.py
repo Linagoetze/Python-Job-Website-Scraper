@@ -269,6 +269,14 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
             url, fetch, source_name="wwf_us", org_slug="WorldWildlifeFundInc1"
         ),
     ),
+    "ramboll": (
+        # 1,019 postings at 100 a page: ramboll.json plus .p1-.p10.json.
+        "ramboll.json",
+        "https://careers.smartrecruiters.com/Ramboll3",
+        lambda url, fetch: smartrecruiters.extract(
+            url, fetch, source_name="ramboll", org_slug="Ramboll3"
+        ),
+    ),
     "deloitte_nordic": (
         # 136 postings at 100 a page: the walk is deloitte_nordic.json plus .p1.json.
         "deloitte_nordic.json",

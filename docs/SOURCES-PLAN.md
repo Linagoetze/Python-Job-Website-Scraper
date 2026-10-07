@@ -3568,9 +3568,16 @@ below (1246).
   CSOD reader exists; proposed as its own package, not written.
 - **9. Own site, rendered.** `needs a new extractor`, `dynamic`: 16
   posting-shaped links after rendering, none before. Proposed, not written.
-- **10. Own site, Next.js.** Not feasible, rungs 1-2: a stated total of 1,006
-  at 10 a page, no posting links in the static or rendered HTML, and a
-  SmartRecruiters fingerprint with no board URL to read.
+- **10. Own site, Next.js.** Probe: not feasible, rungs 1-2 (a stated total of
+  1,006 at 10 a page, no posting links, a SmartRecruiters fingerprint with no
+  board URL). **Later the same day the owner supplied one posting's address,
+  and its "Apply now" link named the SmartRecruiters company identifier.** With
+  the owner's `api.smartrecruiters.com` exemption: `reuse smartrecruiters`,
+  **live in `sources.yaml`**. Rows captured: 1,019 over 11 pages (the API's
+  `totalFound` agrees; the page's own 1,006 was out of date), all unique, 696
+  hybrid and 10 remote by the platform's flag. The fixture is 3.2 MB, a third of
+  `tests/fixtures`. Scratch run: 1,019 seen, 962 dropped at Layer 0, 25 kept.
+  See "Company 10's checks" below.
 - **11. Own site over SmartRecruiters.** Probe: not feasible, rung 2 (the same
   refusal as company 1, on the board the page links to). With the exemption:
   `reuse smartrecruiters`, rows captured: 136 over two pages, so the fixture is
@@ -3642,7 +3649,26 @@ are stored `rejected` and nothing automatic un-rejects. After a fix,
 `retrofilter --dry-run` shows what the next scrape would reject, and
 `drops --refilter` shows what a `retrofilter` pass logged.
 
-**Other checks.** The summary printed no "Unreadable pages" block, so neither
+**Company 10's checks.** No "Unreadable pages" block (descriptions run from
+4,392 to 12,281 characters). The 10 remote-flagged postings are each a city plus
+a flag, in three countries (listed for the owner in chat), and are dropped by
+"remote keyword overridden by a named city", the region-bound policy working as
+written. The two rows rejected as "non-hybrid" are internships with no platform
+flag. Layer 5's years reading: six exclusions, all Swedish and Danish "Minst
+/ min. / minimum N års erfarenhet", read correctly. Two misreadings, neither
+patched, both folded into SP13's cases: (a) a posting introducing its new
+manager ("har 20 års erfaring fra [the employer]") read as a 20+ years
+requirement, which did not change that posting's verdict (its own requirement
+is 8) but would wrongly exclude one with no stated figure, the expensive
+direction; (b) "typisk 6-7 år eller mere" (typically 6-7 years or more) read
+nothing, so the job is kept, the cheap direction. A Danish `ingeniør` compound
+("Konstruktionsingeniør", "Bygningsingeniør") passed the title layers because the
+`contains` entry is the Swedish `ingenjör`; both were then excluded on years, so
+nothing reached the sheet, and it is reported, not widened (SP4h). A snag: the candidate's recorded URL is the employer's own page, and the new
+source's board is the SmartRecruiters one, so `candidate activate` matches by
+board and would refuse.
+
+**Other checks (company 11).** The summary printed no "Unreadable pages" block, so neither
 source is starved at Layer 5 (company 11's stored descriptions run from 2,781
 to 10,348 characters). `drops --layer 0-rules` for both shows one rule only,
 "city not on the list": no "remote keyword overridden by a named city" and no
@@ -4320,8 +4346,8 @@ URLs are in this file**: the owner gives them to each session in chat.
 ### SP13 — Layer 5 reads a preference list and a parenthetical range
 
 Found in SP5 (company 11's descriptions, the years-reading check SP4e's review
-asked for). Two misreadings, one in each direction, both of the kind SP4e's
-review found: a phrasing of a preference, and of a figure, that SP4e's
+asked for). Two misreadings in company 11's descriptions and two more in company 10's, in
+both directions, all of the kind SP4e's review found: a phrasing of a preference, and of a figure, that SP4e's
 corpus did not hold.
 
 - **A job excluded that a preference would have kept (the expensive direction,
@@ -4335,6 +4361,18 @@ corpus did not hold.
   relevant experience in logistics. A degree in engineering." reads 5 and
   should read nothing; "We would ideally like 5 years of relevant experience in
   logistics." reads nothing and is the control.
+- **A colleague's years read as the requirement (the expensive direction, found
+  in company 10's descriptions).** "Your new head of department, <name>, has
+  trained as an engineer and has 20 years' experience at <the employer>" read as
+  a 20+ years requirement. Invented case: a posting that says only "Your new
+  team leader has 20 years of experience with us" and states no requirement
+  should read nothing. It did not change that posting's verdict, because the
+  posting's own requirement (8) excludes it anyway; the harm is on the next one
+  that states none. SP4e vetoes "the employer speaking about itself"; a named
+  person or a role in the third person is the same speaker.
+- **A bare "typically N-M years or more" not read (the cheap direction, 1
+  row).** Danish "typisk 6-7 år eller mere" ("typically 6-7 years or more"), with
+  no word for experience beside the figure, reads nothing.
 - **A job kept that carries a figure (the cheap direction, 1 row).** "Proven
   experience (5-10 years) in a Project Manager, PMO or Workstream Lead role"
   reads nothing. Controls: "Proven experience of 5-10 years in a Project

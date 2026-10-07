@@ -709,6 +709,24 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "ramboll": {
+        # smartrecruiters.py's fourth source, and the largest walk: 1,019
+        # postings over 11 pages, all saved (a one-page replay would fake the
+        # end of the board, WP11). `totalFound` agrees with the rows read; the
+        # careers page's own "1,006" was out of date. 696 postings are flagged
+        # hybrid and 10 remote, which land in the snippet.
+        "count": 1019,
+        "first_job": {
+            "source_name": "ramboll",
+            "title": "Lead Architect - Data Center",
+            "location": "Mumbai, in",
+            "department": "",
+            "listing_url": "https://careers.smartrecruiters.com/Ramboll3",
+            "detail_url": "https://jobs.smartrecruiters.com/Ramboll3/744000154005189",
+            "apply_url": "https://jobs.smartrecruiters.com/Ramboll3/744000154005189",
+            "raw_snippet": "Lead Architect - Data Center Mumbai, in Hybrid",
+        },
+    },
     "deloitte_nordic": {
         # smartrecruiters.py over two pages (136 postings at 100 a page), so the
         # whole walk is saved: deloitte_nordic.json + .p1.json. A one-page replay
