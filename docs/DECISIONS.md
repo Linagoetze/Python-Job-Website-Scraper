@@ -1591,3 +1591,18 @@ session — see `CLAUDE.md`.
   by running two `candidate` commands back to back. It returns the first free
   name now, with `-2`, `-3` for a collision, and still ends in `.bak`. The
   curated repository held every state, so nothing was lost.
+- **Finding where a rendered list comes from, and where to stop (SP5, 2026-10-07).**
+  A client-rendered board's list comes from a request the page makes, and the
+  Browser pane's `read_network_requests` did not list a cross-origin one that
+  `performance.getEntriesByType('resource')`, run through `javascript_exec`,
+  did. One request with `limit=3` is enough to see a response's shape and
+  whether it needs a token. A 401 means the page supplies a credential, which
+  makes the route rung 3-4 of the CU2 ladder: it is the owner's call, no key is
+  looked for in the page's scripts, and none goes into a fixture. The same read
+  showed that a Workday fingerprint on a page is not proof the board is there:
+  the one Workday host it named was a separate unit's board (US-only; none of
+  its 67 postings passed Layer 0), not the main list. And for a platform
+  fingerprint with no board URL, one posting's own "Apply" link named the board
+  slug that the probe could not guess. A source whose scratch run passes nothing
+  at Layer 0 is not added.
+
