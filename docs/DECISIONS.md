@@ -1547,3 +1547,62 @@ session — see `CLAUDE.md`.
   unknown match type still falls back to `word`. `donor` was removed by the
   owner's Q7 answer (1 wanted job recovered for 1 unwanted, measured). The
   re-filter pass found no stored `new` row either change touches.
+- **A `reuse` verdict is not a clean read, and the probe's "no postings" is not
+  a finding about the site (SP5, 2026-10-06).** The probe's `reuse teamtailor`
+  came with seven rows whose location was each row's own title: a layout the
+  reader had never met, read as the nearest block. Nothing failed and the
+  report printed the rows without comment, so the check that catches it is
+  the one SP5's prompt already has, reading the rows before adding the source.
+  The company was left out rather than added with a note, because a bad
+  location is not neutral: Layer 0 judges it as a city nobody has heard of.
+  The opposite error turned up on two old candidates. The probe called HiBob
+  and Taleo boards "no postings" because their rendered cards are not links of
+  the shape it looks for, yet the rendered text held the postings (a stated
+  total of 4, and of 69). So its rung 1-2 failure says "no posting-shaped
+  link", not "no postings", and an old blocker of "no job content" should be
+  re-read from the rendered text before it is renewed. Neither correction is
+  built here. Both are proposed in SP5's result.
+- **A source can be captured, pinned and still held out of `sources.yaml`
+  (SP5, 2026-10-06).** The SmartRecruiters reader discards the platform's
+  `location.hybrid` and `location.remote`. On a first scratch run, 5 of 20 rows
+  that Layer 5 rejected as "non-hybrid in a conditional location" were marked
+  hybrid by the platform, with nothing about the workplace in their text.
+  Because `rejected` is permanent and nothing automatic undoes it, the source
+  stays out of the live config until the reader carries the flag (SP4f's
+  route), while its registry line, fixture and golden are committed so the
+  repair has a test case. Adding the source later is one paste. Un-rejecting
+  rows is the owner's job by hand. **Resolved the same day:** the reader now
+  carries `hybrid` (and `remote`) into the snippet, a repeat of the scratch run
+  kept 4 of the 5 and the source went live. The same check belongs to any first
+  run of a source on a platform with such a field: join the platform's flag to
+  the rows Layer 5 rejects before the real run, not after. A run against a
+  scratch store and a `--sources` file holding only the new entries does this
+  without touching the live store.
+- **A robots.txt refusal on a platform's API is the owner's call, per source
+  (SP5).** The probe passes no `ignore_robots`, so it can only report
+  "not feasible, rung 2" for a SmartRecruiters board. The capture script does
+  honour `sources.yaml`'s `ignore_robots`, so once the owner agrees, the board
+  is added with the exemption and captured, not re-probed. A board of more than
+  100 postings needs `capture_fixtures.py --pages all` or the replay fakes the
+  end of the walk and the capture reports "UNPARSEABLE".
+- **A backup is never replaced by another backup (SP5 follow-up, 2026-10-06).**
+  `curated.backup_path_for` named a backup to the second, and `shutil.copy2`
+  overwrites, so two writes inside one second left only the later backup. Found
+  by running two `candidate` commands back to back. It returns the first free
+  name now, with `-2`, `-3` for a collision, and still ends in `.bak`. The
+  curated repository held every state, so nothing was lost.
+- **Finding where a rendered list comes from, and where to stop (SP5, 2026-10-07).**
+  A client-rendered board's list comes from a request the page makes, and the
+  Browser pane's `read_network_requests` did not list a cross-origin one that
+  `performance.getEntriesByType('resource')`, run through `javascript_exec`,
+  did. One request with `limit=3` is enough to see a response's shape and
+  whether it needs a token. A 401 means the page supplies a credential, which
+  makes the route rung 3-4 of the CU2 ladder: it is the owner's call, no key is
+  looked for in the page's scripts, and none goes into a fixture. The same read
+  showed that a Workday fingerprint on a page is not proof the board is there:
+  the one Workday host it named was a separate unit's board (US-only; none of
+  its 67 postings passed Layer 0), not the main list. And for a platform
+  fingerprint with no board URL, one posting's own "Apply" link named the board
+  slug that the probe could not guess. A source whose scratch run passes nothing
+  at Layer 0 is not added.
+

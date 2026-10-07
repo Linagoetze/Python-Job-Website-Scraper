@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import ashby, personio, workable
+from job_scraper.extractors import ashby, personio, smartrecruiters, workable
 from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
 from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
@@ -690,6 +690,61 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Nurse – Temporary position Corporate Functions Paris, fr",
         },
     },
+    "wwf_us": {
+        # smartrecruiters.py's third source. One page: `totalFound` (39) matched
+        # the 39 postings read. Country is SmartRecruiters' lower-case ISO code,
+        # as for OECD, and `relativeUri` is absent here too. The first posting
+        # is flagged `remote` by the platform, so "Remote" ends its snippet.
+        "count": 39,
+        "first_job": {
+            "source_name": "wwf_us",
+            "title": "Cybersecurity Specialist - R4645",
+            "location": "Quito, ec",
+            "department": "Information Technology",
+            "listing_url": "https://careers.smartrecruiters.com/WorldWildlifeFundInc1/wwfus",
+            "detail_url": "https://jobs.smartrecruiters.com/WorldWildlifeFundInc1/744000153753919",
+            "apply_url": "https://jobs.smartrecruiters.com/WorldWildlifeFundInc1/744000153753919",
+            "raw_snippet": (
+                "Cybersecurity Specialist - R4645 Information Technology Quito, ec Remote"
+            ),
+        },
+    },
+    "ramboll": {
+        # smartrecruiters.py's fourth source, and the largest walk: 1,019
+        # postings over 11 pages, all saved (a one-page replay would fake the
+        # end of the board, WP11). `totalFound` agrees with the rows read; the
+        # careers page's own "1,006" was out of date. 696 postings are flagged
+        # hybrid and 10 remote, which land in the snippet.
+        "count": 1019,
+        "first_job": {
+            "source_name": "ramboll",
+            "title": "Lead Architect - Data Center",
+            "location": "Mumbai, in",
+            "department": "",
+            "listing_url": "https://careers.smartrecruiters.com/Ramboll3",
+            "detail_url": "https://jobs.smartrecruiters.com/Ramboll3/744000154005189",
+            "apply_url": "https://jobs.smartrecruiters.com/Ramboll3/744000154005189",
+            "raw_snippet": "Lead Architect - Data Center Mumbai, in Hybrid",
+        },
+    },
+    "deloitte_nordic": {
+        # smartrecruiters.py over two pages (136 postings at 100 a page), so the
+        # whole walk is saved: deloitte_nordic.json + .p1.json. A one-page replay
+        # would fake the end of the board (docs/DECISIONS.md, WP11). No posting
+        # carries a department. The platform marks 33 of the 136 hybrid and 3
+        # remote, and the reader carries both into the snippet.
+        "count": 136,
+        "first_job": {
+            "source_name": "deloitte_nordic",
+            "title": "Build your career in Transfer Pricing - Aarhus",
+            "location": "Aarhus, dk",
+            "department": "",
+            "listing_url": "https://careers.smartrecruiters.com/DeloitteNordic",
+            "detail_url": "https://jobs.smartrecruiters.com/DeloitteNordic/744000153731959",
+            "apply_url": "https://jobs.smartrecruiters.com/DeloitteNordic/744000153731959",
+            "raw_snippet": "Build your career in Transfer Pricing - Aarhus Aarhus, dk",
+        },
+    },
     "nutrition_international": {
         # workable.py, moved onto the fetcher's post_json in this same
         # package ahead of its first capture. No bug in the field mapping.
@@ -967,6 +1022,43 @@ def test_an_ashby_hybrid_posting_is_confirmed_at_layer_0() -> None:
     ok, reasons = matches_rules(job, rules, build_hybrid_pattern(rules))
     assert ok
     assert reasons == [_HYBRID_CONFIRMED_REASON]
+
+
+def _smartrecruiters(*locations: dict[str, Any]) -> list[dict[str, Any]]:
+    postings = [
+        {
+            "id": str(i),
+            "name": "Analyst",
+            "location": {"city": "Fabrikam City", "country": "cn", **loc},
+        }
+        for i, loc in enumerate(locations)
+    ]
+    body = json.dumps({"totalFound": len(postings), "content": postings})
+    return smartrecruiters.extract(
+        "https://careers.smartrecruiters.com/Contoso", lambda url: body, "contoso", "Contoso"
+    )
+
+
+def test_smartrecruiters_carries_the_workplace_flags_into_the_snippet() -> None:
+    jobs = _smartrecruiters(
+        {"remote": True, "hybrid": False},
+        {"remote": False, "hybrid": True},
+        {"remote": False, "hybrid": False},
+        {"remote": True, "hybrid": True},
+        {},
+    )
+    assert [j["raw_snippet"] for j in jobs] == [
+        "Analyst Fabrikam City, cn Remote",
+        "Analyst Fabrikam City, cn Hybrid",
+        "Analyst Fabrikam City, cn",
+        "Analyst Fabrikam City, cn Hybrid",
+        "Analyst Fabrikam City, cn",
+    ]
+
+
+def test_smartrecruiters_leaves_the_location_field_alone() -> None:
+    (job,) = _smartrecruiters({"hybrid": True})
+    assert job["location"] == "Fabrikam City, cn"
 
 
 def _workable(*postings: dict[str, Any]) -> list[dict[str, Any]]:
