@@ -4818,9 +4818,9 @@ Branch sp17-activate-board. Commit, do not push. Update this plan file.
 
 ### Your to-dos (SP17)
 
-- [ ] This widens an exception to CLAUDE.md's rule about `data/curated/`, so it
+- [x] This widens an exception to CLAUDE.md's rule about `data/curated/`, so it
       is yours to grant: say yes or no to the `company`-must-match evidence
-      before the session starts.
+      before the session starts. **Granted by the owner on 2026-10-07.**
 
 ---
 
