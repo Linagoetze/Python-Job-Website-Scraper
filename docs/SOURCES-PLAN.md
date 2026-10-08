@@ -107,7 +107,7 @@ the ordering below.
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: three sources live, rest reported | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
-| 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
+| 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | not started | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
@@ -4075,12 +4075,70 @@ one-page rule with its N and the store's verdict on it.
 Branch sp7-source-warnings. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-08, branch `sp7-source-warnings`
+
+Three commits, one per warning, 1303 → 1339 tests (`tests/test_source_warnings.py`).
+`pytest`, `ruff check`, `ruff format --check` and `run --help` are clean. Not pushed.
+
+**The owner's three answers, asked before any commit:** build the tombstone guard;
+a robots refusal gets **no** `source_health` row; the one-page rule has **no**
+exemption for guarded readers.
+
+1. **Failed and refused sources.** `RunSummary.failed_sources` and
+   `refused_sources`; `sources_skipped` is config skips only. The `Sources` line
+   adds `N failed` / `N refused by robots.txt` only when non-zero, so a healthy
+   run is unchanged. Each has a block first under the closing totals, built from
+   the in-memory results so a dry run shows it. A failure shows the first line of
+   its error (class name if empty, capped at 200 characters); a refusal shows the
+   robots.txt URL and the deciding line from `RobotsPolicy.explain`. Both say the
+   stored jobs were kept and nothing delisted, pinned by a test at
+   `delist_after=1`. The failure is reproduced with a stubbed extractor.
+2. **One page, every run.** `page_sizes.py` holds `TYPICAL_PAGE_SIZES` (moved from
+   `probe.py`, which imports it) and `ONE_PAGE_RUNS = 5`. A pure
+   `constant_page_size` decides; `JobStore.recent_successful_row_counts` reads the
+   last five `ok = 1` `source_health` rows of scrape-kind runs, as of the current
+   run, inside the run's transaction, so a dry run is judged as the newest run and
+   writes nothing. Tested: a streak broken by one run, a constant count that is no
+   page size, fewer than five runs, a failed run skipped, and a `retrofilter` run
+   between two identical runs (both without and with a stray health row).
+   **N is 5**, the package's default: the four known cases sat at 20 in all of 27
+   runs, so every N from 3 to 10 catches them at the first run that can fire; N only
+   moves the false positives (85, 60, 46, 33, 23, 17 source-runs at N = 3, 4, 5, 6,
+   8, 10, over the whole history).
+   **The store's verdict, run against a copy, read-only: no source trips it today
+   (run 37).** Replayed as of run 28 it names airbus, axis_comms, irc and path at 20
+   (the bug) and nutrition_international at 10. The known SP3c false positive does
+   not occur: airbus, narrowed, reads 11 (it was 12 for four runs, one short of
+   five). Historic false positives, a line each: givewell, mammut, oatly, planted,
+   new_incentives, sida. nutrition_international sat at 10 in runs 4-29 then fell
+   to 6 and 3, and the store cannot say whether that was a real board or a page of
+   ten; **see the to-do below.**
+3. **Tombstone guard.** `curated.tombstoned_sources` by board identity, run before
+   the first fetch, warn-only, in a block of its own; an unreadable list is said in
+   the same block. `run_pipeline(curated_dir=…)` has no default, so only `run.py`
+   reads the owner's file. The real tombstone matches nothing in the real
+   `sources.yaml` today.
+
+**Docs:** README "Reading the run summary" shows every new block and the changed
+`Sources` line, each checked line for line against the rendered output, and says
+where each lands; test count 1339. DECISIONS has three entries (failure counted
+apart from skip and the robots row, the one-page rule with its N and the store's
+verdict, the tombstone guard). SP12 has not landed, so the README says the
+Layer 0 audit is its own package and links nothing.
+
+**Found, not fixed (outside this package):**
+- `nutrition_international` returned exactly 10 rows for 26 runs. Worth one look at
+  the Workable reader's page size against the live board, since a 10-to-3 fall is
+  also what a lifted cap would look like. SP7's rule would have named it from
+  run 8.
+
 ### Your to-dos
 
-- [ ] Decide whether you want the tombstone guard (part 3). It is the smallest
-      part and the easiest to skip. Parts 1 and 2 are not optional.
-- [ ] When the session reports which sources the one-page rule would flag
+- [x] Decide whether you want the tombstone guard (part 3). Built, 2026-10-08.
+- [x] When the session reports which sources the one-page rule would flag
       today, say whether any of them is known to be a genuinely small board.
+      None are flagged today. Still open: is `nutrition_international` a board
+      that held 10 postings for months, or a reader that read one page of 10?
 
 ---
 
