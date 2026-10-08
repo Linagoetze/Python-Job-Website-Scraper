@@ -50,6 +50,7 @@ from job_scraper.extractors import (  # noqa: E402
     niras,
     norrsken,
     personio,
+    sida,
     smartrecruiters,
     successfactors_html,
     teamtailor,
@@ -331,6 +332,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "oatly.html",
         "https://careers.oatly.com/en-GB/jobs",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="oatly"),
+    ),
+    "sida": (
+        "sida.html",
+        "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/",
+        lambda url, fetch: sida.extract(url, fetch, source_name="sida"),
     ),
 }
 

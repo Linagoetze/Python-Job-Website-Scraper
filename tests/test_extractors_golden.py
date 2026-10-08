@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import ashby, coefficient, personio, smartrecruiters, workable
+from job_scraper.extractors import ashby, coefficient, personio, sida, smartrecruiters, workable
 from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
 from tests.fixture_cases import EMPTY_FIXTURES, FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
@@ -870,6 +870,29 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "sida": {
+        # sida.py. The reader wrote "Stockholm, Sweden" on every row; the
+        # page labels each posting's place, and six of nine said Sundbyberg.
+        # It now reads the "Plats:" label and checks its count against the
+        # page's stated total (9).
+        "count": 9,
+        "first_job": {
+            "source_name": "sida",
+            "title": "Säkerhetsspecialist, person- och resesäkerhet",
+            "location": "Sundbyberg",
+            "department": "",
+            "listing_url": "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/",
+            "detail_url": (
+                "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/"
+                "5688-sakerhetsspecialist-person-och-resesakerhet"
+            ),
+            "apply_url": (
+                "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/"
+                "5688-sakerhetsspecialist-person-och-resesakerhet"
+            ),
+            "raw_snippet": "Säkerhetsspecialist, person- och resesäkerhet Sundbyberg",
+        },
+    },
 }
 
 
@@ -1264,6 +1287,32 @@ def test_coefficient_does_not_read_a_table_under_a_later_heading() -> None:
         _coefficient("", after=role)
     [job] = _coefficient(role)
     assert (job["title"], job["detail_url"]) == ("Analyst", _COEFFICIENT_ROLE)
+
+
+def _sida_page() -> str:
+    return (FIXTURES_DIR / FIXTURE_CASES["sida"][0]).read_text(encoding="utf-8")
+
+
+def _sida(page: str) -> list[dict[str, Any]]:
+    return sida.extract(FIXTURE_CASES["sida"][1], lambda url: page, "sida")
+
+
+def test_sida_reads_each_posting_s_own_place() -> None:
+    """Not the head office for every row, which is what the reader used to write."""
+    places = sorted(job["location"] for job in parse_fixture("sida"))
+    assert places == ["Stockholm"] * 3 + ["Sundbyberg"] * 6
+
+
+def test_sida_fails_loudly_when_the_count_disagrees_with_the_total() -> None:
+    page = _sida_page().replace(">9<", ">10<")
+    with pytest.raises(ValueError, match="states 10 vacancies but 9 were read"):
+        _sida(page)
+
+
+def test_sida_fails_loudly_without_a_stated_total() -> None:
+    page = _sida_page().replace("lediga tjänster", "")
+    with pytest.raises(ValueError, match="no stated total"):
+        _sida(page)
 
 
 def test_oatly_reads_each_card_shape_the_old_reader_could_not() -> None:
