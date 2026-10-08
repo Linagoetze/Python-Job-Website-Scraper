@@ -38,7 +38,6 @@ from job_scraper.extractors import (  # noqa: E402
     ashby,
     bearingpoint,
     breezy,
-    coefficient,
     gfi_europe,
     giving_what_we_can,
     greenhouse,
@@ -311,10 +310,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: asana.extract(url, fetch, source_name="asana"),
     ),
     "coefficient_giving": (
-        # Captured with no open roles, and the page saying so: see EMPTY_FIXTURES.
-        "coefficient_giving.html",
-        "https://coefficientgiving.org/about-us/careers/",
-        lambda url, fetch: coefficient.extract(url, fetch, source_name="coefficient_giving"),
+        # Ashby's posting API since SP6, like kognity. Its one posting is the
+        # board's standing "Expression of Interest" form, not a vacancy.
+        "coefficient_giving.json",
+        "https://jobs.ashbyhq.com/coefficientgiving",
+        lambda url, fetch: ashby.extract(url, fetch, source_name="coefficient_giving"),
     ),
     "mammut": (
         "mammut.html",
@@ -346,7 +346,8 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
 # when its reader tells a stated empty board from an unreadable one (the
 # reader's own tests pin the second case), and it leaves when a re-capture
 # finds postings, since its row parsing has no real markup behind it until then.
-EMPTY_FIXTURES: frozenset[str] = frozenset({"coefficient_giving"})
+# Empty since coefficient_giving moved to the Ashby API (SP6), which lists a post.
+EMPTY_FIXTURES: frozenset[str] = frozenset()
 
 
 def fixture_pages(name: str) -> list[Path]:

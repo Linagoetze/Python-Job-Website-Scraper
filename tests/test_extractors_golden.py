@@ -29,7 +29,6 @@ import pytest
 from job_scraper.extractors import (
     asana,
     ashby,
-    coefficient,
     personio,
     sida,
     smartrecruiters,
@@ -810,12 +809,31 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         "description": (7553, "The Administrative Business Partner (ABP) provides strategic"),
     },
     "coefficient_giving": {
-        # coefficient.py. The page said "There are no open roles at this time.",
-        # so zero is the answer (EMPTY_FIXTURES). The capture found the reader
-        # returning [] just as quietly for a missing heading or table, which it
-        # now refuses; see the coefficient tests below.
-        "count": 0,
-        "first_job": None,
+        # ashby.py since SP6, reading the board's posting API: the WordPress
+        # page's own reader is gone, and its roles were always links to this
+        # board. The first capture through it (2026-10-08) holds one posting,
+        # the standing "Expression of Interest" form, which the owner rejects
+        # once in review rather than the reader learning to skip it. Its
+        # secondaryLocations join the field as segments (SP4f).
+        "count": 1,
+        "first_job": {
+            "source_name": "coefficient_giving",
+            "title": "Expression of Interest",
+            "location": "Remote - Global | San Francisco | Remote - USA",
+            "department": "Future Openings",
+            "listing_url": "https://jobs.ashbyhq.com/coefficientgiving",
+            "detail_url": (
+                "https://jobs.ashbyhq.com/coefficientgiving/2cc48fa8-97aa-47d8-b367-bf3b66cdba3f"
+            ),
+            "apply_url": (
+                "https://jobs.ashbyhq.com/coefficientgiving/2cc48fa8-97aa-47d8-b367-bf3b66cdba3f"
+            ),
+            "raw_snippet": (
+                "Expression of Interest Future Openings Remote - Global | San Francisco | "
+                "Remote - USA"
+            ),
+        },
+        "description": (1304, "Open Philanthropy is now Coefficient Giving."),
     },
     "mammut": {
         # mammut.py. No bug: all 17 rows match the page. The location is the
@@ -1241,62 +1259,6 @@ def test_workable_keeps_its_single_location_when_every_location_is_hidden() -> N
 
 
 # --- SP6 -------------------------------------------------------------------
-#
-# coefficient's capture held no role, so its row parsing has no real markup
-# behind it. The pages below are handwritten to the shape the reader expects,
-# and test the refusals, not the layout.
-
-_COEFFICIENT_URL = "https://coefficientgiving.org/about-us/careers/"
-_COEFFICIENT_ROLE = (
-    "https://jobs.ashbyhq.com/coefficientgiving/00000000-0000-4000-8000-000000000000"
-)
-
-
-def _coefficient(section: str, after: str = "") -> list[dict[str, Any]]:
-    page = (
-        f'<html><body><h2 id="0-open-roles">Open Roles</h2>{section}'
-        f'<h2 id="1-referrals">Referrals</h2>{after}</body></html>'
-    )
-    return coefficient.extract(_COEFFICIENT_URL, lambda url: page, "coefficient_giving")
-
-
-def test_coefficient_reads_a_stated_empty_board_as_empty() -> None:
-    assert (
-        _coefficient(
-            "<table><tr><td><em>There are no open roles at this time.</em></td></tr></table>"
-        )
-        == []
-    )
-
-
-def test_coefficient_fails_loudly_without_its_heading() -> None:
-    page = "<html><body><h2>Careers</h2></body></html>"
-    with pytest.raises(ValueError, match="no Open Roles heading"):
-        coefficient.extract(_COEFFICIENT_URL, lambda url: page, "coefficient_giving")
-
-
-@pytest.mark.parametrize(
-    "section",
-    [
-        "",
-        "<table><tr><td><strong>Analyst</strong></td><td>Apply on our new site</td></tr></table>",
-    ],
-    ids=["no-table", "no-readable-role"],
-)
-def test_coefficient_fails_loudly_on_a_section_it_cannot_read(section: str) -> None:
-    with pytest.raises(ValueError, match="does not say there are none"):
-        _coefficient(section)
-
-
-def test_coefficient_does_not_read_a_table_under_a_later_heading() -> None:
-    role = (
-        f'<table><tr><td><strong>Analyst</strong></td><td><a class="content-button" '
-        f'href="{_COEFFICIENT_ROLE}">Apply</a></td></tr></table>'
-    )
-    with pytest.raises(ValueError):
-        _coefficient("", after=role)
-    [job] = _coefficient(role)
-    assert (job["title"], job["detail_url"]) == ("Analyst", _COEFFICIENT_ROLE)
 
 
 def _sida_page() -> str:
