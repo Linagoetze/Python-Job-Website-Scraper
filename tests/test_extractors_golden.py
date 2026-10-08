@@ -1321,3 +1321,42 @@ def test_asana_without_embedded_postings_still_lists_its_cards() -> None:
         "Fabrikam City",
         "",
     )
+
+
+def test_sida_reads_a_stated_zero_as_an_empty_board() -> None:
+    """Handwritten: no zero-vacancy page has been captured yet."""
+    page = (
+        '<html><body><div class="job-listing__pagination-div"><p>Totalt '
+        '<span class="semi-bold">0</span> lediga tjänster</p></div></body></html>'
+    )
+    assert _sida(page) == []
+
+
+def test_sida_says_an_unread_empty_page_may_be_a_day_without_vacancies() -> None:
+    with pytest.raises(ValueError, match="may be a day with no vacancies"):
+        _sida("<html><body><p>Inga lediga jobb just nu.</p></body></html>")
+
+
+def test_sida_fails_loudly_when_no_posting_carries_the_place_label() -> None:
+    page = _sida_page().replace("Plats:", "Ort:")
+    with pytest.raises(ValueError, match="may have been renamed"):
+        _sida(page)
+
+
+def test_sida_warns_about_one_posting_without_the_place_label(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    page = _sida_page().replace("Plats:", "Ort:", 1)
+    jobs = _sida(page)
+    assert [job["location"] for job in jobs].count("") == 1
+    assert "1 posting(s) with no 'Plats:' label" in caplog.text
+
+
+def test_asana_warns_when_some_postings_have_no_embedded_description(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    page = (FIXTURES_DIR / FIXTURE_CASES["asana"][0]).read_text(encoding="utf-8")
+    page = page.replace('"id":8165477', '"id":1', 1)
+    jobs = asana.extract(FIXTURE_CASES["asana"][1], lambda url: page, "asana")
+    assert sum(not job["description_text"] for job in jobs) == 1
+    assert "1 of 100 postings" in caplog.text

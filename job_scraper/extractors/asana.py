@@ -10,8 +10,9 @@ The page also embeds the Greenhouse postings it was built from, in
 `__NEXT_DATA__` (a `greenhouseJobsList` component), each with its full
 `content`. The reader supplies that as `description_text`, so Layer 5 reads it
 instead of rendering a detail page per job (SP6, 2026-10-08). A card with no
-matching posting gets no description and Layer 5 fetches its page as before;
-the cards, not the JSON, remain the list of jobs.
+matching posting gets no description and Layer 5 fetches its page as before,
+with a warning that counts such cards; the cards, not the JSON, remain the
+list of jobs.
 """
 
 from __future__ import annotations
@@ -106,11 +107,16 @@ def extract(
                 "description_text": description,
             }
         )
-    if out and not descriptions:
-        # Not a failure: Layer 5 fetches each page instead, as it did before.
+    missing = sum(1 for job in out if not job["description_text"])
+    if missing:
+        # Not a failure: Layer 5 fetches those pages instead, as it did before,
+        # but a page that stops embedding postings should be seen, not inferred.
         logger.warning(
-            "%s: no embedded Greenhouse postings on %s; Layer 5 will fetch every page",
+            "%s: %d of %d postings on %s have no embedded description; "
+            "Layer 5 will fetch their pages",
             source_name,
+            missing,
+            len(out),
             listing_url,
         )
     return out

@@ -13,7 +13,14 @@ nine postings placed in Sundbyberg (SP6).
 The page states its own total ("Totalt 9 lediga tjänster") in a block that
 would hold a pager, though none has been seen. A count that disagrees with the
 total, or a page with no total, raises: a second page this reader does not
-walk, or a layout it no longer reads, must not pass for a short list.
+walk, or a layout it no longer reads, must not pass for a short list. A day
+with no vacancies has not been seen either. "Totalt 0 lediga tjänster" reads as
+empty, and any other empty page raises with a message saying it may be one, so
+that its wording can be captured and taught here rather than guessed.
+
+A renamed "Plats:" label would blank every location without failing, so a
+page where no posting carries the label raises. One posting without it only
+logs a warning, since a card may simply have no place.
 
 Applying redirects to an external ReachMee portal (login required there),
 but browsing and title/location extraction work without authentication.
@@ -21,12 +28,15 @@ but browsing and title/location extraction work without authentication.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
+
+logger = logging.getLogger(__name__)
 
 _JOB_PATH = "/lediga-tjanster/"
 _LOCATION_LABEL = "Plats:"
@@ -93,11 +103,31 @@ def extract(
         )
 
     total = _stated_total(soup)
+    if total is None and not out:
+        raise ValueError(
+            f"{source_name}: no postings and no stated total at {listing_url}. This may be "
+            "a day with no vacancies in a layout not seen yet: capture the page and teach "
+            "the reader its wording"
+        )
     if total is None:
         raise ValueError(f"{source_name}: no stated total of vacancies at {listing_url}")
     if total != len(out):
         raise ValueError(
             f"{source_name}: the page states {total} vacancies but {len(out)} were read "
             f"at {listing_url}"
+        )
+    unplaced = [job["title"] for job in out if not job["location"]]
+    if out and len(unplaced) == len(out):
+        raise ValueError(
+            f"{source_name}: no posting at {listing_url} carries a {_LOCATION_LABEL!r} label; "
+            "the label may have been renamed"
+        )
+    if unplaced:
+        logger.warning(
+            "%s: %d posting(s) with no %r label: %s",
+            source_name,
+            len(unplaced),
+            _LOCATION_LABEL,
+            ", ".join(unplaced),
         )
     return out
