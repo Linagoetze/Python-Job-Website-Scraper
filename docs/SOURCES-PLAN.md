@@ -166,7 +166,7 @@ SP14 after SP8 (both touch the probe's report). SP15 and SP16 are optional and
 only as wanted: SP16's first step may end it. SP17 is independent and small, and
 best before the next SP5 batch, since a candidate recorded under an employer's
 own page will meet it again.
-**SP18 before SP5 adds any Workable employer** (found by SP7, 2026-10-08): the
+**SP18 before any further Workable employer is added** (found by SP7, 2026-10-08; SP5's prompt is unchanged, the owner having done SP5): the
 reader returns at most ten postings, so a Workable board of eleven or more is
 read short and silently. It is independent of everything but SP4's fixtures and
 SP4d's reader, and touches `probe.py` as SP14 does, so whichever lands second
@@ -3419,7 +3419,7 @@ SmartRecruiters or Workable; SP3b too if any runs on Workday.
 
 Add the following companies to the scraper: <OWNER FILLS IN NAMES AND URLS>
 
-THREE PLATFORM RULES (two from SP4d, amended 2026-10-02; one from SP7/SP18):
+TWO PLATFORM RULES FROM SP4d (amended 2026-10-02):
 - An Ashby board reads through Ashby's public posting API, descriptions
   included. Its sources.yaml url is the board page,
   https://jobs.ashbyhq.com/<board>, with `strategy: static`.
@@ -3429,15 +3429,6 @@ THREE PLATFORM RULES (two from SP4d, amended 2026-10-02; one from SP7/SP18):
   (`probe.py`'s Platform entry) until SP14 lands. Correct the entry you paste,
   and say so in the plan. Fixing the probe's suggestion is SP14, because the
   probe also uses that strategy to run the reader. Do not fold it in.
-- UNTIL SP18 LANDS, the Workable reader returns at most ten postings: it sends
-  one POST and ignores the `total` and `nextPage` in the response. A Workable
-  board whose response states a `total` above its results is read short, and
-  nothing fails (nutrition_international was, for 26 runs). Before adding a
-  Workable board, make one request (the reader's own POST) and compare `total`
-  with the number of results. If total is larger, or the response has a
-  `nextPage` and ten results, do NOT add the source: report it and wait for
-  SP18. A board at exactly ten with a `nextPage` is ambiguous (simprints is): the
-  token's page is empty only if you follow it.
 After the pipeline run below, read its "Unreadable pages" block. A new source
 named there is starved at Layer 5 from its first run. Stop and report it, as
 SP4b would have.
@@ -5051,8 +5042,8 @@ board's count, not the page's (11 beside 10 results), which is what makes the
 check possible.
 
 Sonnet 5, `think`, 2 hr. It needs SP4 (the fixtures and the `post_json` seam) and
-SP4d (the reader's present shape); it must land before SP5 adds a Workable
-board. SP14 also edits `probe.py`: whichever lands second rebases over the first.
+SP4d (the reader's present shape); it must land before another Workable
+board is added. SP14 also edits `probe.py`: whichever lands second rebases over the first.
 
 ```
 think
@@ -5124,8 +5115,7 @@ SP3b's prompt: this is SP3b's walk on a smaller API, with the same stop rule.
    limit. docs/DECISIONS.md: that Workable's page is 10, that `total` is the
    board's count, that a full page carries a token even at the end (so the end is
    an empty page with the count reached), and that the golden had pinned a short
-   read. Plan: tick SP5's third platform rule as no longer applying, and edit the
-   shared rule that cites this package.
+   read. Plan: edit the shared rule that cites this package.
 
 Branch sp18-workable-walk. Commit, do not push. Update this plan file.
 ```
@@ -5134,8 +5124,8 @@ Branch sp18-workable-walk. Commit, do not push. Update this plan file.
 
 - [ ] Say whether you know a real Workable board with more than ten postings; a
       real two-page capture is worth more than a hand-written second page.
-- [ ] Until this lands, do not add a Workable employer through SP5 without the
-      check in SP5's third platform rule.
+- [ ] Until this lands, do not add a Workable employer without first comparing
+      the board's `total` with the postings the reader returns (one request).
 
 ---
 
