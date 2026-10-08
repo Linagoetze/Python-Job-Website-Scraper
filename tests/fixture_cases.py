@@ -326,6 +326,12 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://www.norrsken.org/work-at-norrsken",
         lambda url, fetch: norrsken.extract(url, fetch, source_name="norrsken"),
     ),
+    "oatly": (
+        # A Teamtailor board, read by the generic reader since SP6.
+        "oatly.html",
+        "https://careers.oatly.com/en-GB/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="oatly"),
+    ),
 }
 
 # Fixtures captured while the board listed nothing and said so in words, so an

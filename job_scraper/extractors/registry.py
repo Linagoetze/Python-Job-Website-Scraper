@@ -23,7 +23,6 @@ from job_scraper.extractors import (
     mammut,
     niras,
     norrsken,
-    oatly,
     personio,
     sida,
     smartrecruiters,
@@ -56,6 +55,10 @@ REGISTRY: dict[str, ExtractorFn] = {
     "planted": partial(teamtailor.extract, source_name="planted"),
     "lifesum": partial(teamtailor.extract, source_name="lifesum"),
     "fjallraven": partial(teamtailor.extract, source_name="fjallraven"),
+    # Oatly had a reader of its own until SP6 (2026-10-08), whose capture found
+    # it blank on location and department for every posting. The generic reader
+    # read the same page correctly; the store adds the /en-GB/ locale itself.
+    "oatly": partial(teamtailor.extract, source_name="oatly"),
     # --- Lever API ---
     "wave": partial(lever.extract, source_name="wave", org_slug="waveapps"),
     # --- Workday (Playwright) ---
@@ -76,7 +79,6 @@ REGISTRY: dict[str, ExtractorFn] = {
     "outdooractive": partial(personio.extract, source_name="outdooractive"),
     # --- Custom HTML ---
     "coefficient_giving": partial(coefficient.extract, source_name="coefficient_giving"),
-    "oatly": partial(oatly.extract, source_name="oatly"),
     "against_malaria_foundation": partial(
         against_malaria.extract, source_name="against_malaria_foundation"
     ),

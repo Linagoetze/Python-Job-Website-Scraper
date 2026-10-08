@@ -843,6 +843,33 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain",
         },
     },
+    "oatly": {
+        # teamtailor.py since SP6. Oatly's own reader returned an empty
+        # location and department on all 15 rows: it looked for a `mt-1`
+        # metadata block the page now calls `mt-4`, and its positional split
+        # would have read "Onsite" as the location had it found one. The
+        # generic reader reads every card. Its detail_url has no /en-GB/; the
+        # store adds it, and the key is the posting id either way.
+        "count": 15,
+        "first_job": {
+            "source_name": "oatly",
+            "title": "Stage Chef de secteur Proximité Paris janvier-juin 2027",
+            "location": "Paris",
+            "department": "Sales & Commercial",
+            "listing_url": "https://careers.oatly.com/en-GB/jobs",
+            "detail_url": (
+                "https://careers.oatly.com/jobs/8489573-stage-chef-de-secteur-proximite-paris-"
+                "janvier-juin-2027"
+            ),
+            "apply_url": (
+                "https://careers.oatly.com/jobs/8489573-stage-chef-de-secteur-proximite-paris-"
+                "janvier-juin-2027"
+            ),
+            "raw_snippet": (
+                "Stage Chef de secteur Proximité Paris janvier-juin 2027 Sales & Commercial Paris"
+            ),
+        },
+    },
 }
 
 
@@ -1237,3 +1264,17 @@ def test_coefficient_does_not_read_a_table_under_a_later_heading() -> None:
         _coefficient("", after=role)
     [job] = _coefficient(role)
     assert (job["title"], job["detail_url"]) == ("Analyst", _COEFFICIENT_ROLE)
+
+
+def test_oatly_reads_each_card_shape_the_old_reader_could_not() -> None:
+    """A workplace chip goes to the snippet, and a card with one segment is a place."""
+    jobs = {job["title"]: job for job in parse_fixture("oatly")}
+    onsite = jobs["Maintenance Engineer"]
+    assert (onsite["location"], onsite["department"]) == ("Vlissingen", "Site Manufacturing")
+    assert onsite["raw_snippet"].endswith("Onsite")
+    no_department = jobs["Logistics Project Manager & Analytics"]
+    assert (no_department["location"], no_department["department"]) == (
+        "United States - Remote",
+        "",
+    )
+    assert all(job["location"] for job in jobs.values())
