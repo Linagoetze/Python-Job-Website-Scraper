@@ -26,9 +26,9 @@ from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import ashby, personio, smartrecruiters, workable
+from job_scraper.extractors import ashby, coefficient, personio, smartrecruiters, workable
 from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
-from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
+from tests.fixture_cases import EMPTY_FIXTURES, FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
 #
@@ -799,6 +799,14 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Administrative Business Partner Vancouver, BC",
         },
     },
+    "coefficient_giving": {
+        # coefficient.py. The page said "There are no open roles at this time.",
+        # so zero is the answer (EMPTY_FIXTURES). The capture found the reader
+        # returning [] just as quietly for a missing heading or table, which it
+        # now refuses; see the coefficient tests below.
+        "count": 0,
+        "first_job": None,
+    },
     "mammut": {
         # mammut.py. No bug: all 17 rows match the page. The location is the
         # third labelled span (the second is the employment type). One title
@@ -843,6 +851,11 @@ def test_every_fixture_has_a_golden() -> None:
     assert set(_GOLDEN) == set(FIXTURE_CASES)
 
 
+def test_only_a_declared_empty_fixture_is_pinned_at_zero() -> None:
+    """A zero golden is a stated empty board, never a selector pinned as broken."""
+    assert {name for name, golden in _GOLDEN.items() if not golden["count"]} == EMPTY_FIXTURES
+
+
 @pytest.mark.parametrize("name", sorted(_GOLDEN))
 def test_extractor_output_matches_golden(name: str) -> None:
     filename = FIXTURE_CASES[name][0]
@@ -856,6 +869,8 @@ def test_extractor_output_matches_golden(name: str) -> None:
         f"{name}: expected {expected['count']} jobs, got {len(jobs)}. "
         "Either a selector drifted or the fixture was refreshed."
     )
+    if not expected["count"]:
+        return
     first = dict(jobs[0])
     if "description" in expected:
         chars, opening = expected["description"]
@@ -1163,3 +1178,62 @@ def test_workable_keeps_its_single_location_when_every_location_is_hidden() -> N
         }
     )
     assert job["location"] == "Litware"
+
+
+# --- SP6 -------------------------------------------------------------------
+#
+# coefficient's capture held no role, so its row parsing has no real markup
+# behind it. The pages below are handwritten to the shape the reader expects,
+# and test the refusals, not the layout.
+
+_COEFFICIENT_URL = "https://coefficientgiving.org/about-us/careers/"
+_COEFFICIENT_ROLE = (
+    "https://jobs.ashbyhq.com/coefficientgiving/00000000-0000-4000-8000-000000000000"
+)
+
+
+def _coefficient(section: str, after: str = "") -> list[dict[str, Any]]:
+    page = (
+        f'<html><body><h2 id="0-open-roles">Open Roles</h2>{section}'
+        f'<h2 id="1-referrals">Referrals</h2>{after}</body></html>'
+    )
+    return coefficient.extract(_COEFFICIENT_URL, lambda url: page, "coefficient_giving")
+
+
+def test_coefficient_reads_a_stated_empty_board_as_empty() -> None:
+    assert (
+        _coefficient(
+            "<table><tr><td><em>There are no open roles at this time.</em></td></tr></table>"
+        )
+        == []
+    )
+
+
+def test_coefficient_fails_loudly_without_its_heading() -> None:
+    page = "<html><body><h2>Careers</h2></body></html>"
+    with pytest.raises(ValueError, match="no Open Roles heading"):
+        coefficient.extract(_COEFFICIENT_URL, lambda url: page, "coefficient_giving")
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        "",
+        "<table><tr><td><strong>Analyst</strong></td><td>Apply on our new site</td></tr></table>",
+    ],
+    ids=["no-table", "no-readable-role"],
+)
+def test_coefficient_fails_loudly_on_a_section_it_cannot_read(section: str) -> None:
+    with pytest.raises(ValueError, match="does not say there are none"):
+        _coefficient(section)
+
+
+def test_coefficient_does_not_read_a_table_under_a_later_heading() -> None:
+    role = (
+        f'<table><tr><td><strong>Analyst</strong></td><td><a class="content-button" '
+        f'href="{_COEFFICIENT_ROLE}">Apply</a></td></tr></table>'
+    )
+    with pytest.raises(ValueError):
+        _coefficient("", after=role)
+    [job] = _coefficient(role)
+    assert (job["title"], job["detail_url"]) == ("Analyst", _COEFFICIENT_ROLE)

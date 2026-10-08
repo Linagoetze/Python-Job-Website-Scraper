@@ -38,6 +38,7 @@ from job_scraper.extractors import (  # noqa: E402
     ashby,
     bearingpoint,
     breezy,
+    coefficient,
     gfi_europe,
     giving_what_we_can,
     greenhouse,
@@ -58,6 +59,7 @@ from job_scraper.extractors import (  # noqa: E402
 )
 
 __all__ = [
+    "EMPTY_FIXTURES",
     "FIXTURES_DIR",
     "FIXTURE_CASES",
     "capture_fixtures",
@@ -307,6 +309,12 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://asana.com/jobs/all",
         lambda url, fetch: asana.extract(url, fetch, source_name="asana"),
     ),
+    "coefficient_giving": (
+        # Captured with no open roles, and the page saying so: see EMPTY_FIXTURES.
+        "coefficient_giving.html",
+        "https://coefficientgiving.org/about-us/careers/",
+        lambda url, fetch: coefficient.extract(url, fetch, source_name="coefficient_giving"),
+    ),
     "mammut": (
         "mammut.html",
         "https://recruiting.mammut.com/Jobs/All",
@@ -319,6 +327,14 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: norrsken.extract(url, fetch, source_name="norrsken"),
     ),
 }
+
+# Fixtures captured while the board listed nothing and said so in words, so an
+# empty parse is the right answer for them and not a drifted selector. Every
+# other fixture must parse to at least one posting. A name belongs here only
+# when its reader tells a stated empty board from an unreadable one (the
+# reader's own tests pin the second case), and it leaves when a re-capture
+# finds postings, since its row parsing has no real markup behind it until then.
+EMPTY_FIXTURES: frozenset[str] = frozenset({"coefficient_giving"})
 
 
 def fixture_pages(name: str) -> list[Path]:
