@@ -61,6 +61,7 @@ from job_scraper.extractors import (
 )
 from job_scraper.extractors.registry import REGISTRY
 from job_scraper.http import FetchedPage
+from job_scraper.page_sizes import TYPICAL_PAGE_SIZES
 from job_scraper.robots import RobotsDisallowed, RobotsVerdict
 from job_scraper.urlutil import board_identity
 
@@ -91,10 +92,6 @@ IGNORE_ROBOTS_NOTE = (
     "`ignore_robots` exists for a rule not meant for us; using it is the owner's "
     "judgement about the site, not the probe's."
 )
-
-# Page sizes listings tend to come in. A reader that returns exactly one of
-# these from a listing with a pager has probably read one page.
-TYPICAL_PAGE_SIZES = frozenset({10, 12, 15, 16, 18, 20, 24, 25, 30, 36, 40, 48, 50, 60, 100})
 
 # Below this much visible text, a page with no postings reads as a shell.
 SHELL_TEXT_CHARS = 300

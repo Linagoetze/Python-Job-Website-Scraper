@@ -107,7 +107,7 @@ the ordering below.
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: three sources live, rest reported | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
-| 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
+| 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | not started | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
@@ -118,13 +118,14 @@ the ordering below.
 | 15 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp15-hibob-reader` |
 | 16 | A generic reader for Taleo career sites | 3 hr | Opus 5 | `think hard` | not started | `sp16-taleo-reader` |
 | 17 | `candidate activate` for a board hosted elsewhere | 1 hr | Sonnet 5 | `think` | not started | `sp17-activate-board` |
+| 18 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | not started | `sp18-workable-walk` |
 
 **Roughly 23 hours** for SP0–SP4 (SP2b, SP3b and SP3c included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
 revealed a bug. SP4 is that package here. SP8–SP17, added from SP5's first batch, come to about
 21 hours more (1.5, 2, 2, 3, 2.5, 2, 1.5, 2, 3 and 1), and SP15 and SP16 are
-optional.
+optional. SP18, found by SP7, adds 2.
 
 **Ordering.** SP0 first and non-negotiable — nothing writes to an unbacked
 directory. SP0b next, because it makes every session after it cheaper, this
@@ -165,6 +166,11 @@ SP14 after SP8 (both touch the probe's report). SP15 and SP16 are optional and
 only as wanted: SP16's first step may end it. SP17 is independent and small, and
 best before the next SP5 batch, since a candidate recorded under an employer's
 own page will meet it again.
+**SP18 before any further Workable employer is added** (found by SP7, 2026-10-08; SP5's prompt is unchanged, the owner having done SP5): the
+reader returns at most ten postings, so a Workable board of eleven or more is
+read short and silently. It is independent of everything but SP4's fixtures and
+SP4d's reader, and touches `probe.py` as SP14 does, so whichever lands second
+rebases over the first.
 
 ### Model recommendations
 
@@ -194,7 +200,7 @@ value is telling a board truthfully elsewhere from a starved location field,
 and a wrong call stops the owner watching a source that was merely broken.
 SP13 is SP4e's reading again, with its own lesson about unrecognised
 alternatives; SP16 is SP11's route choice on another platform. SP8, SP9, SP10,
-SP14, SP15 and SP17 are `Sonnet 5`: capture, fix, pin, with the stop-and-ask in SP10
+SP14, SP15, SP17 and SP18 are `Sonnet 5`: capture, fix, pin, with the stop-and-ask in SP10
 and SP15 written into their prompts.
 
 `Sonnet 5` for SP0b, SP3c, SP4, SP5, SP6
@@ -217,8 +223,8 @@ The surfaces, and what invalidates each:
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
 | `README.md` — "Maintenance commands" | SP1, SP2, SP2b, SP4g, SP12, SP17 | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
-| `README.md` — "Reading the run summary" | SP7, SP4c | SP7: three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. SP4c: the unreadable-detail-pages block. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. |
-| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP5, SP6, SP7, SP8–SP17 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
+| `README.md` — "Reading the run summary" | SP7, SP4c, SP12 | SP7: three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. SP4c: the unreadable-detail-pages block. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. **SP7 landed 2026-10-08** with the blocks in this order: failed, refused, tombstoned, source health, empty, one-page, unreadable. A new block goes in that list, and its README example is checked line for line against the rendered output (a test-built summary, printed). SP12: the README says the Layer 0 audit is SP12's; make that sentence a link to the command. |
+| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP5, SP6, SP7, SP8–SP18 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
 | `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
@@ -4075,12 +4081,73 @@ one-page rule with its N and the store's verdict on it.
 Branch sp7-source-warnings. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-08, branch `sp7-source-warnings`
+
+Three commits, one per warning, 1303 → 1339 tests (`tests/test_source_warnings.py`).
+`pytest`, `ruff check`, `ruff format --check` and `run --help` are clean. Not pushed.
+
+**The owner's three answers, asked before any commit:** build the tombstone guard;
+a robots refusal gets **no** `source_health` row; the one-page rule has **no**
+exemption for guarded readers.
+
+1. **Failed and refused sources.** `RunSummary.failed_sources` and
+   `refused_sources`; `sources_skipped` is config skips only. The `Sources` line
+   adds `N failed` / `N refused by robots.txt` only when non-zero, so a healthy
+   run is unchanged. Each has a block first under the closing totals, built from
+   the in-memory results so a dry run shows it. A failure shows the first line of
+   its error (class name if empty, capped at 200 characters); a refusal shows the
+   robots.txt URL and the deciding line from `RobotsPolicy.explain`. Both say the
+   stored jobs were kept and nothing delisted, pinned by a test at
+   `delist_after=1`. The failure is reproduced with a stubbed extractor.
+2. **One page, every run.** `page_sizes.py` holds `TYPICAL_PAGE_SIZES` (moved from
+   `probe.py`, which imports it) and `ONE_PAGE_RUNS = 5`. A pure
+   `constant_page_size` decides; `JobStore.recent_successful_row_counts` reads the
+   last five `ok = 1` `source_health` rows of scrape-kind runs, as of the current
+   run, inside the run's transaction, so a dry run is judged as the newest run and
+   writes nothing. Tested: a streak broken by one run, a constant count that is no
+   page size, fewer than five runs, a failed run skipped, and a `retrofilter` run
+   between two identical runs (both without and with a stray health row).
+   **N is 5**, the package's default: the four known cases sat at 20 in all of 27
+   runs, so every N from 3 to 10 catches them at the first run that can fire; N only
+   moves the false positives (85, 60, 46, 33, 23, 17 source-runs at N = 3, 4, 5, 6,
+   8, 10, over the whole history).
+   **The store's verdict, run against a copy, read-only: no source trips it today
+   (run 37).** Replayed as of run 28 it names airbus, axis_comms, irc and path at 20
+   (the bug) and nutrition_international at 10. The known SP3c false positive does
+   not occur: airbus, narrowed, reads 11 (it was 12 for four runs, one short of
+   five). Historic false positives, a line each: givewell, mammut, oatly, planted,
+   new_incentives, sida. nutrition_international sat at 10 in runs 4-29 then fell
+   to 6 and 3. **Resolved the same day: it was a page of ten, a reader bug, not a
+   board** (SP18, below). Its own saved fixture, captured 2026-09-24, states
+   `total: 11` beside 10 results and a `nextPage` token; the golden test pinned
+   the 10. The rule named it from run 8, and it was right.
+3. **Tombstone guard.** `curated.tombstoned_sources` by board identity, run before
+   the first fetch, warn-only, in a block of its own; an unreadable list is said in
+   the same block. `run_pipeline(curated_dir=…)` has no default, so only `run.py`
+   reads the owner's file. The real tombstone matches nothing in the real
+   `sources.yaml` today.
+
+**Docs:** README "Reading the run summary" shows every new block and the changed
+`Sources` line, each checked line for line against the rendered output, and says
+where each lands; test count 1339. DECISIONS has three entries (failure counted
+apart from skip and the robots row, the one-page rule with its N and the store's
+verdict, the tombstone guard). SP12 has not landed, so the README says the
+Layer 0 audit is its own package and links nothing.
+
+**Found, not fixed (outside this package):**
+- **The Workable reader reads one page of ten and ignores the `total` and
+  `nextPage` its response carries.** Found by following up the one-page rule's
+  only unexplained hit; now SP18. nutrition_international's board held 11 when
+  captured and the reader returned 10, for 26 runs. Today's boards are read
+  correctly (3 and 10), but simprints sits exactly at the cap.
+
 ### Your to-dos
 
-- [ ] Decide whether you want the tombstone guard (part 3). It is the smallest
-      part and the easiest to skip. Parts 1 and 2 are not optional.
-- [ ] When the session reports which sources the one-page rule would flag
+- [x] Decide whether you want the tombstone guard (part 3). Built, 2026-10-08.
+- [x] When the session reports which sources the one-page rule would flag
       today, say whether any of them is known to be a genuinely small board.
+      None are flagged today. `nutrition_international` was a reader that read
+      one page of 10 from a board of 11 or more: see SP18.
 
 ---
 
@@ -4119,6 +4186,14 @@ a prompt does not have to repeat them.
   returns a posting whose `location` is its title or a field label (WP8g, SP5).
   It reads the platform's workplace field, if it has one, into `raw_snippet`
   (SP4f).
+- **A fixture that states its own total must parse to it.** SP7 found a golden
+  pinning 10 postings from a saved response that said `total: 11` beside a
+  `nextPage` token: the test was green on a short read for three weeks, and the
+  store showed it as a constant row count for 26 runs (SP18). When capturing,
+  read the saved response for a stated total, a token, a pager or "N of M", and
+  compare it with what the golden pins before trusting either. SP7's one-page
+  block will now name a reader that reads one page, but only after five runs;
+  the capture is where it should be caught.
 - **One reader, one fixture, one golden.** Add the `FIXTURE_CASES` entry in
   `tests/fixture_cases.py` and the golden in `tests/test_extractors_golden.py`,
   and make the golden's first job one whose every field was checked against the
@@ -4940,6 +5015,117 @@ Branch sp17-activate-board. Commit, do not push. Update this plan file.
 - [x] This widens an exception to CLAUDE.md's rule about `data/curated/`, so it
       is yours to grant: say yes or no to the `company`-must-match evidence
       before the session starts. **Granted by the owner on 2026-10-07.**
+
+### SP18 — The Workable reader walks its whole board
+
+Found by SP7 (2026-10-08). The one-page rule's only unexplained hit was
+nutrition_international: exactly 10 rows in runs 4–29, then 6, then 3. The reader
+(`extractors/workable.py`) sends one POST with an empty body and never reads the
+response's `total` or follows its `nextPage` token. Workable's page is 10. The
+board's own saved fixture, captured 2026-09-24, says it plainly: `total: 11`, 10
+results, a `nextPage` token. The golden test pins 10, so a short read has been
+the test's expected answer since SP4. One posting was never seen; how many
+more over the 26 runs is unknowable.
+
+What the live boards showed on 2026-10-08, one request each (a fourth followed
+simprints' token): nutrition_international `total: 3`, no token, read correctly;
+simprints `total: 10`, 10 results **and** a token, whose second page is empty, so
+the board is exactly 10 and a full page carries a token even at the end. Both read
+correctly today. simprints is at the cap, and a Workable board of eleven or more
+is read short. Nutrition_international's other 25 hits were rows Layer 0 drops
+anyway (no stored rows), so no stored job was lost, but a new Workable employer
+would lose postings that pass.
+
+This is WP11's failure in a reader WP11 did not cover, and SP3b's for Workday: the
+response states its own length, and the reader does not check it. `total` is the
+board's count, not the page's (11 beside 10 results), which is what makes the
+check possible.
+
+Sonnet 5, `think`, 2 hr. It needs SP4 (the fixtures and the `post_json` seam) and
+SP4d (the reader's present shape); it must land before another Workable
+board is added. SP14 also edits `probe.py`: whichever lands second rebases over the first.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP18
+only. Read SP7's result and the DECISIONS entry on the one-page rule first, and
+SP3b's prompt: this is SP3b's walk on a smaller API, with the same stop rule.
+
+1. PIN THE BUG FIRST. tests/fixtures/nutrition_international.json holds
+   `total: 11`, 10 results and a `nextPage`. Write a test against the reader as
+   it is today that fails because it returns 10: a replayed fetcher whose first
+   POST gives that response and whose second gives a hand-written second page
+   with the eleventh posting, so the test expects 11. Watch it fail, then keep
+   it. The existing golden for nutrition_international pins the short read and
+   WILL change; say so in the commit.
+
+2. WALK THE BOARD. After the first POST, while the response carries `nextPage`,
+   POST again with {**body, "token": <nextPage>} through the SAME fetcher's
+   post_json (never http.post_json: the capture script and the probe replace
+   it). Rules, each with a test written to fail without the guard:
+   - the walk ends on a page with no results, or a response with no
+     `nextPage`;
+   - it then reconciles with extractors/pagination.reconcile against the first
+     response's `total`: fewer postings read than `total` raises ShortWalkError
+     (so the run keeps the source's stored jobs and says so in SP7's Failed
+     sources block); more is fine;
+   - a token that repeats, or a walk past a sane page cap (pick one from the
+     largest board you can justify, say it, and raise rather than stop
+     silently), raises;
+   - a token with an empty next page and results already equal to `total` is
+     the END, not a failure: simprints is exactly that today (10 results, a
+     token, an empty second page). Test it with simprints' real saved page
+     plus an empty one. This is the case a naive "token means more" gets wrong
+     and the case that would fail a healthy source on every run.
+   - a response with no `total` key: do not guess. Raise, or fall back to
+     "read until empty" with unverifiable_end, whichever pagination.py's
+     existing wording supports; say which and why.
+   Detail URLs and keys are unchanged (built from slug and shortcode), so no
+   stored row's key moves; say that you checked.
+
+3. THE FIXTURE. capture_fixtures.py --pages all records a whole walk, but no
+   live board here holds more than ten, so it cannot capture a multi-page one.
+   Do NOT scrape other Workable employers to find one (CLAUDE.md). Build the
+   two-page case from the real saved first page plus a hand-written second page
+   under tests/fixtures/ in a name capture_fixtures._page_of does not own (the
+   `path.rendered.html` rule), with a README line saying which page is invented,
+   as tests/fixtures/probe/ does. Re-capture simprints with --pages all (it
+   makes one extra POST, to the empty page) so its fixture holds the walk it
+   ends on. ASK THE OWNER before keeping any fixture past a megabyte; these are
+   a few kilobytes. If the owner knows a real board past ten, they may give it
+   in chat and you may capture it once.
+
+4. THE PROBE. Workable's Platform entry is not `guarded`. Once the reader walks
+   and checks a total it is, so set `guarded=True` and rewrite its `walk` text.
+   Check the probe's short-read verdict for it reads as a reader bug (SP3b's
+   review rule), not "needs a new extractor". Do not touch the strategy
+   suggestion: that is SP14.
+
+5. MEASURE, THEN REPORT. One polite request to each of the two live Workable
+   boards, through the reader (python, not a capture), with nothing saved: the
+   postings read before and after. Expected: 3 and 10, unchanged. Then replay the
+   rule against a copy of the store as in SP7 and say that source_health will show
+   a different count for any Workable source that was capped. List, by name, any
+   stored job whose key this changes: expected none. Do not repair the past:
+   no row was stored from the lost postings (Layer 0 dropped them), and nothing
+   automatic would revive one.
+
+6. DOCS. README: test count; "Adding a source" if it describes the Workable
+   limit. docs/DECISIONS.md: that Workable's page is 10, that `total` is the
+   board's count, that a full page carries a token even at the end (so the end is
+   an empty page with the count reached), and that the golden had pinned a short
+   read. Plan: edit the shared rule that cites this package.
+
+Branch sp18-workable-walk. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos (SP18)
+
+- [ ] Say whether you know a real Workable board with more than ten postings; a
+      real two-page capture is worth more than a hand-written second page.
+- [ ] Until this lands, do not add a Workable employer without first comparing
+      the board's `total` with the postings the reader returns (one request).
 
 ---
 

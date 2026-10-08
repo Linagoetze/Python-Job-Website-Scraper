@@ -321,7 +321,8 @@ def test_a_forbidden_source_is_skipped_once_not_fetched_page_by_page(
 ) -> None:
     with caplog.at_level("WARNING"):
         summary, extracted = _run_against(tmp_path, monkeypatch, f"{server.origin}/private/jobs")
-    assert (summary.sources_processed, summary.sources_skipped) == (0, 1)
+    assert (summary.sources_processed, summary.sources_skipped) == (0, 0)
+    assert len(summary.refused_sources) == 1  # counted apart from the config skips (SP7)
     assert extracted == []  # the extractor never ran, so the site was never read
     assert "robots.txt disallows" in caplog.text
 

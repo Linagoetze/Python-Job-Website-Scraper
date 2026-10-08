@@ -5,11 +5,11 @@ from __future__ import annotations
 import csv
 import logging
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from job_scraper import JobRecord
+from job_scraper import JobRecord, curated
 from job_scraper.config_loader import load_rules, load_sources
 from job_scraper.drops import (
     LAYER_DETAIL,
@@ -65,10 +65,12 @@ from job_scraper.http import (
     render_pool,
     user_agent_from_rules,
 )
+from job_scraper.page_sizes import ONE_PAGE_RUNS, constant_page_size
 from job_scraper.robots import as_origin, host_of
 from job_scraper.storage.db import (
     DEFAULT_HEALTH_DROP,
     JobStore,
+    OnePageSource,
     SourceDrop,
     dedupe_key_for_job,
     job_to_row,
@@ -181,6 +183,52 @@ class UnreadablePages:
         return sum(n for _, n in self.held_back)
 
 
+@dataclass(frozen=True)
+class FailedSource:
+    """A source whose extractor raised this run (SP7).
+
+    `error` is the first line of the exception's message, enough to say what
+    broke without a traceback in the summary; the full text is in the WARNING
+    log line and in `source_health.error`.
+    """
+
+    name: str
+    error: str
+
+
+@dataclass(frozen=True)
+class RefusedSource:
+    """A source whose listing robots.txt refused, so it was never read (SP7).
+
+    Not a failure: no reader ran and no request went to the listing. It is
+    unread all the same, which undp was for a month without the summary saying
+    so. `rule` is the robots.txt line that decided, or why none could be named.
+    """
+
+    name: str
+    robots_url: str
+    rule: str
+
+
+_ERROR_LINE_MAX = 200
+
+
+def first_error_line(exc: BaseException) -> str:
+    """The first non-empty line of *exc*'s message, or its class name if it has none.
+
+    A bare `KeyError('title')` or `AssertionError()` should still name something.
+    Capped, because a reader that raises with a page of HTML in its message
+    would otherwise print that page in the summary.
+    """
+    for line in str(exc).splitlines():
+        line = line.strip()
+        if line:
+            if len(line) > _ERROR_LINE_MAX:
+                line = line[: _ERROR_LINE_MAX - 1] + "…"
+            return line
+    return type(exc).__name__
+
+
 def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]:
     """Per-source counts, for sources with an unreadable page or a held-back job.
 
@@ -268,6 +316,25 @@ class RunSummary:
     # from the two above because it is neither a shrunken nor an empty source;
     # the listing was fine and the pages behind it were not.
     unreadable_pages: tuple[UnreadablePages, ...] = ()
+    # Sources whose extractor raised (SP7), and sources whose listing robots.txt
+    # refused (SP7). Both are counted apart from `sources_skipped`, which is now
+    # config skips only: a failure that reads as routine is how airbus failed
+    # for a dry run's worth of output without being named. Built from this
+    # run's in-memory results, not the store, so a dry run shows them too.
+    failed_sources: tuple[FailedSource, ...] = ()
+    refused_sources: tuple[RefusedSource, ...] = ()
+    # Sources that returned the same typical page size on each of their last N
+    # successful runs (SP7): possibly one page of a longer board. Read from the
+    # store's history plus this run, so a source that never shrinks, and that
+    # `health_warnings` therefore can never name, is still caught.
+    one_page_sources: tuple[OnePageSource, ...] = ()
+    # Configured sources whose board is on the tombstone (SP7, the owner's
+    # optional third warning). Worked out before anything is scraped and only
+    # reported: the owner may have re-added a board on purpose. If the list
+    # could not be read, `tombstone_error` says so instead of the guard going
+    # quiet, which would read as "nothing is tombstoned".
+    tombstoned_sources: tuple[curated.TombstonedSource, ...] = ()
+    tombstone_error: str = ""
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -440,6 +507,31 @@ def _robots_overrides(sources: list[dict[str, Any]]) -> set[str]:
     return overrides
 
 
+def _check_tombstone(
+    sources: list[dict[str, Any]], curated_dir: Path | None
+) -> tuple[tuple[curated.TombstonedSource, ...], str]:
+    """Which configured sources the tombstone bans, and why it could not say if it could not.
+
+    Asked once, before anything is fetched, so the warning does not depend on
+    how the run ends. A list that cannot be read (not migrated, malformed) is
+    returned as an error string rather than raised: a scrape must not fail
+    because of its guard, and a guard that goes quiet reads as "nothing is
+    banned", which is the failure it exists to prevent.
+    """
+    if curated_dir is None:
+        return (), ""
+    try:
+        found = curated.tombstoned_sources(sources, curated.load_excluded(curated_dir))
+    except curated.CuratedError as exc:
+        logger.warning("Tombstone guard could not read the excluded list: %s", exc)
+        return (), str(exc)
+    for hit in found:
+        logger.warning(
+            "Source %r is on the tombstone as %s: %s", hit.source_name, hit.organisation, hit.reason
+        )
+    return found, ""
+
+
 def run_pipeline(
     *,
     sources_path: Path,
@@ -456,6 +548,7 @@ def run_pipeline(
     host_delay: float = DEFAULT_HOST_DELAY,
     per_host_requests: int = DEFAULT_PER_HOST_REQUESTS,
     check_robots: bool = True,
+    curated_dir: Path | None = None,
 ) -> RunSummary:
     """Run one full scrape, holding the run's shared fetch resources open.
 
@@ -477,12 +570,18 @@ def run_pipeline(
     `host_delay` apart, and refuses anything the host's robots.txt forbids.
     Sources marked `ignore_robots` in sources.yaml are exempted from that last
     check, host by host — see `_robots_overrides`.
+
+    `curated_dir` is where `excluded_sources.yaml` lives, for the tombstone
+    guard (SP7). It has no default, unlike `cache_path`: the guard reads the
+    owner's own file, so only the real run (`run.py`) opts in and a test never
+    reads it by accident.
     """
     # Read once, here, and passed down. Both files are small, but a run that
     # parses its own config twice invites the two copies to drift apart.
     rules = load_rules(rules_path)
     sources = load_sources(sources_path)
     robots_overrides = _robots_overrides(sources)
+    tombstoned, tombstone_error = _check_tombstone(sources, curated_dir)
     with ExitStack() as stack:
         stack.enter_context(
             polite_fetching(
@@ -497,7 +596,7 @@ def run_pipeline(
         if use_cache:
             stack.enter_context(http_cache(path=cache_path, ttl=cache_ttl))
         try:
-            return _run_pipeline(
+            summary = _run_pipeline(
                 sources=sources,
                 rules=rules,
                 out_db_path=out_db_path,
@@ -507,6 +606,7 @@ def run_pipeline(
                 keep_drop_runs=keep_drop_runs,
                 dry_run=dry_run,
             )
+            return replace(summary, tombstoned_sources=tombstoned, tombstone_error=tombstone_error)
         finally:
             if use_cache:
                 logger.info("%s", cache_stats().summary())
@@ -547,6 +647,8 @@ def _run_pipeline(
     # the source_health table. Sources skipped for config reasons (no URL,
     # unknown strategy, no extractor) never reached the site, so they get no row.
     source_health: list[tuple[str, int, bool, str | None]] = []
+    failed_sources: list[FailedSource] = []
+    refused_sources: list[RefusedSource] = []
     # Logged once the store is open; see _log_untitled.
     untitled: list[JobRecord] = []
 
@@ -579,7 +681,8 @@ def _run_pipeline(
         # disallowed site produces one clear line instead of an exception per
         # page. Like the config skips above it gets no source_health row: we
         # never scraped it, so it has no row count to compare against and must
-        # not look like a source that collapsed.
+        # not look like a source that collapsed (the owner's call, SP7). It is
+        # named in the summary instead, apart from the config skips.
         policy = current_robots_policy()
         if policy is not None and not policy.allows(url):
             logger.warning(
@@ -590,7 +693,10 @@ def _run_pipeline(
                 url,
                 current_user_agent(),
             )
-            skipped += 1
+            verdict = policy.explain(url)
+            refused_sources.append(
+                RefusedSource(name, verdict.robots_url, verdict.rule or verdict.reason)
+            )
             continue
 
         logger.info("Extracting %r from %s", name, url)
@@ -602,7 +708,7 @@ def _run_pipeline(
             # can never drift towards delisting.
             logger.warning("Skipping source %r: %s", name, exc)
             source_health.append((name, 0, False, str(exc)))
-            skipped += 1
+            failed_sources.append(FailedSource(name, first_error_line(exc)))
             continue
         rows, source_untitled = _split_untitled(rows)
         untitled += source_untitled
@@ -1024,6 +1130,20 @@ def _run_pipeline(
                 drop.previous_rows,
             )
 
+        one_page_sources = tuple(
+            OnePageSource(name, size, ONE_PAGE_RUNS)
+            for name, counts in store.recent_successful_row_counts(run_id, ONE_PAGE_RUNS).items()
+            if (size := constant_page_size(counts)) is not None
+        )
+        for page in one_page_sources:
+            logger.warning(
+                "Source %r returned %d rows on each of its last %d successful runs, a typical "
+                "page size — it may be reading only its first page",
+                page.source_name,
+                page.rows,
+                page.runs,
+            )
+
         store.finish_run(run_id)
 
     return RunSummary(
@@ -1052,5 +1172,8 @@ def _run_pipeline(
         empty_sources=empty_sources,
         allow_empty_delist=allow_empty_delist,
         unreadable_pages=count_unreadable_pages([*kept_new, *detail_excluded]),
+        failed_sources=tuple(failed_sources),
+        refused_sources=tuple(refused_sources),
+        one_page_sources=one_page_sources,
         dry_run=dry_run,
     )

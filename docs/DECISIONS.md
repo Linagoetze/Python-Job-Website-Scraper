@@ -1666,3 +1666,90 @@ session — see `CLAUDE.md`.
   written to the session scratchpad. Making `job_scraper/config/` deny by
   default would be CLAUDE.md's own rule. It is not done here, because
   that directory also holds tracked files, and it belongs to its own change.
+
+- **A failure is counted apart from a skip, and a robots refusal apart from
+  both (SP7, 2026-10-08).** `sources_skipped` counted everything that did not
+  yield rows: config problems the owner caused (no URL, unknown strategy, no
+  extractor), a reader that raised, and a listing robots.txt refused. Two of
+  those three are events about a site, and the summary named neither: SP3b's dry
+  run printed "5 / 6 processed (1 skipped)" for a failed airbus, and undp was
+  refused in every run from 2026-08-31 to its retirement with nothing in the
+  summary. `RunSummary` now carries `failed_sources` and `refused_sources`,
+  `sources_skipped` is config only, and the `Sources` line prints the two extra
+  counts only when they are non-zero, so a healthy run reads as it always did.
+  Each has a block of its own, first under the funnel's totals, built from the
+  run's in-memory results and not from `source_health`, so `--dry-run` shows
+  them: the dry run, where this was found, writes no store. A failure line gives
+  the first non-empty line of the exception (class name if it has none, capped at
+  200 characters, since a reader can raise with a page of HTML in its message).
+  Both lines say stored jobs were kept and nothing was delisted, which holds
+  because a failed or refused source never enters `source_scraped_keys`: a
+  pipeline test runs it with `delist_after=1` to pin that.
+  **A robots refusal gets no `source_health` row (the owner's call, 2026-10-08).**
+  The table keeps its meaning, "a reader ran", and nothing in the store reads a
+  refusal back; the summary names it on every run for as long as it lasts. A row
+  would make it look like a failed scrape to anything that reads `ok`. The cost
+  is that the store holds no history of a refusal, which the log and the
+  recurring summary line stand in for.
+
+- **The one-page rule: N is 5, and the store's verdict on it (SP7, 2026-10-08).**
+  A source is named when its last 5 successful `source_health` rows, the current
+  run's included, hold the same row count and that count is in
+  `page_sizes.TYPICAL_PAGE_SIZES` (moved out of `probe.py` so the probe and the
+  summary share one list). Rows come from `source_health`, never from `runs`, and
+  only `ok = 1` rows count: a failed run is skipped, and a `retrofilter` run
+  (`runs.kind = 'refilter'`, no health rows) neither breaks a streak nor pads
+  one. A store made before SP4g reads every old run as `scrape`, which is right.
+  The store is read inside the run's transaction, where this run's health rows
+  already are, so a dry run is judged as the newest run and writes nothing.
+  **Why 5.** Replayed over the real store (37 runs, 52 sources, read-only, on a
+  copy), any N from 3 to 10 catches the four Workday sources at the first run
+  that can fire, since they sat at 20 in all of 27 runs. N only moves the false
+  positives, and the cost of a larger N is that many extra runs of delay. Source
+  runs the rule would have fired on for any other source over the whole
+  history: N=3 85, N=4 60,
+  N=5 46, N=6 33, N=8 23, N=10 17. Five is the package's default, and nothing in
+  the data argued for another number. **Today (run 37) no source trips it.**
+  Replayed as of run 28, the last run before SP3b, it names airbus, axis_comms,
+  irc and path at 20, and nutrition_international at 10.
+  **The false positives it would have had.** givewell (17-20), mammut, oatly,
+  planted, new_incentives and sida each tripped for a handful of runs at a round
+  board size and moved on, a line each. nutrition_international was a
+  true positive, not a false one: 10 in runs 4-29, then 6, then 3. Its own saved
+  fixture (2026-09-24) states `total: 11` beside 10 results and a `nextPage`
+  token, and the Workable reader sends one POST and reads neither. The golden
+  test had pinned the short read of 10. Workable's page is 10; `total` is the
+  board's count; and a full page carries a token even at the end of a board
+  (simprints today: 10 results, `total: 10`, a token, an empty second page). SP18
+  fixes the reader. The rule said what it should, five runs in.
+  **No guarded exemption (the owner's decision, 2026-10-08).** The question was
+  whether to skip readers that walk and check a stated total (Workday,
+  SmartRecruiters, SuccessFactors), for which a constant count should mean a
+  constant board. Declined: the rule is the independent check on the guard (SP3b's
+  review found a guarded reader that read short past its own check), and the store
+  gave no cost to point at. airbus, the known case (16 after SP3c), reads 11 now,
+  and was 12 in four runs of the last five; no guarded source is at a typical size
+  for five runs. A SmartRecruiters board of exactly 100, or a narrowed Workday
+  board at 16, will cost a line. If it ever fires on a healthy guarded source,
+  revisit with that source as the evidence. No config key silences it, as the
+  package asked.
+
+- **The tombstone guard warns, reads before the run, and says when it cannot
+  read (SP7, the owner's choice to build it, 2026-10-08).** `curated.tombstoned_sources`
+  matches each `sources.yaml` entry against `excluded_sources.yaml` with
+  `find_board`, SP1's board-identity matcher, never by host (six of the owner's
+  sources share one Greenhouse hostname; a host match names all six for one
+  banned employer). It reports and nothing more: the source is still scraped,
+  because the owner may have re-added it on purpose and a source dropped from a
+  run is a worse failure than one that is named. `run_pipeline` takes a
+  `curated_dir` with no default, so only `run.py` reads the owner's file and a
+  test never does by accident. A list that cannot be read (`CuratedError`,
+  including the not-migrated refusal) is returned as `tombstone_error` and shown
+  in the same block, not raised and not swallowed: a scrape must not fail on its
+  guard, and a silent guard reads as "nothing is banned". The answer is worked
+  out before the first fetch and attached to the summary afterwards, so it does
+  not depend on how the run ends; it is also logged once at WARNING. It is a
+  block in the summary rather than a line printed before the run because the
+  summary is the one thing read at the end of a four-minute run, and a dry run
+  shows it too. The real tombstone against the real `sources.yaml` matched
+  nothing on 2026-10-08.

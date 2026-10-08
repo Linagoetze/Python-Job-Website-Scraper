@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -196,6 +197,41 @@ def load_excluded(curated_dir: Path) -> list[dict[str, Any]]:
 def load_candidates(curated_dir: Path) -> list[dict[str, Any]]:
     require_migrated(curated_dir, key=CANDIDATES_KEY)
     return load_list(candidates_path(curated_dir), CANDIDATES_KEY, CANDIDATE_FIELDS)
+
+
+@dataclass(frozen=True)
+class TombstonedSource:
+    """A configured source whose board is on the tombstone (SP7)."""
+
+    source_name: str
+    organisation: str
+    reason: str
+
+
+def tombstoned_sources(
+    sources: list[dict[str, Any]], excluded: list[dict[str, Any]]
+) -> tuple[TombstonedSource, ...]:
+    """The configured sources whose employer board the tombstone bans.
+
+    Matched by board identity, SP1's matcher, never by host: six sources share
+    one Greenhouse hostname, and a host match would name all of them for one
+    banned employer. It only reports. The owner may have re-added a board
+    deliberately, and a source silently dropped from a run is a worse failure
+    than one that is named and scraped.
+    """
+    found: list[TombstonedSource] = []
+    for src in sources:
+        url = str(src.get("url") or "").strip()
+        entry = find_board(excluded, url) if url else None
+        if entry is not None:
+            found.append(
+                TombstonedSource(
+                    str(src.get("name") or "").strip(),
+                    str(entry.get("organisation") or ""),
+                    " ".join(str(entry.get("reason") or "").split()),
+                )
+            )
+    return tuple(found)
 
 
 def find_board(entries: list[dict[str, Any]], url: str) -> dict[str, Any] | None:

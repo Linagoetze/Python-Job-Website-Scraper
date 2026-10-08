@@ -285,6 +285,58 @@ overrides that judgement.
 **"Exclusions logged"** is how many postings the filters dropped this run, each
 recorded with the specific rule that dropped it. See below.
 
+**Sources that failed or were refused** come first, directly under the funnel's
+closing totals, because they are the loudest case. The `Sources` line splits them
+out of the skip count, so a failure never reads as routine:
+
+```
+Sources           27 / 30 processed  (2 failed, 1 refused by robots.txt, 1 skipped)
+```
+
+and each gets a line of its own:
+
+```
+────────────────────────────────────────────────────
+!  Failed sources: 2 sources raised an error
+!  acme_jobs: board states 2000 postings, Workday's cap — stored jobs kept, nothing delisted
+!  contoso: HTTP 500 for https://contoso.example/jobs — stored jobs kept, nothing delisted
+────────────────────────────────────────────────────
+!  Refused by robots.txt: 1 source not read this run
+!  fabrikam: https://fabrikam.example/robots.txt says `Disallow: /` — stored jobs kept, nothing delisted
+```
+
+"Skipped" is now config only: an entry with no URL, an unknown strategy, or no
+registered extractor. A **failed** source is one whose reader raised; the line
+gives the first line of its error (the full text is in the log and in
+`source_health`). A **refused** source is one whose listing `robots.txt` forbids:
+no reader ran and the site was not touched, but it is unread all the same, and
+`undp` stayed that way for a month with only a log line to say so. The line quotes
+the `robots.txt` line that decided it; if the rule is not meant for us,
+`ignore_robots: true` on the source exempts it. Neither is delisted or dropped: a
+failed or refused scrape is not a successful one, so the source's stored jobs
+accrue no misses. Both blocks are built from the run's own results, not the
+store, so `--dry-run` shows them too. A refused source gets no `source_health`
+row, because it never reached the site.
+
+**Tombstoned sources** come next, only when a source in `sources.yaml` is on the
+excluded list (`data/curated/excluded_sources.yaml`):
+
+```
+────────────────────────────────────────────────────
+!  Tombstoned sources: 1 source in sources.yaml is on the excluded list
+!  acme_jobs: Acme Corp — Permanently excluded by user decision. Do not re-propose. (scraped anyway; remove it from sources.yaml if that was not meant)
+```
+
+It names the organisation and the reason recorded for it, and it only warns: you
+may have re-added a board on purpose, so the source is scraped as configured. The
+match is by board, the way `sources check` matches, never by host, so one banned
+employer on a shared Greenhouse or Ashby hostname does not name its neighbours.
+The list is read before anything is fetched, and a long reason is cut in the
+summary (the file keeps it whole). If the list cannot be read, for instance because
+it has not been migrated to YAML, the block says so rather than staying silent:
+"nothing is banned" and "I could not check" must not look alike. `run.py` is the
+only caller that reads it, so a test run never touches your files.
+
 **Source health warnings** appear under the funnel, in a block of their own, and
 only when there is something to say:
 
@@ -294,7 +346,7 @@ only when there is something to say:
 !  impactpool: 4 rows this run, was 120 (-97%)
 ```
 
-A source that breaks loudly already fails and is counted as skipped. This is the
+A source that breaks loudly already has its own block above. This is the
 quieter failure: a selector that still matches *something* returns a short list,
 nothing errors, and the missing postings are simply never seen. Each source's
 row count is compared against its own last **successful** scrape — not against
@@ -319,11 +371,44 @@ nineteen consecutive runs without ever tripping a warning. This block asks the
 current run instead — "did this return anything at all?" — so a source that is
 dead on arrival is named on its first run and every run after.
 
-A source whose extractor *raised* is not listed here; that already fails loudly
-and is counted as skipped. This is the clean scrape that found nothing, which is
+A source whose extractor *raised* is not listed here; it is named under "Failed
+sources" above. This is the clean scrape that found nothing, which is
 either a broken reader or a genuinely empty careers page, and only looking will
 tell you which. Nothing is delisted either way, unless you passed
 `--allow-empty-delist` — in which case the line says so instead.
+
+**One-page sources** get a block between the empty sources and the unreadable
+pages, for a question none of the others can ask — "has this source looked exactly
+like this for a while?":
+
+```
+────────────────────────────────────────────────────
+!  One page, every run: 1 source returned the same typical page size
+!  acme_jobs: 20 rows on each of its last 5 runs — may be reading only its first page
+```
+
+A reader that stops after the first page returns the same count every time, so the
+count never shrinks and the health warning above stays silent. Four Workday sources
+sat at exactly 20 rows in all of 27 runs while their boards held between 64 and
+about 2,940 postings, and nothing said so. This block names a source when its last
+five **successful** runs, this one included, all returned the same number of rows
+and that number is one of the page sizes listings tend to come in (10, 12, 15, 16,
+18, 20, 24, 25, 30, 36, 40, 48, 50, 60 or 100). The runs are counted from the
+source's own health history, so a failed run does not count and a maintenance pass
+(`retrofilter`) neither breaks a streak nor pads one.
+
+It is a prompt to look, not a finding. A board that really holds 20 postings for
+five runs will trip it, and the cost is one line. It checks every reader alike,
+including the ones that walk to a stated total, so it also tests that guard. There
+is no setting to silence it for one source; if a board is genuinely that size, one
+different run ends the warning.
+
+Where the blocks land, top to bottom, all under the funnel's closing totals and
+all absent when they have nothing to say: failed sources, refused sources,
+tombstoned sources, source health, empty sources, one-page sources, unreadable
+pages, then the dry-run notice. None of them is a filter layer, none skips or
+delists a source, and a source that drops everything at Layer 0 is not one of
+them (that audit is its own package, SP12).
 
 **Unreadable pages** get a third block, for a different question again — "could
 the pages behind the listing be read?":
@@ -994,7 +1079,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1303 tests, about fifteen seconds, no network access required.
+1339 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

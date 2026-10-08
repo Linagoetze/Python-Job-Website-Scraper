@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from job_scraper.config_loader import (
+    default_curated_dir,
     default_jobs_db_path,
     default_jobs_xlsx_path,
     default_rules_path,
@@ -34,6 +35,16 @@ from job_scraper.scoring import ScoringSummary, score_new_jobs
 from job_scraper.storage.xlsx_store import write_xlsx
 
 _RULE = "─" * 52
+_REASON_MAX = 200
+
+
+def _first_line(text: str) -> str:
+    return next((ln.strip() for ln in text.splitlines() if ln.strip()), text.strip())
+
+
+def _clip(text: str, limit: int = _REASON_MAX) -> str:
+    """*text* cut to *limit* characters with an ellipsis, for one-line summary rows."""
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _cache_ttl_seconds(value: str) -> int:
@@ -70,14 +81,18 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     left gutter (WP8h; see `drops.LAYERS`), so "L3  − senior-level title" is
     Layer 3 of 5 — the three detail-page lines all share Layer 5.
 
-    Four blocks appear only when they have something to say, which is why the
-    funnel's pinned layout in tests/test_run_summary.py is unchanged: the
-    source-health warnings (WP10), in a marker of their own so a shrinking
-    source is never mistaken for a filter that fired; the empty sources (CU2),
-    which is the same marker asking the question health warnings structurally
-    cannot — "did this return anything at all?" rather than "did it shrink?";
-    the unreadable pages (SP4c), "could the pages behind the listing be read?";
-    and the dry-run notice."""
+    Several blocks appear only when they have something to say, which is why
+    the funnel's pinned layout in tests/test_run_summary.py is unchanged. The
+    loudest come first: the sources that failed (SP7) and the ones robots.txt
+    refused (SP7). Then the source-health warnings (WP10), in a marker of their
+    own so a shrinking source is never mistaken for a filter that fired; the
+    empty sources (CU2), which is the same marker asking the question health
+    warnings structurally cannot — "did this return anything at all?" rather
+    than "did it shrink?"; the one-page sources (SP7), "has it returned the same
+    page size every run?"; the unreadable pages (SP4c), "could the pages behind
+    the listing be read?"; and the dry-run notice. A source that is configured
+    but tombstoned (SP7) is named beside the failed and refused ones, since it
+    too is about whether a source is as the owner meant it."""
 
     # All numeric columns end at the same character position for vertical
     # scanning. Wide enough for the longest label plus a six-figure count:
@@ -112,11 +127,21 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     after_blocklist = passed_titles - summary.jobs_blocklist_excluded
     rules_excluded = summary.jobs_extracted - summary.jobs_kept
 
+    # A failure or a robots.txt refusal is not a config skip, and the line says
+    # so (SP7). The two counts appear only when non-zero, so a healthy run reads
+    # exactly as it always did.
+    unread = []
+    if summary.failed_sources:
+        unread.append(f"{len(summary.failed_sources)} failed")
+    if summary.refused_sources:
+        unread.append(f"{len(summary.refused_sources)} refused by robots.txt")
+    unread.append(f"{summary.sources_skipped} skipped")
+
     lines = [
         "Run summary",
         _RULE,
         f"Sources           {summary.sources_processed} / {summary.sources_total} processed  "
-        f"({summary.sources_skipped} skipped)",
+        f"({', '.join(unread)})",
         "",
         row("Jobs seen (all pages, dupes incl.)", f"{summary.jobs_extracted:,}"),
         cut(
@@ -162,6 +187,52 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         row("Unreviewed jobs in table", f"{summary.jobs_unreviewed:,}"),
         row("Exclusions logged", f"{summary.exclusions_logged:,}"),
     ]
+    if summary.failed_sources:
+        # The loudest case gets the first block. Before SP7 a source whose
+        # reader raised was counted with the config skips and named only in a
+        # WARNING log line, so a dry run printed "5 / 6 processed (1 skipped)"
+        # for a failed airbus. Nothing was delisted: a failed scrape is not a
+        # successful one, so its stored jobs accrue no misses.
+        n = len(summary.failed_sources)
+        lines.append(_RULE)
+        lines.append(f"!  Failed sources: {n} source{'' if n == 1 else 's'} raised an error")
+        for failed in summary.failed_sources:
+            lines.append(f"!  {failed.name}: {failed.error} — stored jobs kept, nothing delisted")
+    if summary.refused_sources:
+        # Beside the failures rather than among them: no reader ran and the
+        # site was not touched. It is unread all the same, and undp stayed that
+        # way for a month with only a log line to say so.
+        n = len(summary.refused_sources)
+        lines.append(_RULE)
+        lines.append(
+            f"!  Refused by robots.txt: {n} source{'' if n == 1 else 's'} not read this run"
+        )
+        for refused in summary.refused_sources:
+            lines.append(
+                f"!  {refused.name}: {refused.robots_url} says `{refused.rule}` — "
+                "stored jobs kept, nothing delisted"
+            )
+    if summary.tombstoned_sources or summary.tombstone_error:
+        # Configuration, not a result of the run, so it sits with the other
+        # "this source was not read as intended" blocks and not among the
+        # per-run findings. It only warns: the owner may have re-added a board
+        # on purpose, and the source was scraped as configured.
+        lines.append(_RULE)
+        if summary.tombstone_error:
+            lines.append("!  Tombstone: the excluded list could not be read, so it was not checked")
+            lines.append(f"!  {_first_line(summary.tombstone_error)}")
+        if summary.tombstoned_sources:
+            n = len(summary.tombstoned_sources)
+            lines.append(
+                "!  Tombstoned sources: "
+                + ("1 source in sources.yaml is" if n == 1 else f"{n} sources in sources.yaml are")
+                + " on the excluded list"
+            )
+            for hit in summary.tombstoned_sources:
+                lines.append(
+                    f"!  {hit.source_name}: {hit.organisation} — {_clip(hit.reason)} "
+                    "(scraped anyway; remove it from sources.yaml if that was not meant)"
+                )
     if summary.health_warnings:
         # Deliberately not a ladder line. A source that shrank is not a filter
         # that fired, and borrowing the "L5  − " gutter would file a warning
@@ -201,6 +272,23 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         )
         for name in summary.empty_sources:
             lines.append(f"!  {name}: 0 rows — {fate}; check its extractor")
+    if summary.one_page_sources:
+        # A question the two above cannot ask either: not "did it shrink?" or
+        # "was it empty?" but "has it looked exactly like this for a while?". A
+        # source short by the same amount on every run never shrinks, so
+        # health_warnings stays silent; four Workday sources sat at 20 rows in
+        # all of 27 runs while their boards held 64 to about 2,940 (SP3b).
+        n = len(summary.one_page_sources)
+        lines.append(_RULE)
+        lines.append(
+            f"!  One page, every run: {n} source{'' if n == 1 else 's'} returned the same "
+            "typical page size"
+        )
+        for page in summary.one_page_sources:
+            lines.append(
+                f"!  {page.source_name}: {page.rows:,} rows on each of its last {page.runs} "
+                "runs — may be reading only its first page"
+            )
     if summary.unreadable_pages:
         # A third question again: not "did it shrink?" or "was it empty?" but
         # "could the pages behind the listing be read?". The jobs were kept, so
@@ -400,6 +488,7 @@ def main() -> None:
             use_cache=not args.no_cache,
             cache_ttl=args.cache_ttl,
             dry_run=args.dry_run,
+            curated_dir=default_curated_dir(),
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show
