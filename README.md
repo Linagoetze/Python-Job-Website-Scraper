@@ -285,6 +285,39 @@ overrides that judgement.
 **"Exclusions logged"** is how many postings the filters dropped this run, each
 recorded with the specific rule that dropped it. See below.
 
+**Sources that failed or were refused** come first, directly under the funnel's
+closing totals, because they are the loudest case. The `Sources` line splits them
+out of the skip count, so a failure never reads as routine:
+
+```
+Sources           27 / 30 processed  (2 failed, 1 refused by robots.txt, 1 skipped)
+```
+
+and each gets a line of its own:
+
+```
+────────────────────────────────────────────────────
+!  Failed sources: 2 sources raised an error
+!  acme_jobs: board states 2000 postings, Workday's cap — stored jobs kept, nothing delisted
+!  contoso: HTTP 500 for https://contoso.example/jobs — stored jobs kept, nothing delisted
+────────────────────────────────────────────────────
+!  Refused by robots.txt: 1 source not read this run
+!  fabrikam: https://fabrikam.example/robots.txt says `Disallow: /` — stored jobs kept, nothing delisted
+```
+
+"Skipped" is now config only: an entry with no URL, an unknown strategy, or no
+registered extractor. A **failed** source is one whose reader raised; the line
+gives the first line of its error (the full text is in the log and in
+`source_health`). A **refused** source is one whose listing `robots.txt` forbids:
+no reader ran and the site was not touched, but it is unread all the same, and
+`undp` stayed that way for a month with only a log line to say so. The line quotes
+the `robots.txt` line that decided it; if the rule is not meant for us,
+`ignore_robots: true` on the source exempts it. Neither is delisted or dropped: a
+failed or refused scrape is not a successful one, so the source's stored jobs
+accrue no misses. Both blocks are built from the run's own results, not the
+store, so `--dry-run` shows them too. A refused source gets no `source_health`
+row, because it never reached the site.
+
 **Source health warnings** appear under the funnel, in a block of their own, and
 only when there is something to say:
 
@@ -294,7 +327,7 @@ only when there is something to say:
 !  impactpool: 4 rows this run, was 120 (-97%)
 ```
 
-A source that breaks loudly already fails and is counted as skipped. This is the
+A source that breaks loudly already has its own block above. This is the
 quieter failure: a selector that still matches *something* returns a short list,
 nothing errors, and the missing postings are simply never seen. Each source's
 row count is compared against its own last **successful** scrape — not against
@@ -319,8 +352,8 @@ nineteen consecutive runs without ever tripping a warning. This block asks the
 current run instead — "did this return anything at all?" — so a source that is
 dead on arrival is named on its first run and every run after.
 
-A source whose extractor *raised* is not listed here; that already fails loudly
-and is counted as skipped. This is the clean scrape that found nothing, which is
+A source whose extractor *raised* is not listed here; it is named under "Failed
+sources" above. This is the clean scrape that found nothing, which is
 either a broken reader or a genuinely empty careers page, and only looking will
 tell you which. Nothing is delisted either way, unless you passed
 `--allow-empty-delist` — in which case the line says so instead.
@@ -994,7 +1027,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1303 tests, about fifteen seconds, no network access required.
+1314 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

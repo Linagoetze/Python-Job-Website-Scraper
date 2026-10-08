@@ -181,6 +181,52 @@ class UnreadablePages:
         return sum(n for _, n in self.held_back)
 
 
+@dataclass(frozen=True)
+class FailedSource:
+    """A source whose extractor raised this run (SP7).
+
+    `error` is the first line of the exception's message, enough to say what
+    broke without a traceback in the summary; the full text is in the WARNING
+    log line and in `source_health.error`.
+    """
+
+    name: str
+    error: str
+
+
+@dataclass(frozen=True)
+class RefusedSource:
+    """A source whose listing robots.txt refused, so it was never read (SP7).
+
+    Not a failure: no reader ran and no request went to the listing. It is
+    unread all the same, which undp was for a month without the summary saying
+    so. `rule` is the robots.txt line that decided, or why none could be named.
+    """
+
+    name: str
+    robots_url: str
+    rule: str
+
+
+_ERROR_LINE_MAX = 200
+
+
+def first_error_line(exc: BaseException) -> str:
+    """The first non-empty line of *exc*'s message, or its class name if it has none.
+
+    A bare `KeyError('title')` or `AssertionError()` should still name something.
+    Capped, because a reader that raises with a page of HTML in its message
+    would otherwise print that page in the summary.
+    """
+    for line in str(exc).splitlines():
+        line = line.strip()
+        if line:
+            if len(line) > _ERROR_LINE_MAX:
+                line = line[: _ERROR_LINE_MAX - 1] + "…"
+            return line
+    return type(exc).__name__
+
+
 def count_unreadable_pages(jobs: list[JobRecord]) -> tuple[UnreadablePages, ...]:
     """Per-source counts, for sources with an unreadable page or a held-back job.
 
@@ -268,6 +314,13 @@ class RunSummary:
     # from the two above because it is neither a shrunken nor an empty source;
     # the listing was fine and the pages behind it were not.
     unreadable_pages: tuple[UnreadablePages, ...] = ()
+    # Sources whose extractor raised (SP7), and sources whose listing robots.txt
+    # refused (SP7). Both are counted apart from `sources_skipped`, which is now
+    # config skips only: a failure that reads as routine is how airbus failed
+    # for a dry run's worth of output without being named. Built from this
+    # run's in-memory results, not the store, so a dry run shows them too.
+    failed_sources: tuple[FailedSource, ...] = ()
+    refused_sources: tuple[RefusedSource, ...] = ()
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -547,6 +600,8 @@ def _run_pipeline(
     # the source_health table. Sources skipped for config reasons (no URL,
     # unknown strategy, no extractor) never reached the site, so they get no row.
     source_health: list[tuple[str, int, bool, str | None]] = []
+    failed_sources: list[FailedSource] = []
+    refused_sources: list[RefusedSource] = []
     # Logged once the store is open; see _log_untitled.
     untitled: list[JobRecord] = []
 
@@ -579,7 +634,8 @@ def _run_pipeline(
         # disallowed site produces one clear line instead of an exception per
         # page. Like the config skips above it gets no source_health row: we
         # never scraped it, so it has no row count to compare against and must
-        # not look like a source that collapsed.
+        # not look like a source that collapsed (the owner's call, SP7). It is
+        # named in the summary instead, apart from the config skips.
         policy = current_robots_policy()
         if policy is not None and not policy.allows(url):
             logger.warning(
@@ -590,7 +646,10 @@ def _run_pipeline(
                 url,
                 current_user_agent(),
             )
-            skipped += 1
+            verdict = policy.explain(url)
+            refused_sources.append(
+                RefusedSource(name, verdict.robots_url, verdict.rule or verdict.reason)
+            )
             continue
 
         logger.info("Extracting %r from %s", name, url)
@@ -602,7 +661,7 @@ def _run_pipeline(
             # can never drift towards delisting.
             logger.warning("Skipping source %r: %s", name, exc)
             source_health.append((name, 0, False, str(exc)))
-            skipped += 1
+            failed_sources.append(FailedSource(name, first_error_line(exc)))
             continue
         rows, source_untitled = _split_untitled(rows)
         untitled += source_untitled
@@ -1052,5 +1111,7 @@ def _run_pipeline(
         empty_sources=empty_sources,
         allow_empty_delist=allow_empty_delist,
         unreadable_pages=count_unreadable_pages([*kept_new, *detail_excluded]),
+        failed_sources=tuple(failed_sources),
+        refused_sources=tuple(refused_sources),
         dry_run=dry_run,
     )

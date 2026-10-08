@@ -70,13 +70,15 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     left gutter (WP8h; see `drops.LAYERS`), so "L3  − senior-level title" is
     Layer 3 of 5 — the three detail-page lines all share Layer 5.
 
-    Four blocks appear only when they have something to say, which is why the
-    funnel's pinned layout in tests/test_run_summary.py is unchanged: the
-    source-health warnings (WP10), in a marker of their own so a shrinking
-    source is never mistaken for a filter that fired; the empty sources (CU2),
-    which is the same marker asking the question health warnings structurally
-    cannot — "did this return anything at all?" rather than "did it shrink?";
-    the unreadable pages (SP4c), "could the pages behind the listing be read?";
+    Several blocks appear only when they have something to say, which is why
+    the funnel's pinned layout in tests/test_run_summary.py is unchanged. The
+    loudest come first: the sources that failed (SP7) and the ones robots.txt
+    refused (SP7). Then the source-health warnings (WP10), in a marker of their
+    own so a shrinking source is never mistaken for a filter that fired; the
+    empty sources (CU2), which is the same marker asking the question health
+    warnings structurally cannot — "did this return anything at all?" rather
+    than "did it shrink?"; the unreadable pages (SP4c), "could the pages behind
+    the listing be read?";
     and the dry-run notice."""
 
     # All numeric columns end at the same character position for vertical
@@ -112,11 +114,21 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     after_blocklist = passed_titles - summary.jobs_blocklist_excluded
     rules_excluded = summary.jobs_extracted - summary.jobs_kept
 
+    # A failure or a robots.txt refusal is not a config skip, and the line says
+    # so (SP7). The two counts appear only when non-zero, so a healthy run reads
+    # exactly as it always did.
+    unread = []
+    if summary.failed_sources:
+        unread.append(f"{len(summary.failed_sources)} failed")
+    if summary.refused_sources:
+        unread.append(f"{len(summary.refused_sources)} refused by robots.txt")
+    unread.append(f"{summary.sources_skipped} skipped")
+
     lines = [
         "Run summary",
         _RULE,
         f"Sources           {summary.sources_processed} / {summary.sources_total} processed  "
-        f"({summary.sources_skipped} skipped)",
+        f"({', '.join(unread)})",
         "",
         row("Jobs seen (all pages, dupes incl.)", f"{summary.jobs_extracted:,}"),
         cut(
@@ -162,6 +174,31 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         row("Unreviewed jobs in table", f"{summary.jobs_unreviewed:,}"),
         row("Exclusions logged", f"{summary.exclusions_logged:,}"),
     ]
+    if summary.failed_sources:
+        # The loudest case gets the first block. Before SP7 a source whose
+        # reader raised was counted with the config skips and named only in a
+        # WARNING log line, so a dry run printed "5 / 6 processed (1 skipped)"
+        # for a failed airbus. Nothing was delisted: a failed scrape is not a
+        # successful one, so its stored jobs accrue no misses.
+        n = len(summary.failed_sources)
+        lines.append(_RULE)
+        lines.append(f"!  Failed sources: {n} source{'' if n == 1 else 's'} raised an error")
+        for failed in summary.failed_sources:
+            lines.append(f"!  {failed.name}: {failed.error} — stored jobs kept, nothing delisted")
+    if summary.refused_sources:
+        # Beside the failures rather than among them: no reader ran and the
+        # site was not touched. It is unread all the same, and undp stayed that
+        # way for a month with only a log line to say so.
+        n = len(summary.refused_sources)
+        lines.append(_RULE)
+        lines.append(
+            f"!  Refused by robots.txt: {n} source{'' if n == 1 else 's'} not read this run"
+        )
+        for refused in summary.refused_sources:
+            lines.append(
+                f"!  {refused.name}: {refused.robots_url} says `{refused.rule}` — "
+                "stored jobs kept, nothing delisted"
+            )
     if summary.health_warnings:
         # Deliberately not a ladder line. A source that shrank is not a filter
         # that fired, and borrowing the "L5  − " gutter would file a warning
