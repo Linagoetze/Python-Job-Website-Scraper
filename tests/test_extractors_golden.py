@@ -26,7 +26,15 @@ from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import ashby, coefficient, personio, sida, smartrecruiters, workable
+from job_scraper.extractors import (
+    asana,
+    ashby,
+    coefficient,
+    personio,
+    sida,
+    smartrecruiters,
+    workable,
+)
 from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
 from tests.fixture_cases import EMPTY_FIXTURES, FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
@@ -786,7 +794,8 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         # it is built from by about a day (one closed posting still listed,
         # four new ones missing; the board said 103), which is the site's, not
         # the reader's. The team heading above each group is not read, so
-        # department is empty on every row.
+        # department is empty on every row. Every row carries its description,
+        # read from the Greenhouse JSON the page embeds (SP6 follow-up).
         "count": 100,
         "first_job": {
             "source_name": "asana",
@@ -798,6 +807,7 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "apply_url": "https://asana.com/jobs/apply/8165477",
             "raw_snippet": "Administrative Business Partner Vancouver, BC",
         },
+        "description": (7553, "The Administrative Business Partner (ABP) provides strategic"),
     },
     "coefficient_giving": {
         # coefficient.py. The page said "There are no open roles at this time.",
@@ -1327,3 +1337,25 @@ def test_oatly_reads_each_card_shape_the_old_reader_could_not() -> None:
         "",
     )
     assert all(job["location"] for job in jobs.values())
+
+
+def test_asana_supplies_every_description_as_plain_text() -> None:
+    """Greenhouse escapes its markup; what reaches Layer 5 is the text, not tags."""
+    jobs = parse_fixture("asana")
+    texts = [job["description_text"] for job in jobs]
+    assert all(texts)
+    assert not any("<p" in text or "&lt;" in text for text in texts)
+    assert all("hybrid" in text.lower() for text in texts)
+
+
+def test_asana_without_embedded_postings_still_lists_its_cards() -> None:
+    """The cards are the list; a missing description only means Layer 5 fetches."""
+    page = (
+        '<html><body><a href="/jobs/apply/1"><p>Analyst</p><p>Fabrikam City</p></a></body></html>'
+    )
+    [job] = asana.extract("https://asana.com/jobs/all", lambda url: page, "asana")
+    assert (job["title"], job["location"], job["description_text"]) == (
+        "Analyst",
+        "Fabrikam City",
+        "",
+    )
