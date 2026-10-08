@@ -1714,10 +1714,14 @@ session — see `CLAUDE.md`.
   irc and path at 20, and nutrition_international at 10.
   **The false positives it would have had.** givewell (17-20), mammut, oatly,
   planted, new_incentives and sida each tripped for a handful of runs at a round
-  board size and moved on, a line each. nutrition_international is the doubtful
-  one: 10 in runs 4-29, then 6, then 3. A Workable board that shrinks from 10 to
-  3 is a plausible real board, and it may also have been a page of 10, so the
-  rule said what it should (look) and the answer is not in the store.
+  board size and moved on, a line each. nutrition_international was a
+  true positive, not a false one: 10 in runs 4-29, then 6, then 3. Its own saved
+  fixture (2026-09-24) states `total: 11` beside 10 results and a `nextPage`
+  token, and the Workable reader sends one POST and reads neither. The golden
+  test had pinned the short read of 10. Workable's page is 10; `total` is the
+  board's count; and a full page carries a token even at the end of a board
+  (simprints today: 10 results, `total: 10`, a token, an empty second page). SP18
+  fixes the reader. The rule said what it should, five runs in.
   **No guarded exemption (the owner's decision, 2026-10-08).** The question was
   whether to skip readers that walk and check a stated total (Workday,
   SmartRecruiters, SuccessFactors), for which a constant count should mean a
