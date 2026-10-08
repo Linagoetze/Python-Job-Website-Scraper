@@ -34,6 +34,7 @@ from capture_fixtures import recorded_pages_fetch, single_response_fetch  # noqa
 
 from job_scraper.extractors import (  # noqa: E402
     against_malaria,
+    asana,
     ashby,
     bearingpoint,
     breezy,
@@ -44,8 +45,11 @@ from job_scraper.extractors import (  # noqa: E402
     jobsinlund,
     jpal,
     lever,
+    mammut,
     niras,
+    norrsken,
     personio,
+    sida,
     smartrecruiters,
     successfactors_html,
     teamtailor,
@@ -55,6 +59,7 @@ from job_scraper.extractors import (  # noqa: E402
 )
 
 __all__ = [
+    "EMPTY_FIXTURES",
     "FIXTURES_DIR",
     "FIXTURE_CASES",
     "capture_fixtures",
@@ -295,7 +300,54 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://apply.workable.com/simprints/",
         lambda url, fetch: workable.extract(url, fetch, source_name="simprints"),
     ),
+    # --- SP6: the single-source readers, captured for the first time ---
+    "asana": (
+        # Rendered. The cards are what the reader reads; the page also embeds
+        # the Greenhouse posting JSON (__NEXT_DATA__), descriptions and all,
+        # which is why this one file is 2 MB.
+        "asana.html",
+        "https://asana.com/jobs/all",
+        lambda url, fetch: asana.extract(url, fetch, source_name="asana"),
+    ),
+    "coefficient_giving": (
+        # Ashby's posting API since SP6, like kognity. Its one posting is the
+        # board's standing "Expression of Interest" form, not a vacancy.
+        "coefficient_giving.json",
+        "https://jobs.ashbyhq.com/coefficientgiving",
+        lambda url, fetch: ashby.extract(url, fetch, source_name="coefficient_giving"),
+    ),
+    "mammut": (
+        "mammut.html",
+        "https://recruiting.mammut.com/Jobs/All",
+        lambda url, fetch: mammut.extract(url, fetch, source_name="mammut"),
+    ),
+    "norrsken": (
+        # Rendered: the cards are a Teamtailor widget injected into the page.
+        "norrsken.html",
+        "https://www.norrsken.org/work-at-norrsken",
+        lambda url, fetch: norrsken.extract(url, fetch, source_name="norrsken"),
+    ),
+    "oatly": (
+        # A Teamtailor board, read by the generic reader since SP6.
+        "oatly.html",
+        "https://careers.oatly.com/en-GB/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="oatly"),
+    ),
+    "sida": (
+        "sida.html",
+        "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/",
+        lambda url, fetch: sida.extract(url, fetch, source_name="sida"),
+    ),
 }
+
+# Fixtures captured while the board listed nothing and said so in words, so an
+# empty parse is the right answer for them and not a drifted selector. Every
+# other fixture must parse to at least one posting. A name belongs here only
+# when its reader tells a stated empty board from an unreadable one (the
+# reader's own tests pin the second case), and it leaves when a re-capture
+# finds postings, since its row parsing has no real markup behind it until then.
+# Empty since coefficient_giving moved to the Ashby API (SP6), which lists a post.
+EMPTY_FIXTURES: frozenset[str] = frozenset()
 
 
 def fixture_pages(name: str) -> list[Path]:

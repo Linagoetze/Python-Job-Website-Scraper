@@ -26,9 +26,16 @@ from urllib.parse import urlparse
 
 import pytest
 
-from job_scraper.extractors import ashby, personio, smartrecruiters, workable
+from job_scraper.extractors import (
+    asana,
+    ashby,
+    personio,
+    sida,
+    smartrecruiters,
+    workable,
+)
 from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
-from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, parse_fixture
+from tests.fixture_cases import EMPTY_FIXTURES, FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
 # source name -> expected job count and complete first-job dict.
 #
@@ -779,12 +786,152 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Director of Strategic Partnerships Partnerships Ghana Remote",
         },
     },
+    # --- SP6 (2026-10-08): the single-source readers ---
+    "asana": {
+        # asana.py. No bug: all 100 cards read title, location and detail_url
+        # as the page shows them. The rendered page lagged the Greenhouse board
+        # it is built from by about a day (one closed posting still listed,
+        # four new ones missing; the board said 103), which is the site's, not
+        # the reader's. The team heading above each group is not read, so
+        # department is empty on every row. Every row carries its description,
+        # read from the Greenhouse JSON the page embeds (SP6 follow-up).
+        "count": 100,
+        "first_job": {
+            "source_name": "asana",
+            "title": "Administrative Business Partner",
+            "location": "Vancouver, BC",
+            "department": "",
+            "listing_url": "https://asana.com/jobs/all",
+            "detail_url": "https://asana.com/jobs/apply/8165477",
+            "apply_url": "https://asana.com/jobs/apply/8165477",
+            "raw_snippet": "Administrative Business Partner Vancouver, BC",
+        },
+        "description": (7553, "The Administrative Business Partner (ABP) provides strategic"),
+    },
+    "coefficient_giving": {
+        # ashby.py since SP6, reading the board's posting API: the WordPress
+        # page's own reader is gone, and its roles were always links to this
+        # board. The first capture through it (2026-10-08) holds one posting,
+        # the standing "Expression of Interest" form, which the owner rejects
+        # once in review rather than the reader learning to skip it. Its
+        # secondaryLocations join the field as segments (SP4f).
+        "count": 1,
+        "first_job": {
+            "source_name": "coefficient_giving",
+            "title": "Expression of Interest",
+            "location": "Remote - Global | San Francisco | Remote - USA",
+            "department": "Future Openings",
+            "listing_url": "https://jobs.ashbyhq.com/coefficientgiving",
+            "detail_url": (
+                "https://jobs.ashbyhq.com/coefficientgiving/2cc48fa8-97aa-47d8-b367-bf3b66cdba3f"
+            ),
+            "apply_url": (
+                "https://jobs.ashbyhq.com/coefficientgiving/2cc48fa8-97aa-47d8-b367-bf3b66cdba3f"
+            ),
+            "raw_snippet": (
+                "Expression of Interest Future Openings Remote - Global | San Francisco | "
+                "Remote - USA"
+            ),
+        },
+        "description": (1304, "Open Philanthropy is now Coefficient Giving."),
+    },
+    "mammut": {
+        # mammut.py. No bug: all 17 rows match the page. The location is the
+        # third labelled span (the second is the employment type). One title
+        # names Hamburg while the posting's own location says Zweibrücken; that
+        # is the site's data, and the field is kept as given.
+        "count": 17,
+        "first_job": {
+            "source_name": "mammut",
+            "title": "Intern Corporate Strategy (all, 80-100%), 6-12 months",
+            "location": "Seon",
+            "department": "",
+            "listing_url": "https://recruiting.mammut.com/Jobs/All",
+            "detail_url": "https://recruiting.mammut.com/Vacancies/1450/Description/2",
+            "apply_url": "https://recruiting.mammut.com/Vacancies/1450/Description/2",
+            "raw_snippet": "Intern Corporate Strategy (all, 80-100%), 6-12 months Seon",
+        },
+    },
+    "norrsken": {
+        # norrsken.py. No bug: the one card matches the page, and the Teamtailor
+        # career site behind the widget listed the same single posting.
+        "count": 1,
+        "first_job": {
+            "source_name": "norrsken",
+            "title": "Membership Growth Associate",
+            "location": "Barcelona, Spain",
+            "department": "Norrsken House Barcelona",
+            "listing_url": "https://www.norrsken.org/work-at-norrsken",
+            "detail_url": (
+                "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
+            ),
+            "apply_url": (
+                "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
+            ),
+            "raw_snippet": "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain",
+        },
+    },
+    "oatly": {
+        # teamtailor.py since SP6. Oatly's own reader returned an empty
+        # location and department on all 15 rows: it looked for a `mt-1`
+        # metadata block the page now calls `mt-4`, and its positional split
+        # would have read "Onsite" as the location had it found one. The
+        # generic reader reads every card. Its detail_url has no /en-GB/; the
+        # store adds it, and the key is the posting id either way.
+        "count": 15,
+        "first_job": {
+            "source_name": "oatly",
+            "title": "Stage Chef de secteur Proximité Paris janvier-juin 2027",
+            "location": "Paris",
+            "department": "Sales & Commercial",
+            "listing_url": "https://careers.oatly.com/en-GB/jobs",
+            "detail_url": (
+                "https://careers.oatly.com/jobs/8489573-stage-chef-de-secteur-proximite-paris-"
+                "janvier-juin-2027"
+            ),
+            "apply_url": (
+                "https://careers.oatly.com/jobs/8489573-stage-chef-de-secteur-proximite-paris-"
+                "janvier-juin-2027"
+            ),
+            "raw_snippet": (
+                "Stage Chef de secteur Proximité Paris janvier-juin 2027 Sales & Commercial Paris"
+            ),
+        },
+    },
+    "sida": {
+        # sida.py. The reader wrote "Stockholm, Sweden" on every row; the
+        # page labels each posting's place, and six of nine said Sundbyberg.
+        # It now reads the "Plats:" label and checks its count against the
+        # page's stated total (9).
+        "count": 9,
+        "first_job": {
+            "source_name": "sida",
+            "title": "Säkerhetsspecialist, person- och resesäkerhet",
+            "location": "Sundbyberg",
+            "department": "",
+            "listing_url": "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/",
+            "detail_url": (
+                "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/"
+                "5688-sakerhetsspecialist-person-och-resesakerhet"
+            ),
+            "apply_url": (
+                "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/"
+                "5688-sakerhetsspecialist-person-och-resesakerhet"
+            ),
+            "raw_snippet": "Säkerhetsspecialist, person- och resesäkerhet Sundbyberg",
+        },
+    },
 }
 
 
 def test_every_fixture_has_a_golden() -> None:
     """A newly captured fixture must not slip in unpinned."""
     assert set(_GOLDEN) == set(FIXTURE_CASES)
+
+
+def test_only_a_declared_empty_fixture_is_pinned_at_zero() -> None:
+    """A zero golden is a stated empty board, never a selector pinned as broken."""
+    assert {name for name, golden in _GOLDEN.items() if not golden["count"]} == EMPTY_FIXTURES
 
 
 @pytest.mark.parametrize("name", sorted(_GOLDEN))
@@ -800,6 +947,8 @@ def test_extractor_output_matches_golden(name: str) -> None:
         f"{name}: expected {expected['count']} jobs, got {len(jobs)}. "
         "Either a selector drifted or the fixture was refreshed."
     )
+    if not expected["count"]:
+        return
     first = dict(jobs[0])
     if "description" in expected:
         chars, opening = expected["description"]
@@ -1107,3 +1256,107 @@ def test_workable_keeps_its_single_location_when_every_location_is_hidden() -> N
         }
     )
     assert job["location"] == "Litware"
+
+
+# --- SP6 -------------------------------------------------------------------
+
+
+def _sida_page() -> str:
+    return (FIXTURES_DIR / FIXTURE_CASES["sida"][0]).read_text(encoding="utf-8")
+
+
+def _sida(page: str) -> list[dict[str, Any]]:
+    return sida.extract(FIXTURE_CASES["sida"][1], lambda url: page, "sida")
+
+
+def test_sida_reads_each_posting_s_own_place() -> None:
+    """Not the head office for every row, which is what the reader used to write."""
+    places = sorted(job["location"] for job in parse_fixture("sida"))
+    assert places == ["Stockholm"] * 3 + ["Sundbyberg"] * 6
+
+
+def test_sida_fails_loudly_when_the_count_disagrees_with_the_total() -> None:
+    page = _sida_page().replace(">9<", ">10<")
+    with pytest.raises(ValueError, match="states 10 vacancies but 9 were read"):
+        _sida(page)
+
+
+def test_sida_fails_loudly_without_a_stated_total() -> None:
+    page = _sida_page().replace("lediga tjänster", "")
+    with pytest.raises(ValueError, match="no stated total"):
+        _sida(page)
+
+
+def test_oatly_reads_each_card_shape_the_old_reader_could_not() -> None:
+    """A workplace chip goes to the snippet, and a card with one segment is a place."""
+    jobs = {job["title"]: job for job in parse_fixture("oatly")}
+    onsite = jobs["Maintenance Engineer"]
+    assert (onsite["location"], onsite["department"]) == ("Vlissingen", "Site Manufacturing")
+    assert onsite["raw_snippet"].endswith("Onsite")
+    no_department = jobs["Logistics Project Manager & Analytics"]
+    assert (no_department["location"], no_department["department"]) == (
+        "United States - Remote",
+        "",
+    )
+    assert all(job["location"] for job in jobs.values())
+
+
+def test_asana_supplies_every_description_as_plain_text() -> None:
+    """Greenhouse escapes its markup; what reaches Layer 5 is the text, not tags."""
+    jobs = parse_fixture("asana")
+    texts = [job["description_text"] for job in jobs]
+    assert all(texts)
+    assert not any("<p" in text or "&lt;" in text for text in texts)
+    assert all("hybrid" in text.lower() for text in texts)
+
+
+def test_asana_without_embedded_postings_still_lists_its_cards() -> None:
+    """The cards are the list; a missing description only means Layer 5 fetches."""
+    page = (
+        '<html><body><a href="/jobs/apply/1"><p>Analyst</p><p>Fabrikam City</p></a></body></html>'
+    )
+    [job] = asana.extract("https://asana.com/jobs/all", lambda url: page, "asana")
+    assert (job["title"], job["location"], job["description_text"]) == (
+        "Analyst",
+        "Fabrikam City",
+        "",
+    )
+
+
+def test_sida_reads_a_stated_zero_as_an_empty_board() -> None:
+    """Handwritten: no zero-vacancy page has been captured yet."""
+    page = (
+        '<html><body><div class="job-listing__pagination-div"><p>Totalt '
+        '<span class="semi-bold">0</span> lediga tjänster</p></div></body></html>'
+    )
+    assert _sida(page) == []
+
+
+def test_sida_says_an_unread_empty_page_may_be_a_day_without_vacancies() -> None:
+    with pytest.raises(ValueError, match="may be a day with no vacancies"):
+        _sida("<html><body><p>Inga lediga jobb just nu.</p></body></html>")
+
+
+def test_sida_fails_loudly_when_no_posting_carries_the_place_label() -> None:
+    page = _sida_page().replace("Plats:", "Ort:")
+    with pytest.raises(ValueError, match="may have been renamed"):
+        _sida(page)
+
+
+def test_sida_warns_about_one_posting_without_the_place_label(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    page = _sida_page().replace("Plats:", "Ort:", 1)
+    jobs = _sida(page)
+    assert [job["location"] for job in jobs].count("") == 1
+    assert "1 posting(s) with no 'Plats:' label" in caplog.text
+
+
+def test_asana_warns_when_some_postings_have_no_embedded_description(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    page = (FIXTURES_DIR / FIXTURE_CASES["asana"][0]).read_text(encoding="utf-8")
+    page = page.replace('"id":8165477', '"id":1', 1)
+    jobs = asana.extract(FIXTURE_CASES["asana"][1], lambda url: page, "asana")
+    assert sum(not job["description_text"] for job in jobs) == 1
+    assert "1 of 100 postings" in caplog.text

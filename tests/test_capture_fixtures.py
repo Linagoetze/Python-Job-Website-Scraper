@@ -21,7 +21,13 @@ import pytest
 # capture_fixtures lives in scripts/, outside the package. fixture_cases owns
 # the sys.path amendment that makes it importable and re-exports the module, so
 # this is a single ordinary import with no ordering hazard for an import-sorter.
-from tests.fixture_cases import FIXTURE_CASES, FIXTURES_DIR, capture_fixtures, parse_fixture
+from tests.fixture_cases import (
+    EMPTY_FIXTURES,
+    FIXTURE_CASES,
+    FIXTURES_DIR,
+    capture_fixtures,
+    parse_fixture,
+)
 
 capture_one = capture_fixtures.capture_one
 recorded_pages_fetch = capture_fixtures.recorded_pages_fetch
@@ -584,5 +590,8 @@ def test_fixture_still_parses(name: str) -> None:
 
     jobs = parse_fixture(name)
 
+    if name in EMPTY_FIXTURES:
+        assert jobs == [], f"{filename} is declared empty but parsed to {len(jobs)} jobs"
+        return
     assert len(jobs) > 0, f"{filename} parsed to zero jobs"
     assert all(job["title"] for job in jobs)
