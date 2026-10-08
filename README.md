@@ -994,7 +994,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1298 tests, about fifteen seconds, no network access required.
+1303 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

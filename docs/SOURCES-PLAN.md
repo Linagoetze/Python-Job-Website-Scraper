@@ -3826,8 +3826,9 @@ later instalment.
 ### Result — all six in one instalment, 2026-10-08, branch `sp6-fixtures-rest`
 
 The owner asked for all six at once. Captured with `--pages all`, inside the
-capture's politeness. Every reader now has a saved page: 24 extractors, none
-uncovered. Three readers had a bug, which is above SP4's one in five and
+capture's politeness. Every reader now has a saved page, and none is
+uncovered. That was 24 extractors at the result, and 23 after the follow-up
+removed `coefficient.py`. Three readers had a bug, which is above SP4's one in five and
 matches WP8g's warning that reasoning gets the layout right and the data wrong.
 Each bug was a field wrong or blank **on every row**, so the row-sanity check
 in the prompt found all three. A count check would have passed every one.
@@ -3905,7 +3906,19 @@ The owner chose all four after reading the result.
    edited atomically, with its backup kept outside the repository, because a
    sidecar beside it is not gitignored. Its values stay out of this file.
 
-**Tests**: 1261 → 1301 at the result, then 1298 after the follow-up. The
+**Review fixes (2026-10-08).** A reviewer session found three quiet spots,
+and each now speaks up. sida: a page with no postings and no stated total
+still raises, because a zero-vacancy page has never been captured and its
+wording is not guessed. The error now says it may be such a day, so the page
+gets captured, and a stated "Totalt 0" reads as empty. sida: a page where no
+posting carries the "Plats:" label raises, as a renamed label would blank
+every location, and a single posting without it logs a warning. asana: any
+card without an embedded description is counted in a warning, not only a
+page with none. Those cards still get their pages fetched by Layer 5, as
+before.
+
+**Tests**: 1261 → 1301 at the result, then 1298 after the follow-up, then
+1303 after the review fixes (four for sida, one for asana). The
 1301 were six fixture cases, each pinned four ways (golden, parse check, two
 store round-trips), plus six secret-scan cases, and ten tests of the fixes:
 coefficient's refusals (5), sida's places and total (3), oatly's card
