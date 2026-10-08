@@ -5,11 +5,11 @@ from __future__ import annotations
 import csv
 import logging
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from job_scraper import JobRecord
+from job_scraper import JobRecord, curated
 from job_scraper.config_loader import load_rules, load_sources
 from job_scraper.drops import (
     LAYER_DETAIL,
@@ -328,6 +328,13 @@ class RunSummary:
     # store's history plus this run, so a source that never shrinks, and that
     # `health_warnings` therefore can never name, is still caught.
     one_page_sources: tuple[OnePageSource, ...] = ()
+    # Configured sources whose board is on the tombstone (SP7, the owner's
+    # optional third warning). Worked out before anything is scraped and only
+    # reported: the owner may have re-added a board on purpose. If the list
+    # could not be read, `tombstone_error` says so instead of the guard going
+    # quiet, which would read as "nothing is tombstoned".
+    tombstoned_sources: tuple[curated.TombstonedSource, ...] = ()
+    tombstone_error: str = ""
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -500,6 +507,31 @@ def _robots_overrides(sources: list[dict[str, Any]]) -> set[str]:
     return overrides
 
 
+def _check_tombstone(
+    sources: list[dict[str, Any]], curated_dir: Path | None
+) -> tuple[tuple[curated.TombstonedSource, ...], str]:
+    """Which configured sources the tombstone bans, and why it could not say if it could not.
+
+    Asked once, before anything is fetched, so the warning does not depend on
+    how the run ends. A list that cannot be read (not migrated, malformed) is
+    returned as an error string rather than raised: a scrape must not fail
+    because of its guard, and a guard that goes quiet reads as "nothing is
+    banned", which is the failure it exists to prevent.
+    """
+    if curated_dir is None:
+        return (), ""
+    try:
+        found = curated.tombstoned_sources(sources, curated.load_excluded(curated_dir))
+    except curated.CuratedError as exc:
+        logger.warning("Tombstone guard could not read the excluded list: %s", exc)
+        return (), str(exc)
+    for hit in found:
+        logger.warning(
+            "Source %r is on the tombstone as %s: %s", hit.source_name, hit.organisation, hit.reason
+        )
+    return found, ""
+
+
 def run_pipeline(
     *,
     sources_path: Path,
@@ -516,6 +548,7 @@ def run_pipeline(
     host_delay: float = DEFAULT_HOST_DELAY,
     per_host_requests: int = DEFAULT_PER_HOST_REQUESTS,
     check_robots: bool = True,
+    curated_dir: Path | None = None,
 ) -> RunSummary:
     """Run one full scrape, holding the run's shared fetch resources open.
 
@@ -537,12 +570,18 @@ def run_pipeline(
     `host_delay` apart, and refuses anything the host's robots.txt forbids.
     Sources marked `ignore_robots` in sources.yaml are exempted from that last
     check, host by host — see `_robots_overrides`.
+
+    `curated_dir` is where `excluded_sources.yaml` lives, for the tombstone
+    guard (SP7). It has no default, unlike `cache_path`: the guard reads the
+    owner's own file, so only the real run (`run.py`) opts in and a test never
+    reads it by accident.
     """
     # Read once, here, and passed down. Both files are small, but a run that
     # parses its own config twice invites the two copies to drift apart.
     rules = load_rules(rules_path)
     sources = load_sources(sources_path)
     robots_overrides = _robots_overrides(sources)
+    tombstoned, tombstone_error = _check_tombstone(sources, curated_dir)
     with ExitStack() as stack:
         stack.enter_context(
             polite_fetching(
@@ -557,7 +596,7 @@ def run_pipeline(
         if use_cache:
             stack.enter_context(http_cache(path=cache_path, ttl=cache_ttl))
         try:
-            return _run_pipeline(
+            summary = _run_pipeline(
                 sources=sources,
                 rules=rules,
                 out_db_path=out_db_path,
@@ -567,6 +606,7 @@ def run_pipeline(
                 keep_drop_runs=keep_drop_runs,
                 dry_run=dry_run,
             )
+            return replace(summary, tombstoned_sources=tombstoned, tombstone_error=tombstone_error)
         finally:
             if use_cache:
                 logger.info("%s", cache_stats().summary())

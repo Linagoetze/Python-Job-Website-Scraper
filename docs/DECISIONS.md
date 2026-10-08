@@ -1729,3 +1729,23 @@ session — see `CLAUDE.md`.
   board at 16, will cost a line. If it ever fires on a healthy guarded source,
   revisit with that source as the evidence. No config key silences it, as the
   package asked.
+
+- **The tombstone guard warns, reads before the run, and says when it cannot
+  read (SP7, the owner's choice to build it, 2026-10-08).** `curated.tombstoned_sources`
+  matches each `sources.yaml` entry against `excluded_sources.yaml` with
+  `find_board`, SP1's board-identity matcher, never by host (six of the owner's
+  sources share one Greenhouse hostname; a host match names all six for one
+  banned employer). It reports and nothing more: the source is still scraped,
+  because the owner may have re-added it on purpose and a source dropped from a
+  run is a worse failure than one that is named. `run_pipeline` takes a
+  `curated_dir` with no default, so only `run.py` reads the owner's file and a
+  test never does by accident. A list that cannot be read (`CuratedError`,
+  including the not-migrated refusal) is returned as `tombstone_error` and shown
+  in the same block, not raised and not swallowed: a scrape must not fail on its
+  guard, and a silent guard reads as "nothing is banned". The answer is worked
+  out before the first fetch and attached to the summary afterwards, so it does
+  not depend on how the run ends; it is also logged once at WARNING. It is a
+  block in the summary rather than a line printed before the run because the
+  summary is the one thing read at the end of a four-minute run, and a dry run
+  shows it too. The real tombstone against the real `sources.yaml` matched
+  nothing on 2026-10-08.

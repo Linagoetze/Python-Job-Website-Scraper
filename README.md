@@ -318,6 +318,25 @@ accrue no misses. Both blocks are built from the run's own results, not the
 store, so `--dry-run` shows them too. A refused source gets no `source_health`
 row, because it never reached the site.
 
+**Tombstoned sources** come next, only when a source in `sources.yaml` is on the
+excluded list (`data/curated/excluded_sources.yaml`):
+
+```
+────────────────────────────────────────────────────
+!  Tombstoned sources: 1 source in sources.yaml is on the excluded list
+!  acme_jobs: Acme Corp — Permanently excluded by user decision. Do not re-propose. (scraped anyway; remove it from sources.yaml if that was not meant)
+```
+
+It names the organisation and the reason recorded for it, and it only warns: you
+may have re-added a board on purpose, so the source is scraped as configured. The
+match is by board, the way `sources check` matches, never by host, so one banned
+employer on a shared Greenhouse or Ashby hostname does not name its neighbours.
+The list is read before anything is fetched, and a long reason is cut in the
+summary (the file keeps it whole). If the list cannot be read, for instance because
+it has not been migrated to YAML, the block says so rather than staying silent:
+"nothing is banned" and "I could not check" must not look alike. `run.py` is the
+only caller that reads it, so a test run never touches your files.
+
 **Source health warnings** appear under the funnel, in a block of their own, and
 only when there is something to say:
 
@@ -383,6 +402,13 @@ five runs will trip it, and the cost is one line. It checks every reader alike,
 including the ones that walk to a stated total, so it also tests that guard. There
 is no setting to silence it for one source; if a board is genuinely that size, one
 different run ends the warning.
+
+Where the blocks land, top to bottom, all under the funnel's closing totals and
+all absent when they have nothing to say: failed sources, refused sources,
+tombstoned sources, source health, empty sources, one-page sources, unreadable
+pages, then the dry-run notice. None of them is a filter layer, none skips or
+delists a source, and a source that drops everything at Layer 0 is not one of
+them (that audit is its own package, SP12).
 
 **Unreadable pages** get a third block, for a different question again — "could
 the pages behind the listing be read?":
@@ -1053,7 +1079,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1331 tests, about fifteen seconds, no network access required.
+1339 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

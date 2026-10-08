@@ -464,3 +464,122 @@ def test_the_one_page_block_renders_its_own_marker() -> None:
     marked = [ln for ln in text.splitlines() if ln.startswith("!")]
     assert len(marked) == 3
     assert all("− " not in ln for ln in marked)
+
+
+# --- 3. the tombstone guard ---------------------------------------------------
+
+_GH = "https://job-boards.greenhouse.io"
+
+
+def _tombstone(tmp_path: Path, *entries: tuple[str, str, str]) -> Path:
+    curated_dir = tmp_path / "curated"
+    curated_dir.mkdir()
+    (curated_dir / "excluded_sources.yaml").write_text(
+        yaml.dump(
+            {
+                "excluded": [
+                    {"organisation": org, "url": url, "reason": reason, "excluded_on": None}
+                    for org, url, reason in entries
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return curated_dir
+
+
+@pytest.fixture
+def shared_host(env: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Two sources on one Greenhouse hostname, as six of the owner's are."""
+    (env / "sources.yaml").write_text(
+        yaml.dump(
+            {
+                "sources": [
+                    {"name": "acme", "url": f"{_GH}/acme", "strategy": "static"},
+                    {"name": "beta", "url": f"{_GH}/beta", "strategy": "static"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    _extractors(monkeypatch)
+    return env
+
+
+def test_a_tombstoned_board_is_named_with_its_reason(shared_host: Path) -> None:
+    curated_dir = _tombstone(
+        shared_host, ("Acme Corp", f"{_GH}/acme", "Closed to us.\nDo not re-propose.")
+    )
+    summary = _run(shared_host, dry_run=True, curated_dir=curated_dir)
+
+    assert [(t.source_name, t.organisation, t.reason) for t in summary.tombstoned_sources] == [
+        ("acme", "Acme Corp", "Closed to us. Do not re-propose.")
+    ]
+    text = format_summary(summary)
+    assert "!  Tombstoned sources: 1 source in sources.yaml is on the excluded list" in text
+    assert "!  acme: Acme Corp — Closed to us. Do not re-propose. (scraped anyway" in text
+
+
+def test_the_match_is_the_board_not_the_host(shared_host: Path) -> None:
+    """One banned Greenhouse employer must not name its five neighbours."""
+    curated_dir = _tombstone(shared_host, ("Acme Corp", f"{_GH}/acme", "No."))
+    summary = _run(shared_host, dry_run=True, curated_dir=curated_dir)
+    assert [t.source_name for t in summary.tombstoned_sources] == ["acme"]
+
+
+def test_a_tombstoned_source_is_still_scraped(shared_host: Path) -> None:
+    """It warns. The owner may have re-added it deliberately."""
+    curated_dir = _tombstone(shared_host, ("Acme Corp", f"{_GH}/acme", "No."))
+    summary = _run(shared_host, dry_run=True, curated_dir=curated_dir)
+    assert summary.sources_processed == 2
+    assert summary.jobs_extracted == 2
+
+
+def test_no_match_no_block(shared_host: Path) -> None:
+    curated_dir = _tombstone(shared_host, ("Elsewhere", f"{_GH}/elsewhere", "No."))
+    text = format_summary(_run(shared_host, dry_run=True, curated_dir=curated_dir))
+    assert "Tombstone" not in text
+
+
+def test_without_a_curated_dir_nothing_is_read(shared_host: Path) -> None:
+    """A test, or any caller that is not the owner's own run, never touches data/curated."""
+    summary = _run(shared_host, dry_run=True)
+    assert summary.tombstoned_sources == () and summary.tombstone_error == ""
+
+
+def test_an_unmigrated_list_is_said_not_read_as_empty(shared_host: Path) -> None:
+    curated_dir = shared_host / "curated"
+    curated_dir.mkdir()
+    (curated_dir / "excluded_sources.csv").write_text("organisation;url\n", encoding="utf-8")
+    summary = _run(shared_host, dry_run=True, curated_dir=curated_dir)
+
+    assert summary.tombstoned_sources == ()
+    assert "migrat" in summary.tombstone_error
+    assert summary.sources_processed == 2  # the scrape went ahead
+    text = format_summary(summary)
+    assert "!  Tombstone: the excluded list could not be read, so it was not checked" in text
+
+
+def test_the_warning_is_logged_once_at_startup(
+    shared_host: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    curated_dir = _tombstone(shared_host, ("Acme Corp", f"{_GH}/acme", "No."))
+    with caplog.at_level("WARNING"):
+        _run(shared_host, dry_run=True, curated_dir=curated_dir)
+    assert caplog.text.count("is on the tombstone as Acme Corp") == 1
+
+
+def test_the_tombstone_block_renders_beside_the_others() -> None:
+    from job_scraper.curated import TombstonedSource
+
+    text = format_summary(
+        _summary(
+            tombstoned_sources=(
+                TombstonedSource("one", "One Ltd", "No."),
+                TombstonedSource("two", "Two Ltd", "x" * 400),
+            )
+        )
+    )
+    assert "!  Tombstoned sources: 2 sources in sources.yaml are on the excluded list" in text
+    long_line = next(ln for ln in text.splitlines() if ln.startswith("!  two:"))
+    assert "…" in long_line and "x" * 250 not in long_line

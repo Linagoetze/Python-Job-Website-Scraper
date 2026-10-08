@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from job_scraper.config_loader import (
+    default_curated_dir,
     default_jobs_db_path,
     default_jobs_xlsx_path,
     default_rules_path,
@@ -34,6 +35,16 @@ from job_scraper.scoring import ScoringSummary, score_new_jobs
 from job_scraper.storage.xlsx_store import write_xlsx
 
 _RULE = "─" * 52
+_REASON_MAX = 200
+
+
+def _first_line(text: str) -> str:
+    return next((ln.strip() for ln in text.splitlines() if ln.strip()), text.strip())
+
+
+def _clip(text: str, limit: int = _REASON_MAX) -> str:
+    """*text* cut to *limit* characters with an ellipsis, for one-line summary rows."""
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _cache_ttl_seconds(value: str) -> int:
@@ -79,7 +90,9 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     warnings structurally cannot — "did this return anything at all?" rather
     than "did it shrink?"; the one-page sources (SP7), "has it returned the same
     page size every run?"; the unreadable pages (SP4c), "could the pages behind
-    the listing be read?"; and the dry-run notice."""
+    the listing be read?"; and the dry-run notice. A source that is configured
+    but tombstoned (SP7) is named beside the failed and refused ones, since it
+    too is about whether a source is as the owner meant it."""
 
     # All numeric columns end at the same character position for vertical
     # scanning. Wide enough for the longest label plus a six-figure count:
@@ -199,6 +212,27 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
                 f"!  {refused.name}: {refused.robots_url} says `{refused.rule}` — "
                 "stored jobs kept, nothing delisted"
             )
+    if summary.tombstoned_sources or summary.tombstone_error:
+        # Configuration, not a result of the run, so it sits with the other
+        # "this source was not read as intended" blocks and not among the
+        # per-run findings. It only warns: the owner may have re-added a board
+        # on purpose, and the source was scraped as configured.
+        lines.append(_RULE)
+        if summary.tombstone_error:
+            lines.append("!  Tombstone: the excluded list could not be read, so it was not checked")
+            lines.append(f"!  {_first_line(summary.tombstone_error)}")
+        if summary.tombstoned_sources:
+            n = len(summary.tombstoned_sources)
+            lines.append(
+                "!  Tombstoned sources: "
+                + ("1 source in sources.yaml is" if n == 1 else f"{n} sources in sources.yaml are")
+                + " on the excluded list"
+            )
+            for hit in summary.tombstoned_sources:
+                lines.append(
+                    f"!  {hit.source_name}: {hit.organisation} — {_clip(hit.reason)} "
+                    "(scraped anyway; remove it from sources.yaml if that was not meant)"
+                )
     if summary.health_warnings:
         # Deliberately not a ladder line. A source that shrank is not a filter
         # that fired, and borrowing the "L5  − " gutter would file a warning
@@ -454,6 +488,7 @@ def main() -> None:
             use_cache=not args.no_cache,
             cache_ttl=args.cache_ttl,
             dry_run=args.dry_run,
+            curated_dir=default_curated_dir(),
         )
     except FileNotFoundError as exc:
         # Missing config on a fresh clone — the message carries the fix, so show
