@@ -34,6 +34,7 @@ from capture_fixtures import recorded_pages_fetch, single_response_fetch  # noqa
 
 from job_scraper.extractors import (  # noqa: E402
     against_malaria,
+    asana,
     ashby,
     bearingpoint,
     breezy,
@@ -44,7 +45,9 @@ from job_scraper.extractors import (  # noqa: E402
     jobsinlund,
     jpal,
     lever,
+    mammut,
     niras,
+    norrsken,
     personio,
     smartrecruiters,
     successfactors_html,
@@ -294,6 +297,26 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "simprints.json",
         "https://apply.workable.com/simprints/",
         lambda url, fetch: workable.extract(url, fetch, source_name="simprints"),
+    ),
+    # --- SP6: the single-source readers, captured for the first time ---
+    "asana": (
+        # Rendered. The cards are what the reader reads; the page also embeds
+        # the Greenhouse posting JSON (__NEXT_DATA__), descriptions and all,
+        # which is why this one file is 2 MB.
+        "asana.html",
+        "https://asana.com/jobs/all",
+        lambda url, fetch: asana.extract(url, fetch, source_name="asana"),
+    ),
+    "mammut": (
+        "mammut.html",
+        "https://recruiting.mammut.com/Jobs/All",
+        lambda url, fetch: mammut.extract(url, fetch, source_name="mammut"),
+    ),
+    "norrsken": (
+        # Rendered: the cards are a Teamtailor widget injected into the page.
+        "norrsken.html",
+        "https://www.norrsken.org/work-at-norrsken",
+        lambda url, fetch: norrsken.extract(url, fetch, source_name="norrsken"),
     ),
 }
 

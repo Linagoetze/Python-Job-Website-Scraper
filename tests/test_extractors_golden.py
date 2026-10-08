@@ -779,6 +779,62 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Director of Strategic Partnerships Partnerships Ghana Remote",
         },
     },
+    # --- SP6 (2026-10-08): the single-source readers ---
+    "asana": {
+        # asana.py. No bug: all 100 cards read title, location and detail_url
+        # as the page shows them. The rendered page lagged the Greenhouse board
+        # it is built from by about a day (one closed posting still listed,
+        # four new ones missing; the board said 103), which is the site's, not
+        # the reader's. The team heading above each group is not read, so
+        # department is empty on every row.
+        "count": 100,
+        "first_job": {
+            "source_name": "asana",
+            "title": "Administrative Business Partner",
+            "location": "Vancouver, BC",
+            "department": "",
+            "listing_url": "https://asana.com/jobs/all",
+            "detail_url": "https://asana.com/jobs/apply/8165477",
+            "apply_url": "https://asana.com/jobs/apply/8165477",
+            "raw_snippet": "Administrative Business Partner Vancouver, BC",
+        },
+    },
+    "mammut": {
+        # mammut.py. No bug: all 17 rows match the page. The location is the
+        # third labelled span (the second is the employment type). One title
+        # names Hamburg while the posting's own location says Zweibrücken; that
+        # is the site's data, and the field is kept as given.
+        "count": 17,
+        "first_job": {
+            "source_name": "mammut",
+            "title": "Intern Corporate Strategy (all, 80-100%), 6-12 months",
+            "location": "Seon",
+            "department": "",
+            "listing_url": "https://recruiting.mammut.com/Jobs/All",
+            "detail_url": "https://recruiting.mammut.com/Vacancies/1450/Description/2",
+            "apply_url": "https://recruiting.mammut.com/Vacancies/1450/Description/2",
+            "raw_snippet": "Intern Corporate Strategy (all, 80-100%), 6-12 months Seon",
+        },
+    },
+    "norrsken": {
+        # norrsken.py. No bug: the one card matches the page, and the Teamtailor
+        # career site behind the widget listed the same single posting.
+        "count": 1,
+        "first_job": {
+            "source_name": "norrsken",
+            "title": "Membership Growth Associate",
+            "location": "Barcelona, Spain",
+            "department": "Norrsken House Barcelona",
+            "listing_url": "https://www.norrsken.org/work-at-norrsken",
+            "detail_url": (
+                "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
+            ),
+            "apply_url": (
+                "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
+            ),
+            "raw_snippet": "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain",
+        },
+    },
 }
 
 
