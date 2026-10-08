@@ -77,9 +77,9 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
     own so a shrinking source is never mistaken for a filter that fired; the
     empty sources (CU2), which is the same marker asking the question health
     warnings structurally cannot — "did this return anything at all?" rather
-    than "did it shrink?"; the unreadable pages (SP4c), "could the pages behind
-    the listing be read?";
-    and the dry-run notice."""
+    than "did it shrink?"; the one-page sources (SP7), "has it returned the same
+    page size every run?"; the unreadable pages (SP4c), "could the pages behind
+    the listing be read?"; and the dry-run notice."""
 
     # All numeric columns end at the same character position for vertical
     # scanning. Wide enough for the longest label plus a six-figure count:
@@ -238,6 +238,23 @@ def format_summary(summary: RunSummary, scoring: ScoringSummary | None = None) -
         )
         for name in summary.empty_sources:
             lines.append(f"!  {name}: 0 rows — {fate}; check its extractor")
+    if summary.one_page_sources:
+        # A question the two above cannot ask either: not "did it shrink?" or
+        # "was it empty?" but "has it looked exactly like this for a while?". A
+        # source short by the same amount on every run never shrinks, so
+        # health_warnings stays silent; four Workday sources sat at 20 rows in
+        # all of 27 runs while their boards held 64 to about 2,940 (SP3b).
+        n = len(summary.one_page_sources)
+        lines.append(_RULE)
+        lines.append(
+            f"!  One page, every run: {n} source{'' if n == 1 else 's'} returned the same "
+            "typical page size"
+        )
+        for page in summary.one_page_sources:
+            lines.append(
+                f"!  {page.source_name}: {page.rows:,} rows on each of its last {page.runs} "
+                "runs — may be reading only its first page"
+            )
     if summary.unreadable_pages:
         # A third question again: not "did it shrink?" or "was it empty?" but
         # "could the pages behind the listing be read?". The jobs were kept, so

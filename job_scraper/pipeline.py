@@ -65,10 +65,12 @@ from job_scraper.http import (
     render_pool,
     user_agent_from_rules,
 )
+from job_scraper.page_sizes import ONE_PAGE_RUNS, constant_page_size
 from job_scraper.robots import as_origin, host_of
 from job_scraper.storage.db import (
     DEFAULT_HEALTH_DROP,
     JobStore,
+    OnePageSource,
     SourceDrop,
     dedupe_key_for_job,
     job_to_row,
@@ -321,6 +323,11 @@ class RunSummary:
     # run's in-memory results, not the store, so a dry run shows them too.
     failed_sources: tuple[FailedSource, ...] = ()
     refused_sources: tuple[RefusedSource, ...] = ()
+    # Sources that returned the same typical page size on each of their last N
+    # successful runs (SP7): possibly one page of a longer board. Read from the
+    # store's history plus this run, so a source that never shrinks, and that
+    # `health_warnings` therefore can never name, is still caught.
+    one_page_sources: tuple[OnePageSource, ...] = ()
     # True when nothing was written: the whole store transaction was rolled
     # back and no spreadsheet was produced. Every count above is still real.
     dry_run: bool = False
@@ -1083,6 +1090,20 @@ def _run_pipeline(
                 drop.previous_rows,
             )
 
+        one_page_sources = tuple(
+            OnePageSource(name, size, ONE_PAGE_RUNS)
+            for name, counts in store.recent_successful_row_counts(run_id, ONE_PAGE_RUNS).items()
+            if (size := constant_page_size(counts)) is not None
+        )
+        for page in one_page_sources:
+            logger.warning(
+                "Source %r returned %d rows on each of its last %d successful runs, a typical "
+                "page size — it may be reading only its first page",
+                page.source_name,
+                page.rows,
+                page.runs,
+            )
+
         store.finish_run(run_id)
 
     return RunSummary(
@@ -1113,5 +1134,6 @@ def _run_pipeline(
         unreadable_pages=count_unreadable_pages([*kept_new, *detail_excluded]),
         failed_sources=tuple(failed_sources),
         refused_sources=tuple(refused_sources),
+        one_page_sources=one_page_sources,
         dry_run=dry_run,
     )

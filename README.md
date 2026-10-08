@@ -358,6 +358,32 @@ either a broken reader or a genuinely empty careers page, and only looking will
 tell you which. Nothing is delisted either way, unless you passed
 `--allow-empty-delist` — in which case the line says so instead.
 
+**One-page sources** get a block between the empty sources and the unreadable
+pages, for a question none of the others can ask — "has this source looked exactly
+like this for a while?":
+
+```
+────────────────────────────────────────────────────
+!  One page, every run: 1 source returned the same typical page size
+!  acme_jobs: 20 rows on each of its last 5 runs — may be reading only its first page
+```
+
+A reader that stops after the first page returns the same count every time, so the
+count never shrinks and the health warning above stays silent. Four Workday sources
+sat at exactly 20 rows in all of 27 runs while their boards held between 64 and
+about 2,940 postings, and nothing said so. This block names a source when its last
+five **successful** runs, this one included, all returned the same number of rows
+and that number is one of the page sizes listings tend to come in (10, 12, 15, 16,
+18, 20, 24, 25, 30, 36, 40, 48, 50, 60 or 100). The runs are counted from the
+source's own health history, so a failed run does not count and a maintenance pass
+(`retrofilter`) neither breaks a streak nor pads one.
+
+It is a prompt to look, not a finding. A board that really holds 20 postings for
+five runs will trip it, and the cost is one line. It checks every reader alike,
+including the ones that walk to a stated total, so it also tests that guard. There
+is no setting to silence it for one source; if a board is genuinely that size, one
+different run ends the warning.
+
 **Unreadable pages** get a third block, for a different question again — "could
 the pages behind the listing be read?":
 
@@ -1027,7 +1053,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1314 tests, about fifteen seconds, no network access required.
+1331 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

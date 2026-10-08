@@ -17,10 +17,11 @@ import pytest
 import yaml
 
 from job_scraper import pipeline as pipeline_mod
+from job_scraper.page_sizes import ONE_PAGE_RUNS, TYPICAL_PAGE_SIZES, constant_page_size
 from job_scraper.pipeline import FailedSource, RefusedSource, RunSummary, run_pipeline
 from job_scraper.robots import RobotsVerdict
 from job_scraper.run import format_summary
-from job_scraper.storage.db import JobStore
+from job_scraper.storage.db import RUN_KIND_REFILTER, JobStore, OnePageSource
 
 _LISTING = "https://acme.example/jobs"
 _OTHER = "https://beta.example/jobs"
@@ -291,3 +292,175 @@ def test_the_blocks_use_the_marker_and_never_a_ladder_ordinal() -> None:
     assert len(marked) == 5  # two headings, three sources
     assert all("− " not in ln for ln in marked)
     assert text.index("Failed sources") < text.index("Refused by robots.txt")
+
+
+# --- 2. one page, every run --------------------------------------------------
+
+
+def test_the_typical_sizes_are_one_list_shared_with_the_probe() -> None:
+    from job_scraper import probe
+
+    assert probe.TYPICAL_PAGE_SIZES is TYPICAL_PAGE_SIZES
+    assert ONE_PAGE_RUNS == 5
+
+
+def test_five_equal_typical_counts_are_suspected() -> None:
+    assert constant_page_size([20, 20, 20, 20, 20]) == 20
+
+
+def test_a_streak_broken_by_one_different_run_is_not() -> None:
+    assert constant_page_size([20, 20, 19, 20, 20]) is None
+    assert constant_page_size([21, 20, 20, 20, 20]) is None
+
+
+def test_a_constant_count_that_is_no_page_size_is_not() -> None:
+    assert 17 not in TYPICAL_PAGE_SIZES
+    assert constant_page_size([17] * 5) is None
+    assert constant_page_size([0] * 5) is None
+
+
+def test_fewer_than_n_runs_say_nothing() -> None:
+    assert constant_page_size([20] * (ONE_PAGE_RUNS - 1)) is None
+    assert constant_page_size([]) is None
+
+
+def test_only_the_newest_n_are_read() -> None:
+    assert constant_page_size([20] * 5 + [3, 99]) == 20
+    assert constant_page_size([20, 20, 20, 20, 7, 20]) is None
+
+
+def test_the_rule_is_platform_blind() -> None:
+    """The owner declined the guarded-reader exemption (SP7): 100 warns like 20."""
+    assert constant_page_size([100] * 5) == 100
+    assert constant_page_size([16] * 5) == 16
+
+
+def _record(store: JobStore, rows: int, *, source: str = "acme", ok: bool = True) -> int:
+    run_id = store.begin_run()
+    store.record_source_health(run_id, source, rows, ok, None if ok else "boom")
+    store.finish_run(run_id)
+    return run_id
+
+
+def _counts(store: JobStore, run_id: int, source: str = "acme") -> list[int]:
+    return store.recent_successful_row_counts(run_id, ONE_PAGE_RUNS).get(source, [])
+
+
+def test_the_store_returns_the_newest_counts_first(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        ids = [_record(store, n) for n in (1, 2, 3, 4, 5, 6, 7)]
+        assert _counts(store, ids[-1]) == [7, 6, 5, 4, 3]
+        assert _counts(store, ids[2]) == [3, 2, 1]  # as of an earlier run
+
+
+def test_a_failed_run_is_skipped_not_counted(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        for _ in range(3):
+            _record(store, 20)
+        _record(store, 0, ok=False)
+        _record(store, 20)
+        last = _record(store, 20)
+        assert constant_page_size(_counts(store, last)) == 20
+
+
+def test_a_source_that_failed_this_run_is_not_judged(tmp_path: Path) -> None:
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        for _ in range(5):
+            _record(store, 20)
+        last = _record(store, 0, ok=False)
+        assert store.recent_successful_row_counts(last, ONE_PAGE_RUNS) == {}
+
+
+def test_a_maintenance_run_between_two_identical_runs_reads_as_two_runs(tmp_path: Path) -> None:
+    """SP4g: retrofilter's run has no health rows, and must neither break nor pad."""
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        _record(store, 20)
+        refilter = store.begin_run(kind=RUN_KIND_REFILTER)
+        store.finish_run(refilter)
+        last = _record(store, 20)
+        assert _counts(store, last) == [20, 20]
+        # Not five, so a pass cannot pad a streak up to the threshold either.
+        assert constant_page_size(_counts(store, last)) is None
+
+
+def test_a_refilter_run_cannot_break_a_streak_even_with_a_health_row(tmp_path: Path) -> None:
+    """The kind filter, tested directly: today no such run has a row; one day it may."""
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        for _ in range(2):
+            _record(store, 20)
+        refilter = store.begin_run(kind=RUN_KIND_REFILTER)
+        store.record_source_health(refilter, "acme", 3, True, None)
+        store.finish_run(refilter)
+        for _ in range(3):
+            last = _record(store, 20)
+        assert constant_page_size(_counts(store, last)) == 20
+
+
+def test_a_pre_sp4g_store_reads_every_old_run_as_a_scrape(tmp_path: Path) -> None:
+    db = tmp_path / "jobs.sqlite3"
+    with JobStore(db) as store:
+        for _ in range(5):
+            last = _record(store, 20)
+        conn = store._c()
+        conn.execute("UPDATE runs SET kind = 'scrape'")  # what the column default gave them
+    with JobStore(db) as store:
+        assert constant_page_size(_counts(store, last)) == 20
+
+
+def _stub_rows(monkeypatch: pytest.MonkeyPatch, counts: dict[str, int]) -> None:
+    def get_extractor(name: str) -> Any:
+        return lambda url, fetch_fn: [_job(name, url, f"job-{i}") for i in range(counts[name])]
+
+    monkeypatch.setattr(pipeline_mod, "get_extractor", get_extractor)
+
+
+def test_five_identical_runs_warn_through_a_real_run(
+    env: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _stub_rows(monkeypatch, {"acme": 20, "beta": 7})
+    for _ in range(ONE_PAGE_RUNS - 1):
+        assert _run(env).one_page_sources == ()
+    with caplog.at_level("WARNING"):
+        summary = _run(env)
+    # beta's constant 7 is no page size, so only acme is named.
+    assert summary.one_page_sources == (OnePageSource("acme", 20, ONE_PAGE_RUNS),)
+    assert "may be reading only its first page" in caplog.text
+    text = format_summary(summary)
+    assert "!  One page, every run: 1 source returned the same typical page size" in text
+    assert (
+        "!  acme: 20 rows on each of its last 5 runs — may be reading only its first page" in text
+    )
+
+
+def test_a_dry_run_counts_itself_as_the_newest_run(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_rows(monkeypatch, {"acme": 20, "beta": 7})
+    for _ in range(ONE_PAGE_RUNS - 1):
+        _run(env)
+    summary = _run(env, dry_run=True)
+    assert [p.source_name for p in summary.one_page_sources] == ["acme"]
+    with JobStore(env / "jobs.sqlite3") as store:
+        assert store._c().execute("SELECT count(*) FROM runs").fetchone()[0] == ONE_PAGE_RUNS - 1
+
+
+def test_one_different_run_ends_the_warning_through_a_real_run(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_rows(monkeypatch, {"acme": 20, "beta": 7})
+    for _ in range(ONE_PAGE_RUNS):
+        _run(env)
+    _stub_rows(monkeypatch, {"acme": 19, "beta": 7})
+    assert _run(env).one_page_sources == ()
+    _stub_rows(monkeypatch, {"acme": 20, "beta": 7})
+    assert _run(env).one_page_sources == ()  # the streak starts again from one
+
+
+def test_the_one_page_block_renders_its_own_marker() -> None:
+    text = format_summary(
+        _summary(one_page_sources=(OnePageSource("airbus", 20, 5), OnePageSource("irc", 20, 5)))
+    )
+    assert "!  One page, every run: 2 sources returned the same typical page size" in text
+    marked = [ln for ln in text.splitlines() if ln.startswith("!")]
+    assert len(marked) == 3
+    assert all("− " not in ln for ln in marked)

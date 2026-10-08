@@ -1691,3 +1691,41 @@ session — see `CLAUDE.md`.
   would make it look like a failed scrape to anything that reads `ok`. The cost
   is that the store holds no history of a refusal, which the log and the
   recurring summary line stand in for.
+
+- **The one-page rule: N is 5, and the store's verdict on it (SP7, 2026-10-08).**
+  A source is named when its last 5 successful `source_health` rows, the current
+  run's included, hold the same row count and that count is in
+  `page_sizes.TYPICAL_PAGE_SIZES` (moved out of `probe.py` so the probe and the
+  summary share one list). Rows come from `source_health`, never from `runs`, and
+  only `ok = 1` rows count: a failed run is skipped, and a `retrofilter` run
+  (`runs.kind = 'refilter'`, no health rows) neither breaks a streak nor pads
+  one. A store made before SP4g reads every old run as `scrape`, which is right.
+  The store is read inside the run's transaction, where this run's health rows
+  already are, so a dry run is judged as the newest run and writes nothing.
+  **Why 5.** Replayed over the real store (37 runs, 52 sources, read-only, on a
+  copy), any N from 3 to 10 catches the four Workday sources at the first run
+  that can fire, since they sat at 20 in all of 27 runs. N only moves the false
+  positives, and the cost of a larger N is that many extra runs of delay. Source
+  runs the rule would have fired on for any other source over the whole
+  history: N=3 85, N=4 60,
+  N=5 46, N=6 33, N=8 23, N=10 17. Five is the package's default, and nothing in
+  the data argued for another number. **Today (run 37) no source trips it.**
+  Replayed as of run 28, the last run before SP3b, it names airbus, axis_comms,
+  irc and path at 20, and nutrition_international at 10.
+  **The false positives it would have had.** givewell (17-20), mammut, oatly,
+  planted, new_incentives and sida each tripped for a handful of runs at a round
+  board size and moved on, a line each. nutrition_international is the doubtful
+  one: 10 in runs 4-29, then 6, then 3. A Workable board that shrinks from 10 to
+  3 is a plausible real board, and it may also have been a page of 10, so the
+  rule said what it should (look) and the answer is not in the store.
+  **No guarded exemption (the owner's decision, 2026-10-08).** The question was
+  whether to skip readers that walk and check a stated total (Workday,
+  SmartRecruiters, SuccessFactors), for which a constant count should mean a
+  constant board. Declined: the rule is the independent check on the guard (SP3b's
+  review found a guarded reader that read short past its own check), and the store
+  gave no cost to point at. airbus, the known case (16 after SP3c), reads 11 now,
+  and was 12 in four runs of the last five; no guarded source is at a typical size
+  for five runs. A SmartRecruiters board of exactly 100, or a narrowed Workday
+  board at 16, will cost a line. If it ever fires on a healthy guarded source,
+  revisit with that source as the evidence. No config key silences it, as the
+  package asked.

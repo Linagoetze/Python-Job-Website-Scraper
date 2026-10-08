@@ -42,6 +42,15 @@ class SourceDrop:
     current_rows: int
 
 
+@dataclass(frozen=True)
+class OnePageSource:
+    """One source that returned the same typical page size on its last N runs (SP7)."""
+
+    source_name: str
+    rows: int
+    runs: int
+
+
 def dedupe_key_for_job(job: dict[str, Any]) -> str:
     """Stable deduplication key from an extractor job dict ('' if it has no URL)."""
     u = normalize_http_url(
@@ -322,6 +331,45 @@ class JobStore:
             if row["current_rows"] < previous * (1.0 - threshold):
                 drops.append(SourceDrop(row["name"], int(previous), int(row["current_rows"])))
         return drops
+
+    def recent_successful_row_counts(self, run_id: int, runs: int) -> dict[str, list[int]]:
+        """Each source's row counts from its last *runs* successful scrapes, newest first.
+
+        Only sources that succeeded in *run_id* are returned, and *run_id* is
+        the newest run counted: this is the question "has this source looked
+        like this for a while?", asked as of one run. It counts rows in
+        `source_health`, restricted to scrape runs, never rows in `runs`. A
+        maintenance run (`retrofilter`, kind `refilter`) has no health rows
+        and must neither break a streak nor pad one; the kind filter is there
+        so that stays true if one ever gains some. A failed run is skipped,
+        not counted: its zero is not a row count.
+        """
+        rows = (
+            self._c()
+            .execute(
+                """
+            SELECT source_name, rows_found FROM (
+                SELECT h.source_name, h.rows_found,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY h.source_name ORDER BY h.run_id DESC
+                       ) AS recency
+                  FROM source_health h
+                  JOIN runs r ON r.run_id = h.run_id
+                 WHERE h.ok = 1 AND r.kind = ? AND h.run_id <= ?
+                   AND h.source_name IN (
+                       SELECT source_name FROM source_health WHERE run_id = ? AND ok = 1)
+            )
+             WHERE recency <= ?
+             ORDER BY source_name, recency
+            """,
+                (RUN_KIND_SCRAPE, run_id, run_id, runs),
+            )
+            .fetchall()
+        )
+        counts: dict[str, list[int]] = {}
+        for row in rows:
+            counts.setdefault(row["source_name"], []).append(int(row["rows_found"]))
+        return counts
 
     # -- jobs -----------------------------------------------------------------
 
