@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4 and SP4b–SP4h are done** (as of 2026-10-07); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h and SP6 are done** (as of 2026-10-08); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -106,7 +106,7 @@ the ordering below.
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | done | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: three sources live, rest reported | `sp5-add-sources` |
-| 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | not started | `sp6-fixtures-rest` |
+| 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; coefficient captured empty | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | not started | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
@@ -3823,8 +3823,100 @@ file with what each capture revealed, and leave the rest of the list alone for a
 later instalment.
 ```
 
+### Result — all six in one instalment, 2026-10-08, branch `sp6-fixtures-rest`
+
+The owner asked for all six at once. Captured with `--pages all`, inside the
+capture's politeness. Every reader now has a saved page: 24 extractors, none
+uncovered. Three readers had a bug, which is above SP4's one in five and
+matches WP8g's warning that reasoning gets the layout right and the data wrong.
+Each bug was a field wrong or blank **on every row**, so the row-sanity check
+in the prompt found all three. A count check would have passed every one.
+
+Names resolved through `registry.py`: `coefficient` → `coefficient_giving`.
+The other five share their source's name.
+
+#### SP6 table
+
+| Reader | Capture | Verdict | Fix | Workplace / more locations | Description |
+| --- | --- | --- | --- | --- | --- |
+| `asana` | rendered, 100 cards, 2.1 MB | **Checked and fine.** Title, location and detail URL match on all 100. `department` is empty on every row, because the team heading above each group is not read. | none | The card location is Greenhouse's `location.name`. Four of these say "US … - Remote", already in the field. `offices` (one each) differs from the card on two rows (a Miami-remote card with a Chicago office, a Seattle-remote card with a San Francisco office), and the reader does not keep it. The workplace is stated only in the text: all 100 say "office-centric hybrid". | **Not supplied, but on the page.** `__NEXT_DATA__` embeds every posting's Greenhouse `content`, so Layer 5 fetches a detail page it could have been handed. |
+| `coefficient` (`coefficient_giving`) | rendered, **0 rows**. The page says "There are no open roles at this time." | Zero is right, but the reader returned the same silent `[]` for a missing heading or table, which is priority 2's failure. | Returns `[]` only when the section says there are none, and raises otherwise. A table under a later heading is no longer taken for the roles table. Pinned as `EMPTY_FIXTURES`. | n/a (no rows) | none. The board is Ashby (`jobs.ashbyhq.com/coefficientgiving`). |
+| `mammut` | static, 17 | **Checked and fine.** All 17 match. The location is the third labelled span. | none | Nothing on the listing. Only the city is on the row (the country is a filter). One title names Hamburg where its location says Zweibrücken, which is the site's own data. | none |
+| `norrsken` | rendered, 1 | **Checked and fine.** The Teamtailor career site behind the widget listed the same single posting. | none | Nothing on the card. | none |
+| `oatly` | static, 15. The page says "15 jobs". | **Bug: location and department empty on all 15.** The reader looked for a `mt-1` block that the page now calls `mt-4`. Its positional split would also have read the "Onsite" chip as the location, and a card with only a location as a department. | **Moved to `teamtailor.extract`, and `oatly.py` deleted**, not patched into a second copy of a reader that already handles these shapes. Store keys (`oatly:job:<id>`) and stored URLs are unchanged. 10 stored postings matched on a copy of the store. | Three cards carry "Onsite". The generic reader now puts it in the snippet. Four say "… - Remote" in the location. | none |
+| `sida` | static, 9. The page says "Totalt 9 lediga tjänster". | **Bug: `"Stockholm, Sweden"` was hard-coded on every row.** Each card labels its own "Plats:", and six of nine say Sundbyberg. | Reads the "Plats:" label. Raises if the count disagrees with the stated total, or if no total is found (its block is built to hold a pager). | Nothing on the listing. The application deadline is shown but not kept. | none on the row. `__NUXT_DATA__` embeds the ad bodies. |
+
+**What the fixes do to the filter, measured with the live rules, read-only.**
+oatly: before the fix, all 15 rows reached Layer 5 as "no location given".
+Now 12 stop at Layer 0 on a stated city, and 3 ("United States - Remote")
+defer as a country outside `remote_regions`. One stored oatly row is `new`, a
+Paris internship stored with an empty location. A run now drops it at Layer 0.
+A run never rewrites a stored row that Layer 0 drops, so the row stays `new`
+with its blank location until the owner reviews it. sida: the true place
+was not one the rules listed, so a posting there now stops at Layer 0, where
+the old default had sent it on to Layer 5. All 21 stored sida rows are
+already rejected (most at Layer 5, "description is not hybrid"), and a
+Layer 0 drop is not stored, so nothing in the store moves.
+
+**Two read-only checks beyond the captures**, one polite request each, made
+because a count alone could not tell a complete list from a cut one:
+- asana's page held exactly 100 postings. Asana's public Greenhouse board
+  said 103. The page also held one posting the board no longer had, and
+  lacked the four the board had published in the last day. So the page is a
+  snapshot about a day old, not a page capped at 100.
+- norrsken's widget held 1 posting, and so did the career site behind it.
+  The generic Teamtailor reader, run on that career site, put each title in
+  the location field. That is SP8's layout, in a second place (noted in SP8).
+
+**The sida fixture keeps its `__NUXT_DATA__` as captured** (the owner's call,
+2026-10-08). The ad bodies in it name contact people and union
+representatives, with about 18 personal `@sida.se` addresses. The reader
+never reads them. Sida publishes them on every ad, and `jobsinlund.json`
+already holds named recruiter addresses. See `docs/DECISIONS.md`.
+
+#### Proposed, not built
+
+1. **asana: supply the description from the embedded Greenhouse JSON** (SP4d's
+   route: no request per job, no browser). Every posting's `content` is
+   already in the page the reader parses, and its "office-centric hybrid"
+   line would then reach Layer 5 without a fetch. Taking the description
+   from Greenhouse's own board API instead would change every detail URL
+   (`www.asana.com/jobs/apply/<id>?gh_jid=<id>` against the stored
+   `asana.com/jobs/apply/<id>`) and so every key. Not without a key
+   migration. If wanted, `offices` could join the location field as extra
+   segments where it differs, the way Ashby's `secondaryLocations` do. That
+   affects two rows today. The workplace is in the description, not in a
+   platform field, so the stored description carries it. Still, SP4g's
+   re-filter pass never settles a hybrid state from it (DECISIONS, "The pass
+   never settles a deferred location or hybrid state").
+2. **coefficient: consider the generic Ashby reader** (config only). The
+   board's posting API would supply the description and `workplaceType`, and
+   detail URLs would keep the stored shape (`jobs.ashbyhq.com/coefficientgiving/<uuid>`).
+   Check first whether the API lists the "Expression of Interest" form as a
+   posting. Its link is a UUID that the current reader's pattern would also
+   match, if it ever moved into the roles table.
+3. **norrsken: stay on the widget until SP8 lands.** Moving it to the generic
+   Teamtailor reader is config only, but today that reader gets this site's
+   layout wrong.
+4. **sida: the owner's question, answered in chat.** Whether sida's true
+   place belongs in `rules.json`. Until it does, a posting there is dropped
+   at Layer 0.
+
+**Tests**: 1261 → 1301. That is six fixture cases, each pinned four ways
+(golden, parse check, two store round-trips), plus six secret-scan cases,
+and ten tests of the fixes: coefficient's refusals (5), sida's places and
+total (3), oatly's card shapes (1), and the declared-empty guard (1).
+
+**Docs**: README (test count and the coverage sentence), this file, and
+`docs/DECISIONS.md` (four entries).
+
 ### Your to-dos
 
+- [ ] Decide on proposal 4 (`rules.json`).
+- [ ] Review the one stored `new` oatly row (the Paris internship), stored
+      with a blank location before the fix.
+- [ ] Re-capture `coefficient_giving` once it lists a role, so its row
+      parsing gets real markup behind it.
 - [ ] Pick which two or three each time. No need to plan the order in advance.
 - [ ] Keep the running tally in this file honest — including readers that turned
       out to be correct.
@@ -4064,6 +4156,13 @@ child. `teamtailor.extract` meets a `<span title>`, takes the card's last child
 metadata) and then `_content_segments` reads that wrapper's first direct
 `<span>`, which is the title. Nothing failed. Seven other sources use this
 reader, each with a golden, and none has this layout.
+
+**Seen a second time in SP6 (2026-10-08).** Norrsken's own Teamtailor career
+site (behind the widget its `norrsken` reader reads) gave the same result
+from this reader: title in the location field. That came from a one-off
+read-only check, and the page was not saved. Since SP6, `oatly` uses this
+reader too, so eight sources now have a golden on it. Moving norrsken onto
+the generic reader is config only, and should wait for this fix.
 
 Sonnet 5, `think`, 1.5 hr. A small package. It is the owner's company, so it
 ends with the source added, as SP5 would have.

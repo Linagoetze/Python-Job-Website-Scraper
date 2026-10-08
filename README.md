@@ -994,7 +994,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1261 tests, about fifteen seconds, no network access required.
+1301 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
@@ -1026,11 +1026,15 @@ failed capture rather than a crash.
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit — except a
 response recognised as XML, which is saved as-is: an HTML parser corrupts it
-(SP4, found capturing Personio's feed). Not every source has one yet — six
-of the twenty-five extractors are uncovered, down from thirteen after SP4
-covered the five generic ATS readers (Breezy, Lever, Personio, SmartRecruiters,
-Workable), SP4d covered jobsinlund, and undp's reader was removed with the
-source. Closing the rest is planned as SP6 of
+(SP4, found capturing Personio's feed). Every one of the twenty-four
+extractors now has a saved page, down from thirteen uncovered before SP4:
+SP4 covered the five generic ATS readers (Breezy, Lever, Personio,
+SmartRecruiters, Workable), SP4d covered jobsinlund, SP6 covered the last
+five single-source readers, undp's reader went with its source, and Oatly's
+own reader was retired for the generic Teamtailor one (SP6). One is covered
+only in part: Coefficient Giving's page had no open roles when it was
+captured, so its fixture pins the stated empty board and its row parsing
+waits for a capture with a role in it. Keeping fixtures current is SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.
 
