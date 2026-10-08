@@ -106,7 +106,7 @@ the ordering below.
 | 4g | The re-filter pass sees what a run sees | 2 hr | Sonnet 5 | `think` | done | `sp4g-refilter-inputs` |
 | 4h | Title keywords that match compounds | 1 hr | Sonnet 5 | `think` | done | `sp4h-keyword-compounds` |
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: three sources live, rest reported | `sp5-add-sources` |
-| 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; coefficient captured empty | `sp6-fixtures-rest` |
+| 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | not started | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | not started | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
@@ -3840,7 +3840,7 @@ The other five share their source's name.
 | Reader | Capture | Verdict | Fix | Workplace / more locations | Description |
 | --- | --- | --- | --- | --- | --- |
 | `asana` | rendered, 100 cards, 2.1 MB | **Checked and fine.** Title, location and detail URL match on all 100. `department` is empty on every row, because the team heading above each group is not read. | none | The card location is Greenhouse's `location.name`. Four of these say "US … - Remote", already in the field. `offices` (one each) differs from the card on two rows (a Miami-remote card with a Chicago office, a Seattle-remote card with a San Francisco office), and the reader does not keep it. The workplace is stated only in the text: all 100 say "office-centric hybrid". | **Not supplied, but on the page.** `__NEXT_DATA__` embeds every posting's Greenhouse `content`, so Layer 5 fetches a detail page it could have been handed. |
-| `coefficient` (`coefficient_giving`) | rendered, **0 rows**. The page says "There are no open roles at this time." | Zero is right, but the reader returned the same silent `[]` for a missing heading or table, which is priority 2's failure. | Returns `[]` only when the section says there are none, and raises otherwise. A table under a later heading is no longer taken for the roles table. Pinned as `EMPTY_FIXTURES`. | n/a (no rows) | none. The board is Ashby (`jobs.ashbyhq.com/coefficientgiving`). |
+| `coefficient` (`coefficient_giving`) | rendered, **0 rows**. The page says "There are no open roles at this time." | Zero is right, but the reader returned the same silent `[]` for a missing heading or table, which is priority 2's failure. | Returns `[]` only when the section says there are none, and raises otherwise. Pinned as `EMPTY_FIXTURES`. **Superseded the same day:** the source moved to the generic Ashby reader and `coefficient.py` was deleted (follow-up below). | n/a (no rows) | none. The board is Ashby (`jobs.ashbyhq.com/coefficientgiving`). |
 | `mammut` | static, 17 | **Checked and fine.** All 17 match. The location is the third labelled span. | none | Nothing on the listing. Only the city is on the row (the country is a filter). One title names Hamburg where its location says Zweibrücken, which is the site's own data. | none |
 | `norrsken` | rendered, 1 | **Checked and fine.** The Teamtailor career site behind the widget listed the same single posting. | none | Nothing on the card. | none |
 | `oatly` | static, 15. The page says "15 jobs". | **Bug: location and department empty on all 15.** The reader looked for a `mt-1` block that the page now calls `mt-4`. Its positional split would also have read the "Onsite" chip as the location, and a card with only a location as a department. | **Moved to `teamtailor.extract`, and `oatly.py` deleted**, not patched into a second copy of a reader that already handles these shapes. Store keys (`oatly:job:<id>`) and stored URLs are unchanged. 10 stored postings matched on a copy of the store. | Three cards carry "Onsite". The generic reader now puts it in the snippet. Four say "… - Remote" in the location. | none |
@@ -3853,10 +3853,11 @@ defer as a country outside `remote_regions`. One stored oatly row is `new`, a
 Paris internship stored with an empty location. A run now drops it at Layer 0.
 A run never rewrites a stored row that Layer 0 drops, so the row stays `new`
 with its blank location until the owner reviews it. sida: the true place
-was not one the rules listed, so a posting there now stops at Layer 0, where
-the old default had sent it on to Layer 5. All 21 stored sida rows are
-already rejected (most at Layer 5, "description is not hybrid"), and a
-Layer 0 drop is not stored, so nothing in the store moves.
+was not one the rules listed, so a posting there would have stopped at
+Layer 0, where the old default had sent it on to Layer 5. The owner has
+since updated `rules.json` (follow-up below), and both of sida's places now
+judge alike. All 21 stored sida rows are already rejected (most at Layer 5,
+"description is not hybrid"), so nothing in the store moves.
 
 **Two read-only checks beyond the captures**, one polite request each, made
 because a count alone could not tell a complete list from a cut one:
@@ -3874,49 +3875,55 @@ representatives, with about 18 personal `@sida.se` addresses. The reader
 never reads them. Sida publishes them on every ad, and `jobsinlund.json`
 already holds named recruiter addresses. See `docs/DECISIONS.md`.
 
-#### Proposed, not built
+#### Proposed, then decided the same day (2026-10-08)
 
-1. **asana: supply the description from the embedded Greenhouse JSON** (SP4d's
-   route: no request per job, no browser). Every posting's `content` is
-   already in the page the reader parses, and its "office-centric hybrid"
-   line would then reach Layer 5 without a fetch. Taking the description
-   from Greenhouse's own board API instead would change every detail URL
-   (`www.asana.com/jobs/apply/<id>?gh_jid=<id>` against the stored
-   `asana.com/jobs/apply/<id>`) and so every key. Not without a key
-   migration. If wanted, `offices` could join the location field as extra
-   segments where it differs, the way Ashby's `secondaryLocations` do. That
-   affects two rows today. The workplace is in the description, not in a
-   platform field, so the stored description carries it. Still, SP4g's
-   re-filter pass never settles a hybrid state from it (DECISIONS, "The pass
-   never settles a deferred location or hybrid state").
-2. **coefficient: consider the generic Ashby reader** (config only). The
-   board's posting API would supply the description and `workplaceType`, and
-   detail URLs would keep the stored shape (`jobs.ashbyhq.com/coefficientgiving/<uuid>`).
-   Check first whether the API lists the "Expression of Interest" form as a
-   posting. Its link is a UUID that the current reader's pattern would also
-   match, if it ever moved into the roles table.
-3. **norrsken: stay on the widget until SP8 lands.** Moving it to the generic
-   Teamtailor reader is config only, but today that reader gets this site's
-   layout wrong.
-4. **sida: the owner's question, answered in chat.** Whether sida's true
-   place belongs in `rules.json`. Until it does, a posting there is dropped
-   at Layer 0.
+The owner chose all four after reading the result.
 
-**Tests**: 1261 → 1301. That is six fixture cases, each pinned four ways
-(golden, parse check, two store round-trips), plus six secret-scan cases,
-and ten tests of the fixes: coefficient's refusals (5), sida's places and
-total (3), oatly's card shapes (1), and the declared-empty guard (1).
+1. **asana: built.** The reader supplies each posting's description from the
+   Greenhouse JSON its page embeds (SP4d's route: no request per job, no
+   browser). All 100 captured postings get one (4.5k to 9.2k characters,
+   plain text, every one naming its hybrid arrangement), so Layer 5 reads
+   them without rendering a detail page. The cards stay the list of jobs: a
+   card with no matching posting gets no description and Layer 5 fetches as
+   before, with one warning if the page embeds none. The Greenhouse board API
+   was not used. It would change every detail URL
+   (`www.asana.com/jobs/apply/<id>?gh_jid=<id>`) and so every key. Not built:
+   `offices` as extra location segments (two rows), and nothing here makes
+   SP4g's re-filter pass settle a hybrid state.
+2. **coefficient: built, config only.** `sources.yaml` points
+   `coefficient_giving` at `https://jobs.ashbyhq.com/coefficientgiving`
+   (`strategy: static`), the registry line uses `ashby.extract`, and
+   `coefficient.py` was deleted. Detail URLs keep the stored shape, so the two
+   stored rows keep their keys. `sources check` reports the board as the active
+   source, on no curated list. The first capture through the API holds one
+   posting: the board's standing "Expression of Interest" form, listed as
+   "Remote - Global", which Layer 0 admits. The owner chose to reject it once
+   in review, so the generic reader learns no per-employer rule.
+   `EMPTY_FIXTURES` keeps its rule, but has no member now.
+3. **norrsken: stays on its widget until SP8 lands.** Decided, nothing built.
+4. **sida: done by the owner's instruction.** `rules.json` (gitignored) was
+   edited atomically, with its backup kept outside the repository, because a
+   sidecar beside it is not gitignored. Its values stay out of this file.
 
-**Docs**: README (test count and the coverage sentence), this file, and
-`docs/DECISIONS.md` (four entries).
+**Tests**: 1261 → 1301 at the result, then 1298 after the follow-up. The
+1301 were six fixture cases, each pinned four ways (golden, parse check, two
+store round-trips), plus six secret-scan cases, and ten tests of the fixes:
+coefficient's refusals (5), sida's places and total (3), oatly's card
+shapes (1), and the declared-empty guard (1). The follow-up deleted the five
+coefficient refusal tests along with their reader, and added two for
+asana's descriptions.
+
+**Docs**: README (test count and the coverage sentence: 23 extractors, every
+one with a saved page), this file, and `docs/DECISIONS.md` (four entries,
+amended for the follow-up).
 
 ### Your to-dos
 
-- [ ] Decide on proposal 4 (`rules.json`).
+- [x] Decide on proposal 4 (`rules.json`): done 2026-10-08.
 - [ ] Review the one stored `new` oatly row (the Paris internship), stored
       with a blank location before the fix.
-- [ ] Re-capture `coefficient_giving` once it lists a role, so its row
-      parsing gets real markup behind it.
+- [ ] Reject coefficient's "Expression of Interest" row the first time it
+      reaches the sheet.
 - [ ] Pick which two or three each time. No need to plan the order in advance.
 - [ ] Keep the running tally in this file honest — including readers that turned
       out to be correct.

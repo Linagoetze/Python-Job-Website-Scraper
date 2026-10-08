@@ -1618,23 +1618,34 @@ session — see `CLAUDE.md`.
   (`canonical_detail_url`), so the generic reader's bare `/jobs/<id>` URLs
   match the 10 stored postings. Where a move would change keys (asana onto the
   Greenhouse API, for instance), it needs a key migration and is its own
-  package.
+  package. The same day, the owner moved coefficient_giving the same way: its
+  WordPress page only ever linked to an Ashby board, so the source reads that
+  board through `ashby.extract` (a `sources.yaml` URL and a registry line), and
+  `coefficient.py` went. Its detail URLs already had the Ashby shape, so its
+  keys did not move. A generic reader lists everything its platform lists,
+  even a standing "Expression of Interest" form, and the owner rejects such a
+  row once in review rather than teach the reader one employer's wording.
 - **A board captured empty in words is pinned at zero, by declaration (SP6).**
   coefficient_giving's capture held no roles, and its page said so. The
   harness requires every fixture to parse to at least one posting, and that
   rule stays. `EMPTY_FIXTURES` in `tests/fixture_cases.py` names the
   exceptions, and a test checks that a zero golden belongs to a declared name
   and no other. A name qualifies only when its reader tells a stated empty
-  board from one it cannot read: coefficient now returns `[]` only beside
-  "no open roles", and raises otherwise. Such a fixture covers the empty
-  state only. Its row parsing waits for a capture that has a role in it.
+  board from one it cannot read. Such a fixture covers the empty state only,
+  and its row parsing waits for a capture with a posting in it. The set has
+  no member since coefficient_giving moved to the Ashby API, which lists a
+  posting. It was the first member, and its old reader returned `[]` only
+  beside "no open roles". The rule stays for the next board captured empty
+  in words. The Ashby reader already tells an empty `jobs` list from a body
+  it cannot read.
 - **A reader writes the place the page states, and checks a stated total
   (SP6).** sida's reader wrote "Stockholm, Sweden" on every row. The page
   labels each posting's place, and six of nine said Sundbyberg. A default that
   stands in for the page's own field is a starved input with a plausible face,
   and Layer 0 cannot tell it from data: it judged those postings by a city
-  the rules list, when the true one was not listed. Which places the rules
-  hold stays out of tracked prose, as in SP3c's entry. Where a
+  the rules list, when the true one was not listed (the owner then updated
+  `rules.json`). Which places the rules hold stays out of tracked prose, as
+  in SP3c's entry, because they point at the chosen country. Where a
   page states its count ("Totalt 9 lediga tjänster"), a read that disagrees
   raises (WP11's rule that only a stated length ends a walk), so an unread
   second page cannot pass for a short list.
@@ -1647,3 +1658,11 @@ session — see `CLAUDE.md`.
   the repository is the owner's own data (CLAUDE.md), not an employer's
   published contact list. Ask again if a capture ever holds anything the
   site does not publish.
+- **A backup of a gitignored config file goes outside the repository (SP6,
+  2026-10-08).** `.gitignore` names `rules.json` and `sources.yaml` file by
+  file, so `rules.json.bak-<date>` beside them is untracked but not ignored:
+  exactly the sidecar CLAUDE.md warns about. Editing either file at the
+  owner's request means temp file then `os.replace()`, with the backup copy
+  written to the session scratchpad. Making `job_scraper/config/` deny by
+  default would be CLAUDE.md's own rule. It is not done here, because
+  that directory also holds tracked files, and it belongs to its own change.
