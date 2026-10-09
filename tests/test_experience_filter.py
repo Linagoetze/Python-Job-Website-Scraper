@@ -326,6 +326,15 @@ class TestStripHtml:
         result = _strip_html("no tags here")
         assert "no tags here" in result
 
+    def test_drops_consent_dialog_menu_and_footer_but_keeps_header(self):
+        html = (
+            "<body><dialog>We use cookies</dialog><nav>Sign in</nav>"
+            "<header>Intern, Stockholm, Hybrid</header><main>The posting</main>"
+            "<footer>Contact us</footer></body>"
+        )
+        result = _strip_html(html)
+        assert result == "Intern, Stockholm, Hybrid The posting"
+
 
 # ---------------------------------------------------------------------------
 # apply_title_filter

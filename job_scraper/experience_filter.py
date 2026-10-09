@@ -646,9 +646,20 @@ _DOCTORATE_EQUIVALENT = re.compile(rf"equivalent\s+to\s+(?:an?\s+)?{_DOCTORATE}"
 _DOCTORATE_CONTEXT_CHARS = 70
 
 
+# Page furniture that is never the posting: a consent dialog, the menu, the
+# footer. Left in, a Teamtailor description opened with the cookie banner and a
+# menu of sign-in links (SP8). `<header>` stays, because many pages put the
+# title, place and work type there, which the location test reads; so do
+# scripts, whose JSON-LD can carry a posting's workplace type.
+_CHROME_TAGS = ("dialog", "nav", "footer")
+
+
 def _strip_html(html: str) -> str:
     try:
-        return BeautifulSoup(html, "lxml").get_text(" ", strip=True)
+        soup = BeautifulSoup(html, "lxml")
+        for tag in soup.find_all(_CHROME_TAGS):
+            tag.decompose()
+        return soup.get_text(" ", strip=True)
     except Exception:
         return re.sub(r"<[^>]+>", " ", html)
 
