@@ -1768,3 +1768,18 @@ session — see `CLAUDE.md`.
   empty location is never flagged, it is a real state. And the layout is one
   branch among the reader's others: the title span's parent is not the anchor,
   so the metadata is the span's sibling `<div>`; no older branch was touched.
+
+- **Acronym keywords are case-sensitive, and only the title list says so (SP8
+  follow-up, 2026-10-09).** `SEA` (search-engine advertising) excluded a "Baltic
+  Sea programme" internship because every keyword matched case-insensitively. A
+  title keyword written in capitals now matches as written, which protects `IT`
+  and `AI` from "it" and "Ai" too. `_build_title_keyword_pattern` is shared with
+  location and remote terms, which are written in capitals for other reasons
+  (`EMEA`), so it takes `exact_acronyms=True` only from the title keyword paths.
+  The cost: a lower-case "sea manager" is no longer excluded; `eval` on the
+  labelled set did not move.
+
+- **Layer 5's page text leaves out the consent dialog, menu and footer (SP8
+  follow-up).** `<dialog>`, `<nav>` and `<footer>` are removed before the text
+  is read. Not `<header>` (titles, places and work types sit there) and not
+  scripts (JSON-LD). Stored descriptions are not rewritten.

@@ -4368,6 +4368,22 @@ Branch sp8-teamtailor-image-cards. Commit, do not push. Update this plan file.
   that against" although the page states its total; its total detector does not
   read this heading. (4) norrsken's own Teamtailor site can now move onto this
   reader (config only), when the owner wants it.
+
+  **All four findings were then fixed, at the owner's request (2026-10-09), 1353
+  → 1358 tests.** (1) Title keywords written in capitals (`SEA`, `AI`, `IT`,
+  `SEO`) now match case-sensitively; the rest of the list ignores case. The
+  builder is shared with location and remote terms, so it is an opt-in
+  (`exact_acronyms`) used only by the title keyword list. `eval` is unchanged
+  on the labelled set. (2) `experience_filter._strip_html` drops `<dialog>`,
+  `<nav>` and `<footer>` before reading the text; `<header>` and scripts stay,
+  since a page's title, place and JSON-LD workplace type can live there.
+  Descriptions already stored are not rewritten. (3) The probe reads a heading
+  that is only a count ("7 jobs") as the page's stated total; a sentence that
+  mentions a count is not one. (4) norrsken moved from its own widget reader to
+  `teamtailor.extract` on `careers.norrskenfoundation.org/jobs` (`static`);
+  `extractors/norrsken.py` is deleted, its fixture recaptured and its golden
+  repinned (listing URL, and the board's "Onsite" tag now reaches `raw_snippet`).
+  The source name is unchanged, so stored rows and dedupe keys are untouched.
 - **The source is kept**, since 2-5 are clean. It was in neither curated list.
 
 ### SP9 — A bespoke reader for an HTML careers page on no ATS
