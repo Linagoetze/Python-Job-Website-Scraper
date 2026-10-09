@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h and SP6 are done** (as of 2026-10-08); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8 are done** (as of 2026-10-09); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -4322,6 +4322,53 @@ returns plausible rows is not thereby reading the right element.
 
 Branch sp8-teamtailor-image-cards. Commit, do not push. Update this plan file.
 ```
+
+### Result — done 2026-10-09, branch `sp8-teamtailor-image-cards`
+
+1348 → 1353 tests (the README said 1339: it had not followed SP7). `pytest`,
+`ruff check` and `ruff format --check` are clean. Not pushed.
+
+- **Captured first, and the claim held.** Each card is an `<li>` holding one
+  `<a>`: an image `<div>`, then a wrapper `<div>` whose children are the
+  `<span title="whole title">shortened...</span>` and the metadata `<div>`
+  ("Internship · Stockholm · Hybrid", the work type in a `<span>` with an
+  `<i class="fa-wifi">`). 7 cards, all the same shape.
+- **Reader.** One new branch in `teamtailor.extract`: when the title is a
+  `<span title>` whose parent is not the anchor, the metadata is the span's
+  sibling `<div>`. Every older layout still goes through its old branch; the
+  seven existing goldens, and oatly's, pass unchanged.
+- **Guard.** `extractors/rowcheck.title_read_as_location` and
+  `teamtailor._check_row`, which raises a `ValueError` naming the source and the
+  card. **One narrowing of the prompt, for the owner to confirm:** a location
+  that is a plain prefix of the title is flagged only when it carries a trailing
+  "..." or "…" (or equals the title). "Stockholm" is a prefix of "Stockholm Office
+  Manager", and a source that fails on a valid posting is a worse fault than the
+  one it guards against; the visible text of a title is always whole or
+  ellipsised. The failing-first test: the guard was a no-op stub while the
+  tests ran against the old reader, and the layout test, the unknown-layout test
+  and the three parametrised guard cases all failed (6 of 12) before any code
+  was written. The permanent end-to-end raise test uses a card with no metadata
+  `<div>`, since the SP5 layout itself now reads correctly.
+- **Probe.** `decide` turns `reuse` into `not feasible - rung 5: the reader read
+  the title as the location` when any row of the best run has that fault, and
+  the row listing prints a `!` line for it. The same helper serves both.
+- **Pinned.** `FIXTURE_CASES` and golden, first job checked field by field
+  against the saved page. `detail_url` keeps the `/en-GB/` the page gives.
+- **SP5's checks.** Scratch-store run: 7 seen, Layer 0 passed 7, Layer 2 dropped
+  3, 4 stored, none rejected at Layer 5; no "Unreadable pages" block. All four
+  stored descriptions read `unspecified`, correctly: internships, no years or
+  PhD asked. The work type ("Hybrid") reaches `raw_snippet` on every row.
+  **No pager.** The page states "7 jobs" in an `<h2>` and has no "Show more"
+  control, no `rel=next` and no `page=` link, so seven is the board.
+- **Findings, not fixed.** (1) Layer 2's `SEA` keyword drops a "Baltic Sea
+  programme" internship: a case-insensitive word match on a place name, for the
+  owner's keyword file. (2) Stored descriptions begin with the site's cookie
+  banner and navigation, which Layer 5 reads; harmless here, worth a look in the
+  description extractor. (3) The probe printed "nothing on the page to check
+  that against" although the page states its total; its total detector does not
+  read this heading. (4) norrsken's own Teamtailor site can now move onto this
+  reader (config only), when the owner wants it.
+- **The source is kept**, since 2-5 are clean. It was in neither curated list.
 
 ### SP9 — A bespoke reader for an HTML careers page on no ATS
 

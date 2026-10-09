@@ -1753,3 +1753,18 @@ session — see `CLAUDE.md`.
   summary is the one thing read at the end of a four-minute run, and a dry run
   shows it too. The real tombstone against the real `sources.yaml` matched
   nothing on 2026-10-08.
+
+- **A reader that returns plausible rows is not thereby reading the right
+  element (SP8, 2026-10-09).** Teamtailor's image-grid cards put the title in a
+  `<span title>` and the metadata `<div>` beside it inside a wrapper; the reader
+  took the wrapper as the metadata block, whose first `<span>` is the title, and
+  returned every posting with its title as its location and no department. Seven
+  goldens and the probe's `reuse` verdict were green, because each checked that
+  rows came back, not that a field held the right thing. Three consequences.
+  `teamtailor.extract` now raises on a row whose location is its title or its
+  title shortened with "...", and the probe refuses `reuse` on the same
+  evidence (`extractors/rowcheck.py` serves both). The check flags a plain
+  prefix only when the location is ellipsised: a city may begin a title. An
+  empty location is never flagged, it is a real state. And the layout is one
+  branch among the reader's others: the title span's parent is not the anchor,
+  so the metadata is the span's sibling `<div>`; no older branch was touched.
