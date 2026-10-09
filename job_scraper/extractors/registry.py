@@ -62,6 +62,7 @@ REGISTRY: dict[str, ExtractorFn] = {
     # it blank on location and department for every posting. The generic reader
     # read the same page correctly; the store adds the /en-GB/ locale itself.
     "oatly": partial(teamtailor.extract, source_name="oatly"),
+    "wwf_sweden": partial(teamtailor.extract, source_name="wwf_sweden"),
     # --- Lever API ---
     "wave": partial(lever.extract, source_name="wave", org_slug="waveapps"),
     # --- Workday (Playwright) ---

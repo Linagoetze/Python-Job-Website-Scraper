@@ -836,6 +836,29 @@ class TestPagination:
         assert "read 20 posting(s) but the listing says 61" in result.line
         assert "does not walk this listing" in result.line
 
+    def test_rows_with_the_title_as_the_location_are_not_feasible(self) -> None:
+        # SP8: a reader that returns plausible rows is not thereby reading the
+        # right element. Without this check the verdict was `reuse`.
+        teamtailor = next(p for p in probe.PLATFORMS if p.key == "teamtailor")
+        board = probe.Board(teamtailor, "https://jobs.contoso.example/jobs", None, "the page")
+        title = "Intern with the Baltic Sea programme: project management"
+        rows = [
+            {
+                "title": title,
+                "location": "Intern with the Baltic Sea programme...",
+                "detail_url": "u",
+            }
+        ]
+        run = probe.ReaderRun(board=board, strategy="static", rows=rows)
+
+        result = probe.decide([run], [], None)
+
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "rung 5: the reader read the title as the location" in result.line
+
+        rows[0]["location"] = "Stockholm"
+        assert probe.decide([run], [], None).kind == probe.REUSE
+
     def test_more_rows_than_the_page_states_is_whole(
         self, curated_dir: Path, tmp_path: Path
     ) -> None:

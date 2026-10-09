@@ -921,6 +921,35 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Säkerhetsspecialist, person- och resesäkerhet Sundbyberg",
         },
     },
+    "wwf_sweden": {
+        # teamtailor.py, image-grid cards (SP8). The title is a shortened
+        # <span> with the whole title in its `title` attribute, and the
+        # metadata <div> is its sibling: the reader used to take the wrapper
+        # as the metadata and return every title as its own location. The page
+        # states "7 jobs" and shows no pager or "show more" control.
+        "count": 7,
+        "first_job": {
+            "source_name": "wwf_sweden",
+            "title": (
+                "Intern with the WWF Baltic Sea programme: project management and communication"
+            ),
+            "location": "Stockholm",
+            "department": "Internship",
+            "listing_url": "https://jobb.wwf.se/en-GB/jobs",
+            "detail_url": (
+                "https://jobb.wwf.se/en-GB/jobs/8395577-intern-with-the-wwf-baltic-sea-"
+                "programme-project-management-and-communication"
+            ),
+            "apply_url": (
+                "https://jobb.wwf.se/en-GB/jobs/8395577-intern-with-the-wwf-baltic-sea-"
+                "programme-project-management-and-communication"
+            ),
+            "raw_snippet": (
+                "Intern with the WWF Baltic Sea programme: project management and "
+                "communication Internship Stockholm Hybrid"
+            ),
+        },
+    },
 }
 
 

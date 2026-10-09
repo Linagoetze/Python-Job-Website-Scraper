@@ -338,6 +338,13 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/",
         lambda url, fetch: sida.extract(url, fetch, source_name="sida"),
     ),
+    "wwf_sweden": (
+        # A Teamtailor image-grid board (SP8): the title is a <span title> and the
+        # metadata <div> is its sibling inside the card's wrapper.
+        "wwf_sweden.html",
+        "https://jobb.wwf.se/en-GB/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="wwf_sweden"),
+    ),
 }
 
 # Fixtures captured while the board listed nothing and said so in words, so an

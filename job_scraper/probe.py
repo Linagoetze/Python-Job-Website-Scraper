@@ -60,6 +60,7 @@ from job_scraper.extractors import (
     workday,
 )
 from job_scraper.extractors.registry import REGISTRY
+from job_scraper.extractors.rowcheck import title_read_as_location
 from job_scraper.http import FetchedPage
 from job_scraper.page_sizes import TYPICAL_PAGE_SIZES
 from job_scraper.robots import RobotsDisallowed, RobotsVerdict
@@ -895,6 +896,15 @@ def describe_run(run: ReaderRun) -> list[str]:
         empty = sum(1 for r in run.rows if not str(r.get("location") or "").strip())
         fallback = sum(1 for r in run.rows if r.get("detail_url") == r.get("listing_url"))
         details = {r.get("detail_url") for r in run.rows}
+        misread = sum(
+            1
+            for r in run.rows
+            if title_read_as_location(str(r.get("title") or ""), str(r.get("location") or ""))
+        )
+        if misread:
+            lines.append(
+                f"    ! {misread} of {len(run.rows)} row(s) have their title as the location"
+            )
         if empty:
             lines.append(f"    ! {empty} of {len(run.rows)} row(s) have no location")
         if fallback:
@@ -1328,6 +1338,22 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
     whole = [r for r in runs if r.ok and not r.short]
     if whole:
         best = max(whole, key=lambda r: len(r.rows))
+        misread = [
+            r
+            for r in best.rows
+            if title_read_as_location(str(r.get("title") or ""), str(r.get("location") or ""))
+        ]
+        if misread:
+            # Plausible rows are not proof of a right reader (SP8): this checks
+            # data the reader returned and edits nothing.
+            return ProbeResult(
+                NOT_FEASIBLE,
+                f"{NOT_FEASIBLE} - rung 5: the reader read the title as the location "
+                f"({best.board.platform.key}: {len(misread)} of {len(best.rows)} row(s), "
+                f"e.g. {misread[0]['title']!r}). That is a bug in {best.board.platform.key}.py "
+                "for this layout, not a case for a new module.",
+                best,
+            )
         return ProbeResult(
             REUSE,
             f"{REUSE} {best.board.platform.key}  ({len(best.rows)} row(s), "
