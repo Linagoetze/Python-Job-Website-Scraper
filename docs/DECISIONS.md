@@ -1835,3 +1835,24 @@ session — see `CLAUDE.md`.
   SP4h's seven). It is a policy decision, not a bug fix: it extends the owner's
   exclusion of tax roles to their Swedish spelling. `retrofilter --dry-run`
   showed one stored `new` row it will reject at the next scrape.
+
+- **A CSOD career site's list needs a token the page issues, so no CSOD reader
+  was built (SP11, 2026-10-09, the owner's choice).** The rendered listing is
+  filled by `POST us.api.csod.com/rec-job-search/external/jobs`, which states
+  `totalCount` and pages by `pageNumber` (25 a page). It answers 401 without
+  an `Authorization: Bearer` token, and the page embeds that token in its own
+  server-rendered HTML. The pager is buttons that re-send the POST, so a
+  `fetch(url) -> str` fetcher reads one page of three. The only complete walk
+  is to lift the page's token, which is rung 3–4: a credential every capture would
+  record. The owner declined it for a board an aggregator already carries
+  (67 of its 70 postings on Impactpool, none passing Layer 0 in ten runs).
+  The candidate was re-checked with that blocker. Three facts any future CSOD
+  attempt would otherwise re-derive. (1) The listing's `externalDescription` stops
+  before the "Selection Criteria" section, so it is not a posting's full text
+  and must not be supplied as `description_text` alone. (2) The static detail
+  page holds the whole posting only as JSON-LD, which Layer 5 reads as
+  unreadable (0 characters), so detail pages need `strategy: dynamic`. (3) The
+  token was observed by its header's scheme and length only, never read. A
+  session that re-opens this should do the same, and should check the
+  aggregator overlap first, as here: it decided the package before the route
+  did.
