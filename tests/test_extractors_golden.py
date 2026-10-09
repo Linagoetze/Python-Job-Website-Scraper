@@ -30,6 +30,7 @@ from job_scraper.extractors import (
     asana,
     ashby,
     personio,
+    pure_earth,
     sida,
     smartrecruiters,
     workable,
@@ -901,6 +902,31 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "pure_earth": {
+        # pure_earth.py (SP9), a Bootstrap accordion of 17 cards, every one a
+        # posting; the page states no total and has no pager. The header's
+        # "HQ:" is the office unit, not a department, so department is empty
+        # and the unit leads raw_snippet. The location is the card's own
+        # sentence, qualifier and all. The card body is the description.
+        "count": 17,
+        "first_job": {
+            "source_name": "pure_earth",
+            "title": "Chief Impact Officer",
+            "location": "New York City and surrounding area preferred, remote considered",
+            "department": "",
+            "listing_url": "https://www.pureearth.org/careers/",
+            "detail_url": (
+                "https://app.trinethire.com/companies/586876-pure-earth/jobs/"
+                "124371-chief-impact-officer"
+            ),
+            "apply_url": (
+                "https://app.trinethire.com/companies/586876-pure-earth/jobs/"
+                "124371-chief-impact-officer"
+            ),
+            "raw_snippet": "HQ | New York City and surrounding area preferred, remote considered",
+        },
+        "description": (12999, "Position: Chief Impact Officer Location : New York City"),
+    },
     "sida": {
         # sida.py. The reader wrote "Stockholm, Sweden" on every row; the
         # page labels each posting's place, and six of nine said Sundbyberg.
@@ -1392,3 +1418,73 @@ def test_asana_warns_when_some_postings_have_no_embedded_description(
     jobs = asana.extract(FIXTURE_CASES["asana"][1], lambda url: page, "asana")
     assert sum(not job["description_text"] for job in jobs) == 1
     assert "1 of 100 postings" in caplog.text
+
+
+def _pure_earth(html: str) -> list[dict[str, Any]]:
+    return pure_earth.extract(FIXTURE_CASES["pure_earth"][1], lambda url: html, "pure_earth")
+
+
+def _pure_earth_card(header: str, body: str) -> str:
+    return (
+        '<div id="accordion"><div class="card">'
+        f'<div class="card-header"><h5><a>{header}</a></h5></div>'
+        f'<div class="collapse"><div class="card-body">{body}</div></div>'
+        "</div></div>"
+    )
+
+
+_APPLY = '<p><a href="https://apply.example.com/jobs/1-x">APPLY NOW</a></p>'
+
+
+def test_pure_earth_reads_every_card_shape_on_the_page() -> None:
+    """17 cards, four shapes, one posting each, each keyed on a distinct URL."""
+    jobs = parse_fixture("pure_earth")
+    assert len({job["detail_url"] for job in jobs}) == 17
+    by_title = {(job["title"], job["location"]): job for job in jobs}
+    # No PDF, plain-text "Position": still a posting, keyed on its apply link.
+    tanzania = by_title[("Country Program Manager", "Dar es Salaam, Tanzania")]
+    assert tanzania["detail_url"].endswith("/124513-country-program-manager-tanzania")
+    # A third-party recruiter's apply link is the key, not Trinet Hire's board.
+    assert "samsstc.com" in by_title[("Communications Manager", "New Delhi, India")]["detail_url"]
+    # The Portuguese notice has no "APPLY NOW": it is keyed on its PDF, and its
+    # "Localização" label is read.
+    brasil = by_title[("Consultoria para Estudo de Balanço de Massa", "Brasil – Remoto")]
+    assert brasil["detail_url"].endswith("TdR_Balanco-Massa-Chumbo_Pure-Earth-Brasil.pdf")
+    assert brasil["apply_url"] == brasil["detail_url"]
+
+
+def test_pure_earth_title_and_unit_come_from_the_header_not_the_body() -> None:
+    """Brazil's body title reads "Country Director – Brazil"; the header's does not."""
+    job = next(j for j in parse_fixture("pure_earth") if j["raw_snippet"].startswith("Brazil |"))
+    assert (job["title"], job["department"]) == ("Country Director", "")
+
+
+def test_pure_earth_fails_loudly_without_the_accordion() -> None:
+    with pytest.raises(ValueError, match="no #accordion"):
+        _pure_earth("<html><body><h2>Open Positions</h2><p>None today</p></body></html>")
+
+
+def test_pure_earth_fails_loudly_on_an_empty_accordion() -> None:
+    with pytest.raises(ValueError, match="holds no cards"):
+        _pure_earth('<div id="accordion"></div>')
+
+
+def test_pure_earth_fails_loudly_on_a_card_with_no_location() -> None:
+    with pytest.raises(ValueError, match="no Location paragraph"):
+        _pure_earth(_pure_earth_card("HQ: Analyst", f"<p>About us</p>{_APPLY}"))
+
+
+def test_pure_earth_fails_loudly_on_a_card_it_cannot_key() -> None:
+    with pytest.raises(ValueError, match="no link"):
+        _pure_earth(_pure_earth_card("HQ: Analyst", "<p><b>Location</b>: Lund</p>"))
+
+
+def test_pure_earth_fails_loudly_when_the_title_is_read_as_the_location() -> None:
+    with pytest.raises(ValueError, match="title as location"):
+        _pure_earth(_pure_earth_card("HQ: Analyst", f"<p>Location: Analyst</p>{_APPLY}"))
+
+
+def test_pure_earth_reads_a_location_label_in_any_wrapper() -> None:
+    for label in ("<strong>Location</strong>: Lund", "<b><span>Location:</span></b> Lund"):
+        (job,) = _pure_earth(_pure_earth_card("Analyst", f"<p>{label}</p>{_APPLY}"))
+        assert (job["title"], job["location"], job["raw_snippet"]) == ("Analyst", "Lund", "Lund")

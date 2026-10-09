@@ -109,7 +109,7 @@ the ordering below.
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | done: reader, guard and probe check built; source added; norrsken moved onto the reader | `sp8-teamtailor-image-cards` |
-| 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
+| 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | done: reader and pin built; no source added (nothing passes Layer 0) | `sp9-accordion-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | not started | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | not started | `sp12-source-yield` |
@@ -4432,6 +4432,67 @@ batch 1 must be merged. The owner gives you the careers URL in chat.
 
 Branch sp9-<module>-reader. Commit, do not push. Update this plan file.
 ```
+
+### Result — done 2026-10-09, branch `sp9-accordion-reader`
+
+1358 → 1372 tests. `pytest`, `ruff check` and `ruff format --check` are clean;
+`run --help` works. Not pushed. **The source was not added**: see the last
+bullet. (The branch is not named for the module, which carries the employer's
+name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
+
+- **check and probe, run again.** `check` found the board on no list; `probe`
+  said `needs a new extractor`, static: 16 posting-shaped links, no JSON-LD
+  JobPosting, no ATS. Unchanged.
+- **The postings' own data: there is none.** The one JSON-LD block is a
+  WordPress `WebPage`/`WebSite` graph and the only other `application/json`
+  script is the emoji loader's config; no `<meta>` carries a posting. The
+  answer is markup: a Bootstrap accordion (`#accordion`) of `div.card`s under an
+  "Open Positions" heading. Every card is in the HTML whether expanded or not,
+  so the page is static.
+- **Card shapes (17 cards, all postings), and what the reader does.** (1) Header
+  `Unit: Title`, a "Location" paragraph, an "APPLY NOW" link to the employer's
+  Trinet Hire board, the "Position" paragraph linking a job-description PDF: 7
+  cards. (2) The same with the "Position" paragraph as plain text: 7 cards.
+  (3) "APPLY NOW" points at a third-party recruiter's site: 2 cards. (4) A
+  Portuguese consultancy notice ("Vaga", "Localização"), no "APPLY NOW", a
+  terms-of-reference PDF and an obfuscated e-mail address: 1 card. No featured,
+  open-application or closed-position card exists on the page today. The reader
+  takes the title from the header with the `Unit:` prefix removed (the body's
+  title varies in markup and sometimes adds the country), puts the unit
+  ("HQ", "Brazil") in `raw_snippet` not `department` (it is an office, and the
+  page states no department), reads the location by its label ("Location" or
+  "Localização") from whichever tag wraps it, and keys the posting on its apply
+  link, else on its PDF. A card with no location, no key, or a title read as
+  the location raises, naming the card; so does a page with no accordion or an
+  empty one. Card 4's apply route is an e-mail address, so its `apply_url` is
+  its PDF.
+- **One page.** No total, no pager, no "load more", no `rel=next`; the reader
+  says so in its docstring, with the markup it relied on.
+- **Detail pages are not read.** The listing carries each posting's full text,
+  supplied as `description_text` (SP4d); the apply pages are third parties'
+  boards, so Layer 5 fetches nothing.
+- **Pinned.** `FIXTURE_CASES` and golden (first job checked field by field
+  against the saved page), plus seven tests: each card shape, the title-from-
+  header rule, and one raise test per guard, each watched failing against a
+  reader without its guard. Fixture: one file, 332 KB.
+- **Location field.** A free sentence or a city, never a list: 15 cards give
+  "City, Country" (New York in 6 forms, plus Brasília, New Delhi, Accra,
+  Kathmandu, Lilongwe, Dar es Salaam, Kigali), 2 give "New York City and
+  surrounding area preferred, remote considered", 1 gives "Brasil – Remoto".
+- **SP5's checks.** Overlap: no stored row has this employer's company name or
+  a link to its pages. Scratch run: 17 seen, **Layer 0 passed 0**: 15 on
+  "city not on the list", 2 (the sentence above) on "remote keyword overridden
+  by a named city", which is SP4f working as designed on a US-based role. The
+  Portuguese "Remoto" is not a remote keyword Layer 0 knows, but the role is
+  Brazil-only remote and would not be open to the owner in any case. Layer 5,
+  "Unreadable pages" and the levels-against-descriptions check had no rows to
+  act on.
+- **No source.** By the shared rule a board that passes nothing is not worth a
+  fetch per run (SP12). The registry line, fixture and golden stay, so adding
+  it later is one paste of the block the owner already holds. Proposed:
+  `sources candidate add` with this board and the reason ("every posting is
+  outside the chosen locations; HQ roles say remote considered"); I have not
+  run it.
 
 ### SP10 — A bespoke reader for a rendered, Swedish careers page
 

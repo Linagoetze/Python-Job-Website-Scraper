@@ -48,6 +48,7 @@ from job_scraper.extractors import (  # noqa: E402
     mammut,
     niras,
     personio,
+    pure_earth,
     sida,
     smartrecruiters,
     successfactors_html,
@@ -332,6 +333,12 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "oatly.html",
         "https://careers.oatly.com/en-GB/jobs",
         lambda url, fetch: teamtailor.extract(url, fetch, source_name="oatly"),
+    ),
+    "pure_earth": (
+        # A Bootstrap accordion on the employer's own WordPress page (SP9).
+        "pure_earth.html",
+        "https://www.pureearth.org/careers/",
+        lambda url, fetch: pure_earth.extract(url, fetch, source_name="pure_earth"),
     ),
     "sida": (
         "sida.html",

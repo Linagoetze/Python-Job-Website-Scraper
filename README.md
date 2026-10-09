@@ -1079,7 +1079,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1359 tests, about fifteen seconds, no network access required.
+1372 tests, about fifteen seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
@@ -1111,13 +1111,14 @@ failed capture rather than a crash.
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit — except a
 response recognised as XML, which is saved as-is: an HTML parser corrupts it
-(SP4, found capturing Personio's feed). Every one of the twenty-two
+(SP4, found capturing Personio's feed). Every one of the twenty-three
 extractors now has a saved page, down from thirteen uncovered before SP4:
 SP4 covered the five generic ATS readers (Breezy, Lever, Personio,
 SmartRecruiters, Workable), SP4d covered jobsinlund, SP6 covered the last
 single-source readers, undp's reader went with its source, and SP6 retired
 the Oatly and Coefficient Giving readers for the generic Teamtailor and Ashby
-ones, and SP8 did the same for Norrsken's. Keeping fixtures current is SP6 of
+ones, and SP8 did the same for Norrsken's. SP9 added a reader for one
+employer's own careers page, with its page. Keeping fixtures current is SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.
 
