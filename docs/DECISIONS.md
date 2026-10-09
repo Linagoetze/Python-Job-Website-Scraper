@@ -1753,3 +1753,35 @@ session — see `CLAUDE.md`.
   summary is the one thing read at the end of a four-minute run, and a dry run
   shows it too. The real tombstone against the real `sources.yaml` matched
   nothing on 2026-10-08.
+
+- **A reader that returns plausible rows is not thereby reading the right
+  element (SP8, 2026-10-09).** Teamtailor's image-grid cards put the title in a
+  `<span title>` and the metadata `<div>` beside it inside a wrapper; the reader
+  took the wrapper as the metadata block, whose first `<span>` is the title, and
+  returned every posting with its title as its location and no department. Seven
+  goldens and the probe's `reuse` verdict were green, because each checked that
+  rows came back, not that a field held the right thing. Three consequences.
+  `teamtailor.extract` now raises on a row whose location is its title or its
+  title shortened with "...", and the probe refuses `reuse` on the same
+  evidence (`extractors/rowcheck.py` serves both). The check flags a plain
+  prefix only when the location is ellipsised: a city may begin a title. An
+  empty location is never flagged, it is a real state. And the layout is one
+  branch among the reader's others: the title span's parent is not the anchor,
+  so the metadata is the span's sibling `<div>`; no older branch was touched.
+
+- **Acronym keywords are case-sensitive, and only the title list says so (SP8
+  follow-up, 2026-10-09).** `SEA` (search-engine advertising) excluded a "Baltic
+  Sea programme" internship because every keyword matched case-insensitively. A
+  title keyword written in capitals now matches as written, which protects `IT`
+  and `AI` from "it" and "Ai" too. `_build_title_keyword_pattern` is shared with
+  location and remote terms, which are written in capitals for other reasons
+  (`EMEA`), so it takes `exact_acronyms=True` only from the title keyword paths
+  (`filtering.apply_title_keyword_filter` and `experience_filter.apply_combined_title_filter`,
+  the one the pipeline runs: the first version of the change missed it).
+  The cost: a lower-case "sea manager" is no longer excluded; `eval` on the
+  labelled set did not move.
+
+- **Layer 5's page text leaves out the consent dialog, menu and footer (SP8
+  follow-up).** `<dialog>`, `<nav>` and `<footer>` are removed before the text
+  is read. Not `<header>` (titles, places and work types sit there) and not
+  scripts (JSON-LD). Stored descriptions are not rewritten.

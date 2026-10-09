@@ -47,7 +47,6 @@ from job_scraper.extractors import (  # noqa: E402
     lever,
     mammut,
     niras,
-    norrsken,
     personio,
     sida,
     smartrecruiters,
@@ -322,10 +321,11 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         lambda url, fetch: mammut.extract(url, fetch, source_name="mammut"),
     ),
     "norrsken": (
-        # Rendered: the cards are a Teamtailor widget injected into the page.
+        # The Teamtailor board behind the widget Norrsken's site embeds, an
+        # image grid like wwf_sweden's. Read by the generic reader since SP8.
         "norrsken.html",
-        "https://www.norrsken.org/work-at-norrsken",
-        lambda url, fetch: norrsken.extract(url, fetch, source_name="norrsken"),
+        "https://careers.norrskenfoundation.org/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="norrsken"),
     ),
     "oatly": (
         # A Teamtailor board, read by the generic reader since SP6.
@@ -337,6 +337,13 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "sida.html",
         "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/",
         lambda url, fetch: sida.extract(url, fetch, source_name="sida"),
+    ),
+    "wwf_sweden": (
+        # A Teamtailor image-grid board (SP8): the title is a <span title> and the
+        # metadata <div> is its sibling inside the card's wrapper.
+        "wwf_sweden.html",
+        "https://jobb.wwf.se/en-GB/jobs",
+        lambda url, fetch: teamtailor.extract(url, fetch, source_name="wwf_sweden"),
     ),
 }
 

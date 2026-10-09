@@ -21,7 +21,6 @@ from job_scraper.extractors import (
     lever,
     mammut,
     niras,
-    norrsken,
     personio,
     sida,
     smartrecruiters,
@@ -62,6 +61,10 @@ REGISTRY: dict[str, ExtractorFn] = {
     # it blank on location and department for every posting. The generic reader
     # read the same page correctly; the store adds the /en-GB/ locale itself.
     "oatly": partial(teamtailor.extract, source_name="oatly"),
+    "wwf_sweden": partial(teamtailor.extract, source_name="wwf_sweden"),
+    # Norrsken read its own page's Teamtailor widget until SP8 follow-up; the
+    # board behind the widget is plain Teamtailor and reads the same one card.
+    "norrsken": partial(teamtailor.extract, source_name="norrsken"),
     # --- Lever API ---
     "wave": partial(lever.extract, source_name="wave", org_slug="waveapps"),
     # --- Workday (Playwright) ---
@@ -76,7 +79,6 @@ REGISTRY: dict[str, ExtractorFn] = {
     # --- Breezy HR ---
     "new_incentives": partial(breezy.extract, source_name="new_incentives"),
     # --- Playwright (site-specific) ---
-    "norrsken": partial(norrsken.extract, source_name="norrsken"),
     "asana": partial(asana.extract, source_name="asana"),
     # --- Personio ---
     "outdooractive": partial(personio.extract, source_name="outdooractive"),

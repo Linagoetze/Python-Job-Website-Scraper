@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h and SP6 are done** (as of 2026-10-08); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8 are done** (as of 2026-10-09); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -108,7 +108,7 @@ the ordering below.
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: three sources live, rest reported | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
-| 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | not started | `sp8-teamtailor-image-cards` |
+| 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | done: reader, guard and probe check built; source added; norrsken moved onto the reader | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | not started | `sp11-csod-reader` |
@@ -4322,6 +4322,78 @@ returns plausible rows is not thereby reading the right element.
 
 Branch sp8-teamtailor-image-cards. Commit, do not push. Update this plan file.
 ```
+
+### Result — done 2026-10-09, branch `sp8-teamtailor-image-cards`
+
+1348 → 1353 tests (the README said 1339: it had not followed SP7). `pytest`,
+`ruff check` and `ruff format --check` are clean. Not pushed.
+
+- **Captured first, and the claim held.** Each card is an `<li>` holding one
+  `<a>`: an image `<div>`, then a wrapper `<div>` whose children are the
+  `<span title="whole title">shortened...</span>` and the metadata `<div>`
+  ("Internship · Stockholm · Hybrid", the work type in a `<span>` with an
+  `<i class="fa-wifi">`). 7 cards, all the same shape.
+- **Reader.** One new branch in `teamtailor.extract`: when the title is a
+  `<span title>` whose parent is not the anchor, the metadata is the span's
+  sibling `<div>`. Every older layout still goes through its old branch; the
+  seven existing goldens, and oatly's, pass unchanged.
+- **Guard.** `extractors/rowcheck.title_read_as_location` and
+  `teamtailor._check_row`, which raises a `ValueError` naming the source and the
+  card. **One narrowing of the prompt, for the owner to confirm:** a location
+  that is a plain prefix of the title is flagged only when it carries a trailing
+  "..." or "…" (or equals the title). "Stockholm" is a prefix of "Stockholm Office
+  Manager", and a source that fails on a valid posting is a worse fault than the
+  one it guards against; the visible text of a title is always whole or
+  ellipsised. The failing-first test: the guard was a no-op stub while the
+  tests ran against the old reader, and the layout test, the unknown-layout test
+  and the three parametrised guard cases all failed (6 of 12) before any code
+  was written. The permanent end-to-end raise test uses a card with no metadata
+  `<div>`, since the SP5 layout itself now reads correctly.
+- **Probe.** `decide` turns `reuse` into `not feasible - rung 5: the reader read
+  the title as the location` when any row of the best run has that fault, and
+  the row listing prints a `!` line for it. The same helper serves both.
+- **Pinned.** `FIXTURE_CASES` and golden, first job checked field by field
+  against the saved page. `detail_url` keeps the `/en-GB/` the page gives.
+- **SP5's checks.** Scratch-store run: 7 seen, Layer 0 passed 7, Layer 2 dropped
+  3, 4 stored, none rejected at Layer 5; no "Unreadable pages" block. All four
+  stored descriptions read `unspecified`, correctly: internships, no years or
+  PhD asked. The work type ("Hybrid") reaches `raw_snippet` on every row.
+  **No pager.** The page states "7 jobs" in an `<h2>` and has no "Show more"
+  control, no `rel=next` and no `page=` link, so seven is the board.
+- **Findings, not fixed.** (1) Layer 2's `SEA` keyword drops a "Baltic Sea
+  programme" internship: a case-insensitive word match on a place name, for the
+  owner's keyword file. (2) Stored descriptions begin with the site's cookie
+  banner and navigation, which Layer 5 reads; harmless here, worth a look in the
+  description extractor. (3) The probe printed "nothing on the page to check
+  that against" although the page states its total; its total detector does not
+  read this heading. (4) norrsken's own Teamtailor site can now move onto this
+  reader (config only), when the owner wants it.
+
+  **All four findings were then fixed, at the owner's request (2026-10-09), 1353
+  → 1358 tests.** (1) Title keywords written in capitals (`SEA`, `AI`, `IT`,
+  `SEO`) now match case-sensitively; the rest of the list ignores case. The
+  builder is shared with location and remote terms, so it is an opt-in
+  (`exact_acronyms`) used only by the title keyword list. **The first version
+  of this fix missed the pipeline's own path**, `experience_filter.apply_combined_title_filter`,
+  and a scratch run showed the Baltic Sea internship still dropped; found by
+  re-running it, fixed with a test on that function. `eval` then moved: Layer 2
+  recall 0.890 → 0.918, one discard-labelled row now kept (overall recall
+  0.836 unchanged), and two labelled-`review` rows that `SEA` had wrongly
+  taken ("Air & Sea", "Baltic Sea States") are dropped instead by Layer 3's
+  `Senior`, so they are still lost, by the right rule. (2) `experience_filter._strip_html` drops `<dialog>`,
+  `<nav>` and `<footer>` before reading the text; `<header>` and scripts stay,
+  since a page's title, place and JSON-LD workplace type can live there.
+  Descriptions already stored are not rewritten. Checked on a fresh scratch run: the cookie banner is gone (descriptions 7.3-8.6k → 5.4-6.5k characters); the
+  menu inside `<header>` and the site's "other jobs" block still stay in, and
+  all four were read in full: no years, degree or PhD requirement, `unspecified`
+  is right. (3) The probe reads a heading
+  that is only a count ("7 jobs") as the page's stated total; a sentence that
+  mentions a count is not one. (4) norrsken moved from its own widget reader to
+  `teamtailor.extract` on `careers.norrskenfoundation.org/jobs` (`static`);
+  `extractors/norrsken.py` is deleted, its fixture recaptured and its golden
+  repinned (listing URL, and the board's "Onsite" tag now reaches `raw_snippet`).
+  The source name is unchanged, so stored rows and dedupe keys are untouched.
+- **The source is kept**, since 2-5 are clean. It was in neither curated list.
 
 ### SP9 — A bespoke reader for an HTML careers page on no ATS
 

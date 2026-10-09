@@ -853,22 +853,25 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "norrsken": {
-        # norrsken.py. No bug: the one card matches the page, and the Teamtailor
-        # career site behind the widget listed the same single posting.
+        # teamtailor.py since SP8. Norrsken's own reader read the widget on its
+        # website; the board behind it is an image grid and gives the same one
+        # posting, plus the workplace tag ("Onsite") the widget did not carry.
         "count": 1,
         "first_job": {
             "source_name": "norrsken",
             "title": "Membership Growth Associate",
             "location": "Barcelona, Spain",
             "department": "Norrsken House Barcelona",
-            "listing_url": "https://www.norrsken.org/work-at-norrsken",
+            "listing_url": "https://careers.norrskenfoundation.org/jobs",
             "detail_url": (
                 "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
             ),
             "apply_url": (
                 "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
             ),
-            "raw_snippet": "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain",
+            "raw_snippet": (
+                "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain Onsite"
+            ),
         },
     },
     "oatly": {
@@ -919,6 +922,35 @@ _GOLDEN: dict[str, dict[str, Any]] = {
                 "5688-sakerhetsspecialist-person-och-resesakerhet"
             ),
             "raw_snippet": "Säkerhetsspecialist, person- och resesäkerhet Sundbyberg",
+        },
+    },
+    "wwf_sweden": {
+        # teamtailor.py, image-grid cards (SP8). The title is a shortened
+        # <span> with the whole title in its `title` attribute, and the
+        # metadata <div> is its sibling: the reader used to take the wrapper
+        # as the metadata and return every title as its own location. The page
+        # states "7 jobs" and shows no pager or "show more" control.
+        "count": 7,
+        "first_job": {
+            "source_name": "wwf_sweden",
+            "title": (
+                "Intern with the WWF Baltic Sea programme: project management and communication"
+            ),
+            "location": "Stockholm",
+            "department": "Internship",
+            "listing_url": "https://jobb.wwf.se/en-GB/jobs",
+            "detail_url": (
+                "https://jobb.wwf.se/en-GB/jobs/8395577-intern-with-the-wwf-baltic-sea-"
+                "programme-project-management-and-communication"
+            ),
+            "apply_url": (
+                "https://jobb.wwf.se/en-GB/jobs/8395577-intern-with-the-wwf-baltic-sea-"
+                "programme-project-management-and-communication"
+            ),
+            "raw_snippet": (
+                "Intern with the WWF Baltic Sea programme: project management and "
+                "communication Internship Stockholm Hybrid"
+            ),
         },
     },
 }

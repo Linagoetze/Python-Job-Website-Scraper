@@ -13,6 +13,13 @@ Handles the common Teamtailor HTML patterns:
     location are read off the *end* of the non-worktype segments rather than
     assumed to be exactly two.)
   - <a href="/jobs/ID-slug"><h3>Title</h3></a><p>Org · Dept · Location</p>  (older markup)
+  - <a href="/jobs/ID-slug"><div><img></div><div><span title="Title">Titl...</span>
+    <div>Dept · Location · WorkType</div></div></a>  (image-grid cards, SP8: the title
+    span and the metadata <div> are siblings inside a wrapper <div>, the anchor's last
+    child. The visible text is shortened with "..."; the title attribute is whole.)
+
+A row whose location is its title (or the title shortened) is a layout the reader
+has misread, not a posting: `extract` raises rather than return it (SP8).
 """
 
 from __future__ import annotations
@@ -23,6 +30,8 @@ from typing import Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
+
+from job_scraper.extractors.rowcheck import title_read_as_location
 
 _JOB_PATH = re.compile(r"/jobs/\d+")
 _MIDDOT = "·"
@@ -82,6 +91,21 @@ def _split_meta(meta_tag: Tag) -> tuple[str, str, str]:
     return dept, location, work_type
 
 
+def _check_row(source_name: str, row: dict[str, Any]) -> None:
+    """Raise if the reader took the title for the location.
+
+    Seven goldens passed while this reader returned every title as its own
+    location on a layout it did not know (SP5, SP8): plausible rows, wrong
+    element. An empty location is a real state and is not checked.
+    """
+    if title_read_as_location(row["title"], row["location"]):
+        raise ValueError(
+            f"{source_name}: teamtailor card {row['detail_url']!r} has its title "
+            f"{row['title']!r} as its location {row['location']!r}; the markup is a "
+            "layout teamtailor.py does not know"
+        )
+
+
 def extract(
     listing_url: str,
     fetch_text: Callable[[str], str],
@@ -130,6 +154,11 @@ def extract(
         # sibling of <a> (redesigned markup used by most other Teamtailor sources)
         meta_tag: Tag | None = a.find("p")
 
+        if not meta_tag and title_span and title_span.parent is not a:
+            # Image-grid cards (SP8): title span and metadata <div> are siblings
+            # inside a wrapper, so the wrapper itself is not the metadata block.
+            meta_tag = title_span.find_next_sibling("div")
+
         if not meta_tag:
             child_divs = [c for c in a.children if isinstance(c, Tag) and c.name == "div"]
             if title_span and len(child_divs) >= 1:
@@ -162,16 +191,16 @@ def extract(
             dept, location, work_type = _split_meta(meta_tag)
 
         raw_snippet = " ".join(x for x in [title, dept, location, work_type] if x)
-        out.append(
-            {
-                "source_name": source_name,
-                "title": title,
-                "location": location,
-                "department": dept,
-                "listing_url": listing_url,
-                "detail_url": full,
-                "apply_url": full,
-                "raw_snippet": raw_snippet,
-            }
-        )
+        row = {
+            "source_name": source_name,
+            "title": title,
+            "location": location,
+            "department": dept,
+            "listing_url": listing_url,
+            "detail_url": full,
+            "apply_url": full,
+            "raw_snippet": raw_snippet,
+        }
+        _check_row(source_name, row)
+        out.append(row)
     return out

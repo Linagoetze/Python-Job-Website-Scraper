@@ -60,6 +60,7 @@ from job_scraper.extractors import (
     workday,
 )
 from job_scraper.extractors.registry import REGISTRY
+from job_scraper.extractors.rowcheck import title_read_as_location
 from job_scraper.http import FetchedPage
 from job_scraper.page_sizes import TYPICAL_PAGE_SIZES
 from job_scraper.robots import RobotsDisallowed, RobotsVerdict
@@ -405,6 +406,12 @@ _FOUND_TOTAL = re.compile(
 _LABELLED_TOTAL = re.compile(
     r"(?:vacant\s+positions|open\s+positions|jobs|vacancies)\s*:\s*(?P<total>[\d,]+)\b", re.I
 )
+# A heading that is only a count ("7 jobs", Teamtailor's list heading). Anchored
+# to a whole heading so a sentence that mentions "12 jobs" is not a total.
+_HEADING_TOTAL = re.compile(
+    r"^\s*(?P<total>\d[\d,]*)\s+(?:open\s+)?(?:jobs?|positions?|vacanc(?:y|ies)|openings?|roles?)\s*$",
+    re.I,
+)
 _JSON_TOTAL = re.compile(r"\"(?P<key>totalFound|totalJobs|totalCount|total_count)\"\s*:\s*(\d+)")
 _PAGER_QUERY = re.compile(r"[?&](?:page|startrow|offset|start|pg)=(?P<n>\d+)", re.I)
 _PAGER_CLASS = re.compile(r"paginat|pager\b|paging", re.I)
@@ -440,6 +447,10 @@ def declared_total(soup: BeautifulSoup, html: str) -> DeclaredTotal | None:
             match = pattern.search(text)
             if match:
                 return DeclaredTotal(_number(match.group("total")), match.group(0).strip())
+    for heading in soup.find_all(("h1", "h2", "h3")):
+        match = _HEADING_TOTAL.match(heading.get_text(" ", strip=True))
+        if match:
+            return DeclaredTotal(_number(match.group("total")), match.group(0).strip())
     match = _JSON_TOTAL.search(html)
     if match:
         return DeclaredTotal(int(match.group(2)), match.group(0))
@@ -895,6 +906,15 @@ def describe_run(run: ReaderRun) -> list[str]:
         empty = sum(1 for r in run.rows if not str(r.get("location") or "").strip())
         fallback = sum(1 for r in run.rows if r.get("detail_url") == r.get("listing_url"))
         details = {r.get("detail_url") for r in run.rows}
+        misread = sum(
+            1
+            for r in run.rows
+            if title_read_as_location(str(r.get("title") or ""), str(r.get("location") or ""))
+        )
+        if misread:
+            lines.append(
+                f"    ! {misread} of {len(run.rows)} row(s) have their title as the location"
+            )
         if empty:
             lines.append(f"    ! {empty} of {len(run.rows)} row(s) have no location")
         if fallback:
@@ -1328,6 +1348,22 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
     whole = [r for r in runs if r.ok and not r.short]
     if whole:
         best = max(whole, key=lambda r: len(r.rows))
+        misread = [
+            r
+            for r in best.rows
+            if title_read_as_location(str(r.get("title") or ""), str(r.get("location") or ""))
+        ]
+        if misread:
+            # Plausible rows are not proof of a right reader (SP8): this checks
+            # data the reader returned and edits nothing.
+            return ProbeResult(
+                NOT_FEASIBLE,
+                f"{NOT_FEASIBLE} - rung 5: the reader read the title as the location "
+                f"({best.board.platform.key}: {len(misread)} of {len(best.rows)} row(s), "
+                f"e.g. {misread[0]['title']!r}). That is a bug in {best.board.platform.key}.py "
+                "for this layout, not a case for a new module.",
+                best,
+            )
         return ProbeResult(
             REUSE,
             f"{REUSE} {best.board.platform.key}  ({len(best.rows)} row(s), "
