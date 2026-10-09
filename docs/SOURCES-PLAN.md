@@ -4857,7 +4857,10 @@ the session: the first version of this result said two presses and one GET.
   to the owner and run as approved. It records the new blocker (token, button
   pager, aggregator overlap), `last_checked` 2026-10-09 and `ats` still `csod`.
   The old finding is kept in `source_of_record`. Backup written and committed
-  to the curated repository.
+  to the curated repository. A second `recheck` the same day, also shown
+  to the owner first and run as approved, reworded that blocker to state the
+  overlap as a count comparison and the token's source as inferred; the first
+  wording is kept in `source_of_record`.
 - **For the next CSOD employer.** Everything above describes the platform, not
   this board: the endpoint, body, response fields, pager, detail URL shape and
   JSON-LD detail page should all recur, with the corporation name and site id
