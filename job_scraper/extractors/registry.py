@@ -22,6 +22,7 @@ from job_scraper.extractors import (
     mammut,
     niras,
     personio,
+    pure_earth,
     sida,
     smartrecruiters,
     successfactors_html,
@@ -153,6 +154,8 @@ REGISTRY: dict[str, ExtractorFn] = {
     "bearingpoint_sweden": partial(bearingpoint.extract, source_name="bearingpoint_sweden"),
     # --- Axis Communications (Workday, dynamic) ---
     "axis_comms": partial(workday.extract, source_name="axis_comms"),
+    # --- Pure Earth (own careers page, static) ---
+    "pure_earth": partial(pure_earth.extract, source_name="pure_earth"),
 }
 
 
