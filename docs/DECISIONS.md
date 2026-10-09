@@ -1840,19 +1840,24 @@ session — see `CLAUDE.md`.
   was built (SP11, 2026-10-09, the owner's choice).** The rendered listing is
   filled by `POST us.api.csod.com/rec-job-search/external/jobs`, which states
   `totalCount` and pages by `pageNumber` (25 a page). It answers 401 without
-  an `Authorization: Bearer` token, and the page embeds that token in its own
-  server-rendered HTML. The pager is buttons that re-send the POST, so a
+  an `Authorization: Bearer` token, which the page apparently embeds in its
+  own server-rendered HTML (a JWT-shaped string is in the static detail page;
+  the listing page's HTML was not checked). The pager is buttons that re-send the POST, so a
   `fetch(url) -> str` fetcher reads one page of three. The only complete walk
   is to lift the page's token, which is rung 3–4: a credential every capture would
-  record. The owner declined it for a board an aggregator already carries
-  (67 of its 70 postings on Impactpool, none passing Layer 0 in ten runs).
+  record. The owner declined it for a board an aggregator lists about as much
+  of (Impactpool listed 67 of its postings in run 37 against the board's 70,
+  compared as counts, not matched one by one; none of 161 passed Layer 0 in
+  the 9 retained runs that list the employer).
   The candidate was re-checked with that blocker. Three facts any future CSOD
-  attempt would otherwise re-derive. (1) The listing's `externalDescription` stops
-  before the "Selection Criteria" section, so it is not a posting's full text
-  and must not be supplied as `description_text` alone. (2) The static detail
-  page holds the whole posting only as JSON-LD, which Layer 5 reads as
-  unreadable (0 characters), so detail pages need `strategy: dynamic`. (3) The
+  attempt would otherwise re-derive, the first two seen on one posting only.
+  (1) The listing's `externalDescription` stopped before the "Selection
+  Criteria" section, so it may not be a posting's full text; check before
+  supplying it as `description_text`. (2) The static detail page held the
+  whole posting only as JSON-LD, which Layer 5 read as unreadable (0
+  characters), so detail pages likely need `strategy: dynamic`. (3) The
   token was observed by its header's scheme and length only, never read. A
-  session that re-opens this should do the same, and should check the
+  session that re-opens this should do the same, without searching a page for
+  the token's shape as this one did once, and should check the
   aggregator overlap first, as here: it decided the package before the route
   did.

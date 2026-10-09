@@ -4782,10 +4782,13 @@ Branch sp11-csod-reader. Commit, do not push. Update this plan file.
 
 The package ended at step 2's stop-and-ask. The owner chose not to build, so
 there is no `csod.py`, no fixture, no `Platform` entry and no source. Steps 3–6
-did not run. Tests and README are unchanged. Live traffic: the probe, one
-Browser pane session on the board (listing, two pager presses, one detail page),
-one POST without a token and one static detail GET, both through `http.py`'s
-polite fetchers.
+did not run. Tests and README are unchanged. Live traffic: the probe; one
+Browser pane session on the board (the listing, three pager presses, each of
+which made the page send its POST, and one detail page); one POST without a
+token; and the same static detail page fetched twice, the second time only
+because the first copy was not saved. The last two went through `http.py`'s
+polite fetchers. Corrected 2026-10-09 after the owner asked for an account of
+the session: the first version of this result said two presses and one GET.
 
 - **check and probe, run again.** The board is a candidate, last checked
   2026-10-06, blocker "needs a new extractor, strategy dynamic". The probe's
@@ -4793,14 +4796,20 @@ polite fetchers.
   `<nav>` pager after rendering, and no ATS of the ten. robots.txt has no group
   for us on the board's host.
 - **Overlap (step 2).** The board stated 70 postings. Impactpool listed 67 of
-  this employer's postings in run 37, and 161 distinct ones across runs 28–37.
-  Every one of those 161 was dropped at Layer 0 as "city not on the list", and
-  the store holds no row for the employer. Matched against `rules.json`
-  (counts only): none of the board's 29 cities is on `locations`,
-  `conditional_locations` or `remote_regions`, and two are bare countries in
-  `non_place_locations`, which defer and fail closed. A scratch run would almost
-  certainly pass nothing, which ends a package without a source under the
-  shared rules even before the route question.
+  this employer's postings in run 37, and 161 distinct ones in the drop log's
+  retained runs (28–37; the employer appears in 9 of them, not run 30, whose
+  Impactpool rows had shifted fields). These are counts compared, not
+  postings matched one by one, so "67 of 70" says Impactpool lists about as
+  many, not that it lists the same ones. Every one of those 161 was dropped at
+  Layer 0 as "city not on the list", and the store holds no row for the
+  employer. A crude check against `rules.json`, not Layer 0's matcher (a
+  substring test, either way round, counts only): none of the board's 29
+  facet cities matched `locations`, `conditional_locations` or
+  `remote_regions`, and two matched a term in `non_place_locations`. Which two,
+  and whether Layer 0 would defer them, was not checked. On that evidence a
+  scratch run would most likely pass nothing, which would end a package
+  without a source under the shared rules even before the route question.
+  It was not run.
 - **(a) The list.** `POST https://us.api.csod.com/rec-job-search/external/jobs`,
   JSON body `{"careerSiteId": <site>, "careerSitePageId": 1, "pageNumber": N,
   "pageSize": 25, "cultureId": 1, "cultureName": "en-US", "searchText": "", ...}`
@@ -4810,10 +4819,14 @@ polite fetchers.
   sometimes absent), posting and expiry dates, and `externalDescription`. There
   is no workplace field. The request carries `Authorization: Bearer` with a token
   of about 2,100 characters. The same POST without it, through `post_json`,
-  answered **401 "no Authorization header found"**. The page issues the token in
-  its own server-rendered HTML: no request issues it, and a static page of the
-  site holds a JWT-shaped string. The token was not read, used or kept. The
-  investigation recorded only the header's scheme and length, and the one
+  answered **401 "no Authorization header found"**. Where the page gets the
+  token is inferred, not shown: none of the requests the listing page made
+  (as `performance.getEntriesByType('resource')` lists them) looks like one
+  that issues a token, and the static *detail* page holds a JWT-shaped string,
+  found by a regex for that shape. That regex was itself a search for the key,
+  which the shared rules say not to do, and it should not be repeated. The
+  listing page's HTML was not checked. The token was not read, used or kept;
+  the browser hook recorded only the header's scheme and length, and the one
   scratch copy holding the token was deleted. `post_json` checked
   `us.api.csod.com`'s robots.txt before the 401, and it allowed the request.
 - **(b) The pager.** `<button data-pageindex="N">` with no `href`. A press sends
@@ -4821,14 +4834,18 @@ polite fetchers.
   The paging is done on the server, and a `fetch(url) -> str` fetcher cannot reach
   page 2.
 - **(c) The detail page.** `/ux/ats/careersite/<site>/home/requisition/<id>?c=<corp>`,
-  exactly as the listing links it. It is client-rendered by more token-bearing
-  calls, but its static HTML embeds a schema.org `JobPosting` in JSON-LD with the
-  whole posting. Layer 5's `_strip_html` reads **0 characters** from it
-  (unreadable), so any reader would need `strategy: dynamic` for detail pages.
-  SP4d rejected reading JSON-LD in Layer 5. The listing's `externalDescription`
-  is **not** the whole text: it stops right before "Selection Criteria", where
-  the years requirement sits. Supplying it as `description_text` would starve
-  Layer 5 (SP10's `skills` lesson).
+  the shape of the listing's own links. It is client-rendered by further calls
+  to the board's `services/x/...` API (whose headers were not inspected), but
+  its static HTML embeds a schema.org `JobPosting` in JSON-LD with the whole
+  posting. **All of what follows was seen on one posting**, not across the
+  board: Layer 5's `_strip_html` read **0 characters** from that page
+  (unreadable), so a reader would most likely need `strategy: dynamic` for
+  detail pages, and SP4d rejected reading JSON-LD in Layer 5. That posting's
+  `externalDescription` (one of the 25 on page 1, whose lengths ran from about
+  3,100 to 13,400 characters) is **not** the whole text: it stops right before
+  "Selection Criteria", where the years requirement sits. If that holds
+  generally, supplying it as `description_text` would starve Layer 5 (SP10's
+  `skills` lesson). The other 69 were not compared.
 - **The options put to the owner.** (1) Lift the page's token and POST, at 1 GET
   and 3 POSTs a run, the only complete walk: rung 3–4, a credential every
   capture would record. (2) Render the listing, which reads 25 of 70 and raises
