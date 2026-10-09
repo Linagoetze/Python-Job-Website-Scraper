@@ -2,6 +2,7 @@ keyword,match
 design,prefix
 engineer,prefix
 tax,word
+skatt,contains
 sales,word
 audio,word
 video,word

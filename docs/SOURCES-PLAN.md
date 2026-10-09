@@ -4566,7 +4566,7 @@ Branch sp10-<module>-reader. Commit, do not push. Update this plan file.
 
 ### Result — done 2026-10-09, branch `sp10-jobylon-reader`
 
-1372 → 1391 tests. `pytest`, `ruff check` and `ruff format --check` are clean;
+1372 → 1392 tests. `pytest`, `ruff check` and `ruff format --check` are clean;
 `run --help` works. Not pushed. The branch is not the prompt's
 `sp10-<module>-reader`: the module is a platform's, `jobylon.py`, not the
 employer's, which is what the result of step 2 turned the package into.
@@ -4585,9 +4585,9 @@ employer's, which is what the result of step 2 turned the package into.
   customer-facing feed: no token, cookie or header, the same URL for every
   visitor, and the feed host's robots.txt allows `*` (it disallows a list of
   named aggregator bots, none of which is this scraper's token). I judged it
-  public, not rung 3; **the owner may overrule that**, since the feed id is an
-  unguessable path segment, which makes it a capability URL in kind though
-  printed in a public page. No key was looked for and the one request was a
+  public, not rung 3, and **the owner confirmed that (2026-10-09)**, though the
+  feed id is an unguessable path segment, a capability URL in kind, printed in a
+  public page. No key was looked for and the one request was a
   plain GET. The static page needs no render, so `strategy: static`, and the
   employer's page is **never fetched** by the reader: the feed URL is the
   registry argument (`partial(jobylon.extract, source_name=..., feed_url=...)`).
@@ -4642,9 +4642,8 @@ employer's, which is what the result of step 2 turned the package into.
   Layer 5 (kept by Layers 0-4): **`Junior affärsjurist`, `Erfaren skatterådgivare`,
   `Skattekonsult | Tull & internationell handel`**, plus `Junior konsult till vår
   Forensic-avdelning` (a hyphenated compound). The English `tax` keyword dropped
-  `Tax Internship`, while the Swedish `skatterådgivare` and `Skattekonsult` pass
-  it; whether that matters is the owner's, and a `contains` entry is SP4h's
-  measure, not widened here. Titles may also hold a `|` ("Rådgivare | Financial
+  `Tax Internship`, while the Swedish `skatterådgivare` and `Skattekonsult` passed
+  it; see "Keyword added" below. Titles may also hold a `|` ("Rådgivare | Financial
   Reporting"), which the card shows and the reader leaves in the title.
 - **Checked afterwards.** A verbose scratch run made no request to the
   employer's ad pages: only the two robots.txt reads and the feed. Layer 5's
@@ -4680,9 +4679,32 @@ employer's, which is what the result of step 2 turned the package into.
   most runs to store little: this employer's roles are mostly office roles in
   cities the rules admit only when the text says hybrid, and that is the
   owner's rule.
+- **Keyword added at the owner's request (2026-10-09): `skatt,contains`**, in
+  this package and not SP4h (a finished package; the owner's decision). It is
+  the Swedish twin of the `tax` entry, which a whole-word English match cannot
+  be: Swedish writes tax as the start of a compound and inflects it
+  (`skatterådgivare`, `skattekonsult`, `Skattejurister`, `skatteavdelningen`).
+  Measured by SP4h's method. **Corpus scan:** 12,305 distinct titles across the
+  gold set, the store and the drop log; `skatt` appears in 8, every one a
+  Swedish tax role (all one Swedish employer's), none in the gold set.
+  **`eval --compare`** against the baseline taken just before (precision 0.353,
+  recall 0.836, 12 false negatives): no job treated differently, which, as for
+  SP4h's seven, says the gold set holds no such title and is not evidence of
+  safety. The scan is the evidence. `contains` has no boundary, so the cost is a
+  title with "skatt" inside an unrelated word; none in the corpus. **Stored
+  rows:** `retrofilter --dry-run` went from 0 to **1 status change, `new` to
+  `rejected`**: a Swedish employer's "Praktik på skatteavdelningen…" internship,
+  which the end-of-run re-filter pass will reject at the owner's next scrape
+  (the real pass was not run). That is the `tax` decision applied to a row it
+  could not reach. A test on the shipped list pins four tax titles dropped, and
+  fails without the entry. The scratch run above, repeated: 14 seen, Layer 0
+  passed 13, **Layer 2 dropped 6** (was 4: the two Swedish tax titles), Layer 3
+  3, **4 reached Layer 5**, which rejected all four (1 on years, 3 non-hybrid).
+  Still none stored.
 - **Source added** with `strategy: static`, in `sources.yaml` (the
   entry was needed for the capture, as in SP8 and SP9). Not a candidate, so
-  `candidate activate` did not apply.
+  `candidate activate` did not apply. The owner chose to keep it (2026-10-09),
+  knowing the scratch run stores nothing.
 - **Proposed, not built.** (1) The probe's rung 3 could read a `feedUrl`, a
   `fetch(`/`.json` URL or a known platform host out of an inline script and
   say so in the verdict, instead of "bespoke, rendered". (2) A second Jobylon

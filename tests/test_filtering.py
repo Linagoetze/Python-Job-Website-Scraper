@@ -641,6 +641,21 @@ class TestContainsMatch:
         kept, _ = apply_title_keyword_filter([_job(title=t) for t in titles], entries)
         assert kept == []
 
+    def test_shipped_list_catches_swedish_tax_compounds_that_tax_misses(self):
+        # `tax` is a whole-word English entry; Swedish writes the family word as the
+        # start of a compound, and inflects it (SP10, measured against 12,305 titles).
+        from job_scraper.config_loader import default_title_keywords_path
+
+        entries = load_title_exclude_keywords(default_title_keywords_path())
+        titles = [
+            "Erfaren skatterådgivare",
+            "Skattekonsult | Tull & internationell handel",
+            "Juniora Skattejurister till Tax & Legal (Göteborg)",
+            "Praktik på skatteavdelningen i Stockholm våren 2027",
+        ]
+        kept, _ = apply_title_keyword_filter([_job(title=t) for t in titles], entries)
+        assert kept == []
+
     def test_donor_is_no_longer_a_keyword(self):
         from job_scraper.config_loader import default_title_keywords_path
 

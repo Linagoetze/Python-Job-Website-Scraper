@@ -1824,3 +1824,14 @@ session — see `CLAUDE.md`.
   and two direct mobile numbers the reader never reads, committed as captured
   under SP6's rule. The owner was asked about the phone numbers and chose to
   keep them (2026-10-09).
+
+- **`skatt` is a `contains` keyword, the Swedish twin of `tax` (SP10, 2026-10-09,
+  the owner's request).** `tax` is whole-word and English; Swedish tax roles
+  begin with the family word and inflect it ("skatterådgivare", "Skattekonsult",
+  "Skattejurister", "skatteavdelningen"), so they passed Layer 2. Measured by
+  SP4h's method: 8 of 12,305 distinct titles in the gold set, store and drop log
+  hold "skatt", every one a Swedish tax role; `eval --compare` moved no job,
+  because the gold set holds none (the corpus scan is the evidence, as for
+  SP4h's seven). It is a policy decision, not a bug fix: it extends the owner's
+  exclusion of tax roles to their Swedish spelling. `retrofilter --dry-run`
+  showed one stored `new` row it will reject at the next scrape.
