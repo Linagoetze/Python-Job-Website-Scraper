@@ -4475,13 +4475,14 @@ name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
   against the saved page), plus seven tests: each card shape, the title-from-
   header rule, and one raise test per guard, each watched failing against a
   reader without its guard. Fixture: one file, 332 KB.
-- **Location field.** A free sentence or a city, never a list: 15 cards give
-  "City, Country" (New York in 6 forms, plus Brasília, New Delhi, Accra,
-  Kathmandu, Lilongwe, Dar es Salaam, Kigali), 2 give "New York City and
+- **Location field.** A free sentence or a city, never a list: 14 cards give
+  a city and usually a country (New York on 6 cards, as "New York, NY" or "New
+  York, NY, USA", plus Brasília twice, New Delhi, Accra, Kathmandu, Lilongwe,
+  Dar es Salaam and Kigali), 2 give "New York City and
   surrounding area preferred, remote considered", 1 gives "Brasil – Remoto".
 - **SP5's checks.** Overlap: no stored row has this employer's company name or
   a link to its pages. Scratch run: 17 seen, **Layer 0 passed 0**: 15 on
-  "city not on the list", 2 (the sentence above) on "remote keyword overridden
+  "city not on the list" (the 14 cities and "Brasil – Remoto"), 2 (the sentence above) on "remote keyword overridden
   by a named city", which is SP4f working as designed on a US-based role. The
   Portuguese "Remoto" is not a remote keyword Layer 0 knows, but the role is
   Brazil-only remote and would not be open to the owner in any case. Layer 5,
