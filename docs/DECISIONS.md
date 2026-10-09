@@ -1804,3 +1804,34 @@ session — see `CLAUDE.md`.
   fault. And a card keyed on nothing (no apply link, no PDF) raises rather than
   taking a position-based key, since the accordion's `collapseN` numbers move
   when a posting is removed.
+
+- **A rendered board's list can be a platform's public feed named in the static
+  page's own script (SP10, 2026-10-09).** The probe called a Swedish careers page
+  "rendered, on no supported ATS", because it looks for postings in markup and
+  links, and the page's postings arrive from `feed.jobylon.com`, a bare JSON
+  array that the page's inline widget script names (`feedUrl: ...`). So the
+  reader (`jobylon.py`, generic, `strategy: static`) takes the feed URL as a
+  registry argument and never fetches the employer's page: one request, and no
+  browser. The page's own column config, not the platform's field names, says
+  which field is the location (`departments`, the site), department (`layers_2`)
+  and business area (`layers_1`); another customer's page may map them
+  differently. The detail URL is built from the numeric id, because the feed's
+  link carries a title slug that follows an edit and the URL is the dedupe key.
+  `skills`, in this feed, is the qualifications text, so `description_text` is
+  `descr` plus `skills`. The route was judged public (no token, robots allows
+  it), not rung 3; the feed id is a capability URL in kind, so the judgement is
+  recorded for the owner to overrule. The fixture holds named staff addresses
+  and two direct mobile numbers the reader never reads, committed as captured
+  under SP6's rule. The owner was asked about the phone numbers and chose to
+  keep them (2026-10-09).
+
+- **`skatt` is a `contains` keyword, the Swedish twin of `tax` (SP10, 2026-10-09,
+  the owner's request).** `tax` is whole-word and English; Swedish tax roles
+  begin with the family word and inflect it ("skatterådgivare", "Skattekonsult",
+  "Skattejurister", "skatteavdelningen"), so they passed Layer 2. Measured by
+  SP4h's method: 8 of 12,305 distinct titles in the gold set, store and drop log
+  hold "skatt", every one a Swedish tax role; `eval --compare` moved no job,
+  because the gold set holds none (the corpus scan is the evidence, as for
+  SP4h's seven). It is a policy decision, not a bug fix: it extends the owner's
+  exclusion of tax roles to their Swedish spelling. `retrofilter --dry-run`
+  showed one stored `new` row it will reject at the next scrape.

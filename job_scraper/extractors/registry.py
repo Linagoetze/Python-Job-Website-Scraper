@@ -17,6 +17,7 @@ from job_scraper.extractors import (
     greenhouse,
     impactpool,
     jobsinlund,
+    jobylon,
     jpal,
     lever,
     mammut,
@@ -156,6 +157,12 @@ REGISTRY: dict[str, ExtractorFn] = {
     "axis_comms": partial(workday.extract, source_name="axis_comms"),
     # --- Pure Earth (own careers page, static) ---
     "pure_earth": partial(pure_earth.extract, source_name="pure_earth"),
+    # --- PwC Sweden (Jobylon feed, static) ---
+    "pwc_sweden": partial(
+        jobylon.extract,
+        source_name="pwc_sweden",
+        feed_url="https://feed.jobylon.com/feeds/f2bec1d5-600b-4990-80f7-6e0c3ffcfa4b/?format=json",
+    ),
 }
 
 

@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8 are done** (as of 2026-10-09); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8–SP10 are done** (as of 2026-10-09); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -110,7 +110,7 @@ the ordering below.
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | done: reader, guard and probe check built; source added; norrsken moved onto the reader | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | done: reader and pin built; source added at the owner's request though nothing passes Layer 0 | `sp9-accordion-reader` |
-| 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
+| 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | done: no private API; a generic Jobylon feed reader, `static`; source added | `sp10-jobylon-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | not started | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | not started | `sp12-source-yield` |
 | 13 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | not started | `sp13-years-lead-ins` |
@@ -4563,6 +4563,154 @@ batch 1 must be merged. The owner gives you the careers URL in chat.
 
 Branch sp10-<module>-reader. Commit, do not push. Update this plan file.
 ```
+
+### Result — done 2026-10-09, branch `sp10-jobylon-reader`
+
+1372 → 1392 tests. `pytest`, `ruff check` and `ruff format --check` are clean;
+`run --help` works. Not pushed. The branch is not the prompt's
+`sp10-<module>-reader`: the module is a platform's, `jobylon.py`, not the
+employer's, which is what the result of step 2 turned the package into.
+
+- **check and probe, run again.** `check` found the board on no list; `probe`
+  said `needs a new extractor`, rendered: no posting-shaped link in the static
+  page, 14 in the rendered one, no JSON-LD, no ATS of the ten. Unchanged.
+  Overlap: no stored row has this employer's name or a link to its pages.
+- **Where the rendered list comes from (step 2): outcome a and b, not c.** The
+  Browser pane's `read_network_requests` did not list it; `javascript_exec` with
+  `performance.getEntriesByType('resource')` showed a `fetch` to
+  `feed.jobylon.com/feeds/<id>/?format=json`. **The feed URL is in the static
+  HTML**, in the inline script that starts the widget
+  (`new JobListing({ feedUrl: ... })`). The probe missed it because it looks for
+  postings in markup and links, not for a script's URL. It is Jobylon's
+  customer-facing feed: no token, cookie or header, the same URL for every
+  visitor, and the feed host's robots.txt allows `*` (it disallows a list of
+  named aggregator bots, none of which is this scraper's token). I judged it
+  public, not rung 3, and **the owner confirmed that (2026-10-09)**, though the
+  feed id is an unguessable path segment, a capability URL in kind, printed in a
+  public page. No key was looked for and the one request was a
+  plain GET. The static page needs no render, so `strategy: static`, and the
+  employer's page is **never fetched** by the reader: the feed URL is the
+  registry argument (`partial(jobylon.extract, source_name=..., feed_url=...)`).
+  One request per run, to a host other than the employer's. If the employer
+  rotates the feed the old URL fails loudly; the new one is in the same script.
+  (An unrelated finding: a bare `curl` to the employer's page gets an
+  "Access Denied" from its edge, while the project's fetcher with its honest
+  user agent does not; nothing here tries to get past it, and the reader does
+  not need the page.)
+- **Fixture: one file, 132 KB** (the fixture file, the bare
+  array of 14 jobs). It holds the employer's published contact people: ten
+  named staff e-mail addresses, avatar URLs and **two direct mobile numbers**,
+  in `contact` and `owner` objects the reader never reads. The public ad page
+  shows the named contact, an e-mail address in the text and the avatar (checked
+  on one posting); I did not check that it shows the mobile numbers. By
+  DECISIONS.md ("A fixture keeps a third party's published contact details as
+  captured") I committed it as captured. That entry says to ask again when a
+  capture holds something the site may not publish, so the phone numbers were
+  put to the owner, who chose to keep them (2026-10-09).
+- **The feed's shape, and what the reader reads.** A bare array, no stated
+  total and no pager. The widget's own "14 rader" is counted from the same
+  array, so there is nothing to check a short read against; the reader says so
+  in its docstring and raises on a body that is not JSON, not an array, or a job
+  with no numeric id or no title (it does not skip, which would turn a changed
+  feed into fewer vacancies). The mapping is the **page's own** `structure`
+  config, read from the inline script, not Jobylon's names: "Ort" is
+  `departments > department > name` (Jobylon's "department" is the site; the
+  geocoded `locations` agree on all 14 and are the fallback for a job with no
+  site), "Avdelning" is the first `layers_2` text and is `department`, and
+  "Affärsområde" (`layers_1`) goes into `raw_snippet`. Several sites join as
+  segments with ` | `. All 14 rows were compared with the rendered table by
+  `data-id` (`ort`, `affärsområde`, `avdelning`) in the browser: no difference.
+  The platform's workplace field (`workplaceTypes`: `on-site`, `hybrid`; none
+  on 6 jobs) reaches `raw_snippet` as "Hybrid" or "Remote", on the words Layer 0
+  reads. `remote` has not been seen on this board; a test covers it.
+- **The detail URL is built from the id**, `https://emp.jobylon.com/jobs/<id>/`,
+  not the feed's `urls.ad`. That link carries a slug of the title, which follows
+  an edit, and the URL is the dedupe key. Both forms serve the same page (one
+  posting, fetched both ways). A test checks that the feed's own link begins with
+  the built URL for all 14.
+- **Detail pages are not read.** The prompt said they are client-rendered; the
+  one fetched was static, with JSON-LD `JobPosting`. Moot: `descr` (the pitch and
+  duties) and `skills` (despite the name, the "Kvalifikationer", application and
+  start date) together are the posting's text and are supplied as
+  `description_text`, so Layer 5 fetches nothing. Without `skills` the supplied
+  text would have no requirements; a test pins that. The "Unreadable pages"
+  block did not appear.
+- **Swedish.** Layer 5's years reading handles the Swedish phrasing on this
+  board ("2–5 års erfarenhet", "minst tre års", "10 års"): read offline over all
+  14, 7 `senior`, 1 `junior`, 6 `unspecified`, no PhD, and "2–5 års" is read as
+  its lower figure by design (SP4e). Swedish compounds in titles that reached
+  Layer 5 (kept by Layers 0-4): **`Junior affärsjurist`, `Erfaren skatterådgivare`,
+  `Skattekonsult | Tull & internationell handel`**, plus `Junior konsult till vår
+  Forensic-avdelning` (a hyphenated compound). The English `tax` keyword dropped
+  `Tax Internship`, while the Swedish `skatterådgivare` and `Skattekonsult` passed
+  it; see "Keyword added" below. Titles may also hold a `|` ("Rådgivare | Financial
+  Reporting"), which the card shows and the reader leaves in the title.
+- **Checked afterwards.** A verbose scratch run made no request to the
+  employer's ad pages: only the two robots.txt reads and the feed. Layer 5's
+  "fetching detail pages for 6 jobs" log line is its start message, and the six
+  were judged on the supplied text. Five descriptions were then read by hand
+  against Layer 5's reading. **One misreading, put as an invented test case, not
+  patched:** "gärna med minst tre års erfarenhet" ("preferably with at least
+  three years") reads as `experience: 3+ years required`, so the job would be
+  stored `senior`. The English "preferably with at least three years of
+  experience" reads the same, so it is not a Swedish gap: SP4e's preference
+  handling does not cover a preference that precedes "at least", and SP13 is the
+  package for it. That job was rejected on the hybrid gate in this run, so no
+  stored level is affected yet. The other four read correctly ("2–5 års" as 2,
+  "Minst 3-5 års" as 3, two with no years stated).
+- **Pinned.** `FIXTURE_CASES` and golden (first job checked field by field
+  against the saved feed and the rendered row), plus tests: the id-built URLs
+  against the feed's own links, the supplied qualifications, the page's columns,
+  the geocoded fallback, the workplace field (4 cases), an empty feed read as
+  empty, and one raise test per guard (not JSON, not a list, a job with no id,
+  no title or not an object). Each guard's test was watched failing against a
+  reader with that guard removed.
+- **SP5's checks.** Scratch run, this source only: 14 seen, **Layer 0 passed 13**
+  (1 dropped: city not on the list), Layer 2 dropped 4, Layer 3 3,
+  6 reached Layer 5, which rejected all 6: 1 on "10+ years required" and 5 as
+  "non-hybrid in a conditional city". **None is stored.** The hybrid join the
+  shared rules ask for: of those 5, four carry no `workplaceTypes` and one says
+  `on-site`, and none of the five texts says hybrid in Swedish or English
+  (searched), so no platform flag contradicts a rejection. The platform marks four
+  jobs hybrid. Three were dropped before Layer 5, on title (`developer`,
+  `risk`) or seniority; the fourth reached it and was rejected on "10+ years
+  required", not on the hybrid gate. No single-country remote role exists. The source is
+  kept (Layer 0 passes most of the board, as the shared rule asks), but expect
+  most runs to store little: this employer's roles are mostly office roles in
+  cities the rules admit only when the text says hybrid, and that is the
+  owner's rule.
+- **Keyword added at the owner's request (2026-10-09): `skatt,contains`**, in
+  this package and not SP4h (a finished package; the owner's decision). It is
+  the Swedish twin of the `tax` entry, which a whole-word English match cannot
+  be: Swedish writes tax as the start of a compound and inflects it
+  (`skatterådgivare`, `skattekonsult`, `Skattejurister`, `skatteavdelningen`).
+  Measured by SP4h's method. **Corpus scan:** 12,305 distinct titles across the
+  gold set, the store and the drop log; `skatt` appears in 8, every one a
+  Swedish tax role (all one Swedish employer's), none in the gold set.
+  **`eval --compare`** against the baseline taken just before (precision 0.353,
+  recall 0.836, 12 false negatives): no job treated differently, which, as for
+  SP4h's seven, says the gold set holds no such title and is not evidence of
+  safety. The scan is the evidence. `contains` has no boundary, so the cost is a
+  title with "skatt" inside an unrelated word; none in the corpus. **Stored
+  rows:** `retrofilter --dry-run` went from 0 to **1 status change, `new` to
+  `rejected`**: a Swedish employer's "Praktik på skatteavdelningen…" internship,
+  which the end-of-run re-filter pass will reject at the owner's next scrape
+  (the real pass was not run). That is the `tax` decision applied to a row it
+  could not reach. A test on the shipped list pins four tax titles dropped, and
+  fails without the entry. The scratch run above, repeated: 14 seen, Layer 0
+  passed 13, **Layer 2 dropped 6** (was 4: the two Swedish tax titles), Layer 3
+  3, **4 reached Layer 5**, which rejected all four (1 on years, 3 non-hybrid).
+  Still none stored.
+- **Source added** with `strategy: static`, in `sources.yaml` (the
+  entry was needed for the capture, as in SP8 and SP9). Not a candidate, so
+  `candidate activate` did not apply. The owner chose to keep it (2026-10-09),
+  knowing the scratch run stores nothing.
+- **Proposed, not built.** (1) The probe's rung 3 could read a `feedUrl`, a
+  `fetch(`/`.json` URL or a known platform host out of an inline script and
+  say so in the verdict, instead of "bespoke, rendered". (2) A second Jobylon
+  customer is a registry line and a `feed_url`, but the `layers_N` mapping above
+  is this customer's, so the next one will need its own check against its page's
+  `structure`; if that proves common, the mapping becomes an argument.
 
 ### SP11 — A generic reader for Cornerstone (CSOD) career sites
 
