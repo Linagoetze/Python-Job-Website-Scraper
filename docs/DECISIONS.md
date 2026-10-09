@@ -1786,15 +1786,15 @@ session — see `CLAUDE.md`.
   is read. Not `<header>` (titles, places and work types sit there) and not
   scripts (JSON-LD). Stored descriptions are not rewritten.
 
-- **A bespoke reader can be finished, pinned and still have no source (SP9,
-  2026-10-09).** The employer's careers page is a Bootstrap accordion of 17
+- **A bespoke reader can be finished and pinned, and the source added, though
+  nothing passes Layer 0 (SP9, 2026-10-09).** The employer's careers page is a Bootstrap accordion of 17
   cards, all postings, with the full text of each in the page, no JSON-LD
   JobPosting, no total and no pager. `pure_earth.py` reads it and supplies each
   card's text as `description_text`: the apply pages are a third party's
   client-rendered board, and Layer 5 needs none of them. A scratch run passed
   nothing at Layer 0 (15 on "city not on the list", two on "remote keyword
-  overridden by a named city"), so by SP5's rule the source was not added: the
-  registry line, fixture and golden stay so that adding it later is one paste.
+  overridden by a named city"), so by SP5's rule the source should not have been added, and `candidate add`
+  was proposed; the owner added it as a live source anyway.
   Two things a later session would otherwise re-derive. The location field is
   the card's own sentence, qualifier and all ("New York City and surrounding
   area preferred, remote considered"), and Layer 0 reads such a line as a named

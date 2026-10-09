@@ -109,7 +109,7 @@ the ordering below.
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | done: reader, guard and probe check built; source added; norrsken moved onto the reader | `sp8-teamtailor-image-cards` |
-| 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | done: reader and pin built; no source added (nothing passes Layer 0) | `sp9-accordion-reader` |
+| 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | done: reader and pin built; source added at the owner's request though nothing passes Layer 0 | `sp9-accordion-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | not started | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | not started | `sp12-source-yield` |
@@ -4436,8 +4436,8 @@ Branch sp9-<module>-reader. Commit, do not push. Update this plan file.
 ### Result — done 2026-10-09, branch `sp9-accordion-reader`
 
 1358 → 1372 tests. `pytest`, `ruff check` and `ruff format --check` are clean;
-`run --help` works. Not pushed. **The source was not added**: see the last
-bullet. (The branch is not named for the module, which carries the employer's
+`run --help` works. Not pushed. **The source was added at the owner's request
+despite a scratch run that passed nothing**: see the last bullet. (The branch is not named for the module, which carries the employer's
 name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
 
 - **check and probe, run again.** `check` found the board on no list; `probe`
@@ -4487,12 +4487,14 @@ name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
   Brazil-only remote and would not be open to the owner in any case. Layer 5,
   "Unreadable pages" and the levels-against-descriptions check had no rows to
   act on.
-- **No source.** By the shared rule a board that passes nothing is not worth a
-  fetch per run (SP12). The registry line, fixture and golden stay, so adding
-  it later is one paste of the block the owner already holds. Proposed:
-  `sources candidate add` with this board and the reason ("every posting is
-  outside the chosen locations; HQ roles say remote considered"); I have not
-  run it.
+- **Source added anyway (owner's decision, 2026-10-09).** By the shared rule a
+  board that passes nothing is not worth a fetch per run (SP12), and I proposed
+  `sources candidate add` instead. The owner chose to add it as a live source.
+  `candidate activate` did not apply, since the board was never a candidate: it
+  only removes one. The entry went into `sources.yaml` directly. Expect every
+  run to fetch the page and drop all its postings at Layer 0 until the board
+  lists something in the owner's locations; SP12 will list it among sources
+  that never pass.
 
 ### SP10 — A bespoke reader for a rendered, Swedish careers page
 
