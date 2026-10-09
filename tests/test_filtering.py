@@ -601,6 +601,23 @@ class TestContainsMatch:
         path.write_text("keyword,match\nchaufför,contains\nfoo,suffix\n", encoding="utf-8")
         assert load_title_exclude_keywords(path) == [("chaufför", "contains"), ("foo", "word")]
 
+    def test_an_all_caps_keyword_is_an_acronym_and_matches_case_sensitively(self):
+        # "SEA" is search-engine advertising; the Baltic Sea is a place (SP8).
+        matchers = build_title_keyword_matchers([("SEA", "word"), ("design", "prefix")])
+        assert title_keyword_rule("SEA Manager", matchers) == "title_keyword: 'SEA' (word)"
+        assert title_keyword_rule("Intern, WWF Baltic Sea programme", matchers) == (
+            "title_keyword: unattributed"
+        )
+        # Other keywords stay case-insensitive.
+        assert title_keyword_rule("DESIGNER", matchers) == "title_keyword: 'design' (prefix)"
+
+    def test_an_acronym_keyword_still_excludes_in_the_combined_pattern(self):
+        entries = [("SEA", "word"), ("design", "prefix")]
+        kept, excluded = apply_title_keyword_filter([_job(title="Baltic Sea intern")], entries)
+        assert len(kept) == 1 and excluded == []
+        kept, excluded = apply_title_keyword_filter([_job(title="SEA Lead")], entries)
+        assert kept == [] and len(excluded) == 1
+
     def test_attribution_names_the_match_type(self):
         matchers = build_title_keyword_matchers([("chaufför", "contains")])
         assert (

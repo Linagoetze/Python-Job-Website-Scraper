@@ -68,6 +68,8 @@ def load_title_exclude_keywords(path: Path) -> list[tuple[str, str]]:
 
 def _build_title_keyword_pattern(
     entries: list[tuple[str, str]],
+    *,
+    exact_acronyms: bool = False,
 ) -> re.Pattern[str] | None:
     """Build a combined regex from (keyword, match_type) pairs.
 
@@ -79,21 +81,35 @@ def _build_title_keyword_pattern(
     inflect after the family word: 'Mjukvaruingenjörer', 'Technikerin'. A match
     that had to end at the word's edge would lose those. It is only safe for a
     long, distinctive keyword, so each use is measured with eval --compare.
+
+    With `exact_acronyms`, a keyword written in capitals matches case-sensitively;
+    only the title keyword list asks for it, since location and remote terms share
+    this builder and are written in capitals for other reasons.
     """
     if not entries:
         return None
-    word_parts = [re.escape(kw) for kw, m in entries if m == "word"]
-    prefix_parts = [re.escape(kw) for kw, m in entries if m == "prefix"]
-    contains_parts = [re.escape(kw) for kw, m in entries if m == "contains"]
     fragments: list[str] = []
-    if contains_parts:
-        fragments.append("(?:" + "|".join(contains_parts) + ")")
-    if word_parts:
-        fragments.append(r"\b(?:" + "|".join(word_parts) + r")\b")
-    if prefix_parts:
-        fragments.append(r"\b(?:" + "|".join(prefix_parts) + r")")
-    combined = "|".join(f"(?:{f})" for f in fragments)
-    return re.compile(combined, re.IGNORECASE)
+    # An all-caps keyword is an acronym ("SEA", "AI", "IT") and matches only as
+    # written: case-insensitively, "SEA" excluded a "Baltic Sea programme"
+    # internship (SP8) and "IT" would match the pronoun. The rest ignore case.
+    for scoped, group in (
+        ("", [e for e in entries if not (exact_acronyms and e[0].isupper())]),
+        ("-i", [e for e in entries if exact_acronyms and e[0].isupper()]),
+    ):
+        contains_parts = [re.escape(kw) for kw, m in group if m == "contains"]
+        word_parts = [re.escape(kw) for kw, m in group if m == "word"]
+        prefix_parts = [re.escape(kw) for kw, m in group if m == "prefix"]
+        local: list[str] = []
+        if contains_parts:
+            local.append("(?:" + "|".join(contains_parts) + ")")
+        if word_parts:
+            local.append(r"\b(?:" + "|".join(word_parts) + r")\b")
+        if prefix_parts:
+            local.append(r"\b(?:" + "|".join(prefix_parts) + r")")
+        if local:
+            body = "|".join(f"(?:{f})" for f in local)
+            fragments.append(f"(?{scoped}:{body})" if scoped else f"(?:{body})")
+    return re.compile("|".join(fragments), re.IGNORECASE)
 
 
 def build_title_keyword_matchers(
@@ -108,7 +124,7 @@ def build_title_keyword_matchers(
     """
     matchers: list[tuple[str, str, re.Pattern[str]]] = []
     for kw, match_type in entries:
-        pattern = _build_title_keyword_pattern([(kw, match_type)])
+        pattern = _build_title_keyword_pattern([(kw, match_type)], exact_acronyms=True)
         if pattern is not None:
             matchers.append((kw, match_type, pattern))
     return matchers
@@ -144,7 +160,7 @@ def apply_title_keyword_filter(
     Excluded jobs carry the keyword that fired under DROP_RULE_KEY.
     Returns (kept_jobs, excluded_jobs).
     """
-    pattern = _build_title_keyword_pattern(entries)
+    pattern = _build_title_keyword_pattern(entries, exact_acronyms=True)
     if pattern is None:
         return jobs, []
     matchers = build_title_keyword_matchers(entries)
