@@ -21,6 +21,7 @@ from job_scraper.filtering import (
     _HYBRID_PENDING_REASON,
     _UNRESOLVED_CONFIRMED_REASON,
     _UNRESOLVED_PENDING_REASON,
+    DROP_RULE_KEY,
     build_hybrid_pattern,
     build_location_pattern,
     build_page_remote_reader,
@@ -689,3 +690,16 @@ class TestEmptyLocationResolution:
         )
         assert not kept
         assert excluded[0]["drop_rule"] == RULE_LOCATION_NOT_LISTED
+
+
+class TestCombinedTitleFilterAcronyms:
+    """The pipeline's Layer 2 runs here, not in apply_title_keyword_filter (SP8)."""
+
+    def test_an_acronym_keyword_does_not_match_a_place_name(self):
+        from job_scraper.experience_filter import apply_combined_title_filter
+
+        jobs = [{"title": "Intern, WWF Baltic Sea programme"}, {"title": "SEA Manager"}]
+        kept, kw_excluded, _ = apply_combined_title_filter(jobs, [("SEA", "word")], {})
+        assert [j["title"] for j in kept] == ["Intern, WWF Baltic Sea programme"]
+        assert [j["title"] for j in kw_excluded] == ["SEA Manager"]
+        assert kw_excluded[0][DROP_RULE_KEY] == "title_keyword: 'SEA' (word)"

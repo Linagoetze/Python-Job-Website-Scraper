@@ -215,7 +215,7 @@ def apply_combined_title_filter(
     the jobs those patterns reject.
     Returns (kept, keyword_excluded, seniority_excluded).
     """
-    kw_pattern = _build_title_keyword_pattern(entries)
+    kw_pattern = _build_title_keyword_pattern(entries, exact_acronyms=True)
     kw_matchers = build_title_keyword_matchers(entries)
 
     seniority_enabled = rules.get("seniority_filter_enabled", True)
