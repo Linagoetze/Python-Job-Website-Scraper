@@ -43,6 +43,7 @@ from job_scraper.extractors import (  # noqa: E402
     greenhouse,
     impactpool,
     jobsinlund,
+    jobylon,
     jpal,
     lever,
     mammut,
@@ -339,6 +340,18 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "pure_earth.html",
         "https://www.pureearth.org/careers/",
         lambda url, fetch: pure_earth.extract(url, fetch, source_name="pure_earth"),
+    ),
+    "pwc_sweden": (
+        # A careers page whose list is a Jobylon feed (SP10). The employer's page
+        # is never fetched; the feed is the one request, so one fixture file.
+        "pwc_sweden.json",
+        "https://www.pwc.se/sv/karriar/lediga-jobb.html",
+        lambda url, fetch: jobylon.extract(
+            url,
+            fetch,
+            source_name="pwc_sweden",
+            feed_url="https://feed.jobylon.com/feeds/f2bec1d5-600b-4990-80f7-6e0c3ffcfa4b/?format=json",
+        ),
     ),
     "sida": (
         "sida.html",

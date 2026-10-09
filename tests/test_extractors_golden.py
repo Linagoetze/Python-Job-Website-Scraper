@@ -29,6 +29,7 @@ import pytest
 from job_scraper.extractors import (
     asana,
     ashby,
+    jobylon,
     personio,
     pure_earth,
     sida,
@@ -927,6 +928,31 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
         "description": (12999, "Position: Chief Impact Officer Location : New York City"),
     },
+    "pwc_sweden": {
+        # jobylon.py (SP10), the Jobylon feed behind a careers page that renders
+        # its list in the browser. 14 jobs, a bare array with no stated total;
+        # the page's own "14 rader" is counted from the same array. All 14 rows
+        # were compared with the rendered table (Ort, Affärsområde, Avdelning)
+        # on 2026-10-09. "Ort" is `departments`, so the first job's two sites
+        # are in the page's alphabetical order; `department` is the page's
+        # "Avdelning", the business area is in the snippet, and the detail URL
+        # is built from the id, not the feed's slugged link.
+        "count": 14,
+        "first_job": {
+            "source_name": "pwc_sweden",
+            "title": "Junior konsult till vår Forensic-avdelning",
+            "location": "Göteborg | Stockholm",
+            "department": "Legal & Forensic",
+            "listing_url": "https://www.pwc.se/sv/karriar/lediga-jobb.html",
+            "detail_url": "https://emp.jobylon.com/jobs/383650/",
+            "apply_url": "https://emp.jobylon.com/applications/jobs/383650/create/",
+            "raw_snippet": (
+                "Junior konsult till vår Forensic-avdelning Legal & Forensic Rådgivning "
+                "Göteborg | Stockholm"
+            ),
+        },
+        "description": (3310, "Vi söker nya medarbetare till vårt utredningsteam Vill du"),
+    },
     "sida": {
         # sida.py. The reader wrote "Stockholm, Sweden" on every row; the
         # page labels each posting's place, and six of nine said Sundbyberg.
@@ -1488,3 +1514,94 @@ def test_pure_earth_reads_a_location_label_in_any_wrapper() -> None:
     for label in ("<strong>Location</strong>: Lund", "<b><span>Location:</span></b> Lund"):
         (job,) = _pure_earth(_pure_earth_card("Analyst", f"<p>{label}</p>{_APPLY}"))
         assert (job["title"], job["location"], job["raw_snippet"]) == ("Analyst", "Lund", "Lund")
+
+
+def _jobylon(body: str) -> list[dict[str, Any]]:
+    return jobylon.extract(FIXTURE_CASES["pwc_sweden"][1], lambda url: body, "pwc_sweden", "feed")
+
+
+def _jobylon_job(**fields: Any) -> dict[str, Any]:
+    job: dict[str, Any] = {
+        "id": 7,
+        "title": "Analyst",
+        "departments": [{"department": {"name": "Lund"}}],
+        "layers_1": [{"layer": {"text": "Skatt"}}],
+        "layers_2": [{"layer": {"text": "Moms"}}],
+        "descr": "<p>Pitch</p>",
+        "skills": "<p>Krav</p>",
+        "urls": {"ad": "https://emp.jobylon.com/jobs/7-co-analyst/", "apply": "https://a/7"},
+    }
+    return {**job, **fields}
+
+
+def test_jobylon_detail_urls_are_the_job_id_and_agree_with_the_feeds_own_link() -> None:
+    """The dedupe key is built from the id, so an edited title cannot re-key a job,
+    and it is the same posting the feed's slugged `urls.ad` links to."""
+    feed = json.loads((FIXTURES_DIR / FIXTURE_CASES["pwc_sweden"][0]).read_text(encoding="utf-8"))
+    jobs = parse_fixture("pwc_sweden")
+    assert [j["detail_url"] for j in jobs] == [
+        f"https://emp.jobylon.com/jobs/{f['id']}/" for f in feed
+    ]
+    for raw, job in zip(feed, jobs, strict=True):
+        assert raw["urls"]["ad"].startswith(job["detail_url"].rstrip("/") + "-")
+
+
+def test_jobylon_supplies_the_qualifications_with_the_pitch() -> None:
+    """`skills` holds the qualifications section ("Kvalifikationer"), which Layer 5
+    reads for years and degrees; without it the supplied text has no requirements."""
+    (job,) = _jobylon(json.dumps([_jobylon_job()]))
+    assert job["description_text"] == "Pitch Krav"
+
+
+def test_jobylon_reads_the_pages_columns_not_their_words() -> None:
+    (job,) = _jobylon(json.dumps([_jobylon_job()]))
+    assert (job["location"], job["department"], job["raw_snippet"]) == (
+        "Lund",
+        "Moms",
+        "Analyst Moms Skatt Lund",
+    )
+
+
+def test_jobylon_falls_back_to_the_geocoded_places_for_a_job_with_no_site() -> None:
+    places = [{"location": {"city": "Malmö"}}, {"location": {"city": "Malmö"}}]
+    (job,) = _jobylon(json.dumps([_jobylon_job(departments=[], locations=places)]))
+    assert job["location"] == "Malmö"
+
+
+@pytest.mark.parametrize(
+    ("workplace", "word"),
+    [("hybrid", "Hybrid"), ("remote", "Remote"), ("on-site", ""), (None, "")],
+)
+def test_jobylon_carries_the_workplace_into_the_snippet(workplace: str | None, word: str) -> None:
+    (job,) = _jobylon(json.dumps([_jobylon_job(workplaceTypes=workplace)]))
+    assert job["raw_snippet"].endswith("Lund " + word if word else "Lund")
+
+
+def test_jobylon_reads_an_empty_feed_as_empty() -> None:
+    assert _jobylon("[]") == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("<html>Something went wrong</html>", id="not-json"),
+        pytest.param('{"detail": "Not found"}', id="not-a-list"),
+    ],
+)
+def test_jobylon_fails_loudly_on_a_body_it_cannot_read(body: str) -> None:
+    with pytest.raises(ValueError, match="Jobylon feed"):
+        _jobylon(body)
+
+
+@pytest.mark.parametrize(
+    "job",
+    [
+        pytest.param(_jobylon_job(id=None), id="no-id"),
+        pytest.param(_jobylon_job(title=" "), id="no-title"),
+        pytest.param("a string", id="not-an-object"),
+    ],
+)
+def test_jobylon_raises_on_a_job_it_cannot_read_rather_than_dropping_it(job: Any) -> None:
+    """Skipping would turn a feed whose shape changed into a shorter list."""
+    with pytest.raises(ValueError, match="job 2 of the Jobylon feed"):
+        _jobylon(json.dumps([_jobylon_job(), job]))
