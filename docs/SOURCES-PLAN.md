@@ -4482,7 +4482,7 @@ name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
   captured, as DECISIONS.md settled for another fixture (SP6): two named staff
   e-mail addresses (Cloudflare hides them in the text, but the served `title`
   and `aria-label` attributes spell them out), a switchboard number and a
-  `tel:` link. Put to the owner whether to keep it that way.
+  `tel:` link. The owner chose to keep it as captured (2026-10-09).
 - **Location field.** A free sentence or a city, never a list: 14 cards give
   a city and usually a country (New York on 6 cards, as "New York, NY" or "New
   York, NY, USA", plus Brasília twice, New Delhi, Accra, Kathmandu, Lilongwe,

@@ -1657,7 +1657,8 @@ session — see `CLAUDE.md`.
   `jobsinlund.json` already does with named recruiters. What stays out of
   the repository is the owner's own data (CLAUDE.md), not an employer's
   published contact list. Ask again if a capture ever holds anything the
-  site does not publish.
+  site does not publish. SP9 (2026-10-09) decided
+  the same for another careers page's published staff contacts.
 - **A backup of a gitignored config file goes outside the repository (SP6,
   2026-10-08).** `.gitignore` names `rules.json` and `sources.yaml` file by
   file, so `rules.json.bak-<date>` beside them is untracked but not ignored:
