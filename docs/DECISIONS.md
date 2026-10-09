@@ -1775,7 +1775,9 @@ session — see `CLAUDE.md`.
   title keyword written in capitals now matches as written, which protects `IT`
   and `AI` from "it" and "Ai" too. `_build_title_keyword_pattern` is shared with
   location and remote terms, which are written in capitals for other reasons
-  (`EMEA`), so it takes `exact_acronyms=True` only from the title keyword paths.
+  (`EMEA`), so it takes `exact_acronyms=True` only from the title keyword paths
+  (`filtering.apply_title_keyword_filter` and `experience_filter.apply_combined_title_filter`,
+  the one the pipeline runs: the first version of the change missed it).
   The cost: a lower-case "sea manager" is no longer excluded; `eval` on the
   labelled set did not move.
 

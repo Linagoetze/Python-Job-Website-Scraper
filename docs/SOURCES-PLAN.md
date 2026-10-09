@@ -108,7 +108,7 @@ the ordering below.
 | 5 | Add the new companies | 1.5 hr per batch | Sonnet 5 | `think` | batch 1: three sources live, rest reported | `sp5-add-sources` |
 | 6 | Fixtures for the remaining eight readers | 2 hr per instalment | Sonnet 5 | `think` | done: all six covered, three fixed; asana and coefficient follow-ups built | `sp6-fixtures-rest` |
 | 7 | Source warnings: failed, one-page, tombstoned | 2.5 hr | Sonnet 5 | `think` | done: all three built | `sp7-source-warnings` |
-| 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | not started | `sp8-teamtailor-image-cards` |
+| 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | done: reader, guard and probe check built; source added; norrsken moved onto the reader | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | not started | `sp9-<module>-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | not started | `sp10-<module>-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | not started | `sp11-csod-reader` |
@@ -4373,11 +4373,20 @@ Branch sp8-teamtailor-image-cards. Commit, do not push. Update this plan file.
   → 1358 tests.** (1) Title keywords written in capitals (`SEA`, `AI`, `IT`,
   `SEO`) now match case-sensitively; the rest of the list ignores case. The
   builder is shared with location and remote terms, so it is an opt-in
-  (`exact_acronyms`) used only by the title keyword list. `eval` is unchanged
-  on the labelled set. (2) `experience_filter._strip_html` drops `<dialog>`,
+  (`exact_acronyms`) used only by the title keyword list. **The first version
+  of this fix missed the pipeline's own path**, `experience_filter.apply_combined_title_filter`,
+  and a scratch run showed the Baltic Sea internship still dropped; found by
+  re-running it, fixed with a test on that function. `eval` then moved: Layer 2
+  recall 0.890 → 0.918, one discard-labelled row now kept (overall recall
+  0.836 unchanged), and two labelled-`review` rows that `SEA` had wrongly
+  taken ("Air & Sea", "Baltic Sea States") are dropped instead by Layer 3's
+  `Senior`, so they are still lost, by the right rule. (2) `experience_filter._strip_html` drops `<dialog>`,
   `<nav>` and `<footer>` before reading the text; `<header>` and scripts stay,
   since a page's title, place and JSON-LD workplace type can live there.
-  Descriptions already stored are not rewritten. (3) The probe reads a heading
+  Descriptions already stored are not rewritten. Checked on a fresh scratch run: the cookie banner is gone (descriptions 7.3-8.6k → 5.4-6.5k characters); the
+  menu inside `<header>` and the site's "other jobs" block still stay in, and
+  all four were read in full: no years, degree or PhD requirement, `unspecified`
+  is right. (3) The probe reads a heading
   that is only a count ("7 jobs") as the page's stated total; a sentence that
   mentions a count is not one. (4) norrsken moved from its own widget reader to
   `teamtailor.extract` on `careers.norrskenfoundation.org/jobs` (`static`);
