@@ -1791,7 +1791,8 @@ session — see `CLAUDE.md`.
   cards, all postings, with the full text of each in the page, no JSON-LD
   JobPosting, no total and no pager. `pure_earth.py` reads it and supplies each
   card's text as `description_text`: the apply pages are a third party's
-  client-rendered board, and Layer 5 needs none of them. A scratch run passed
+  board (static, with the same text, checked with one fetch), so Layer 5 needs
+  none of them and stays off that host. A scratch run passed
   nothing at Layer 0 (15 on "city not on the list", two on "remote keyword
   overridden by a named city"), so by SP5's rule the source should not have been added, and `candidate add`
   was proposed; the owner added it as a live source anyway.

@@ -39,8 +39,10 @@ being dropped or half-read.
 The header's text before the first colon ("HQ", "Brazil") is the office or
 country unit, not a department; the page gives no department. It goes into
 `raw_snippet`. The card body is the posting's full text, supplied as
-`description_text`, so Layer 5 reads it and fetches nothing (SP4d): the apply
-pages are a third party's, client-rendered.
+`description_text`, so Layer 5 reads it and fetches nothing (SP4d). The apply
+pages are a third party's (Trinet Hire) and are static too, with the same text;
+supplying it from the card saves one request per new posting and keeps Layer 5
+off a host that is not the employer's.
 """
 
 from __future__ import annotations

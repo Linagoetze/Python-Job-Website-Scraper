@@ -4435,7 +4435,7 @@ Branch sp9-<module>-reader. Commit, do not push. Update this plan file.
 
 ### Result — done 2026-10-09, branch `sp9-accordion-reader`
 
-1358 → 1372 tests. `pytest`, `ruff check` and `ruff format --check` are clean;
+1359 → 1372 tests (1359 measured on `main`). `pytest`, `ruff check` and `ruff format --check` are clean;
 `run --help` works. Not pushed. **The source was added at the owner's request
 despite a scratch run that passed nothing**: see the last bullet. (The branch is not named for the module, which carries the employer's
 name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
@@ -4469,12 +4469,20 @@ name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
 - **One page.** No total, no pager, no "load more", no `rel=next`; the reader
   says so in its docstring, with the markup it relied on.
 - **Detail pages are not read.** The listing carries each posting's full text,
-  supplied as `description_text` (SP4d); the apply pages are third parties'
-  boards, so Layer 5 fetches nothing.
+  supplied as `description_text` (SP4d), so Layer 5 fetches nothing. The prompt
+  said the detail pages are static; checked afterwards with one fetch of a Trinet
+  Hire page: it is server-rendered, carries the same text plus type, minimum
+  experience and salary fields, and has no JSON-LD and no workplace field. The
+  first version of the reader's docstring called these pages client-rendered,
+  which was wrong and is corrected.
 - **Pinned.** `FIXTURE_CASES` and golden (first job checked field by field
   against the saved page), plus seven tests: each card shape, the title-from-
   header rule, and one raise test per guard, each watched failing against a
-  reader without its guard. Fixture: one file, 332 KB.
+  reader without its guard. Fixture: one file, 332 KB. It holds the employer's published contacts as
+  captured, as DECISIONS.md settled for another fixture (SP6): two named staff
+  e-mail addresses (Cloudflare hides them in the text, but the served `title`
+  and `aria-label` attributes spell them out), a switchboard number and a
+  `tel:` link. Put to the owner whether to keep it that way.
 - **Location field.** A free sentence or a city, never a list: 14 cards give
   a city and usually a country (New York on 6 cards, as "New York, NY" or "New
   York, NY, USA", plus Brasília twice, New Delhi, Accra, Kathmandu, Lilongwe,
@@ -4484,10 +4492,16 @@ name; the prompt's `sp9-<module>-reader` would have put it in the merge commit.)
   a link to its pages. Scratch run: 17 seen, **Layer 0 passed 0**: 15 on
   "city not on the list" (the 14 cities and "Brasil – Remoto"), 2 (the sentence above) on "remote keyword overridden
   by a named city", which is SP4f working as designed on a US-based role. The
-  Portuguese "Remoto" is not a remote keyword Layer 0 knows, but the role is
-  Brazil-only remote and would not be open to the owner in any case. Layer 5,
-  "Unreadable pages" and the levels-against-descriptions check had no rows to
-  act on.
+  Portuguese "Remoto" is not in `remote_keywords` (`remote`, `anywhere`,
+  `home-based`) and Brazil is not in `remote_regions`, both read from
+  `rules.json`. Layer 5 and "Unreadable pages" had no rows to act on, so the 17
+  saved descriptions were read offline through Layer 5's years reading
+  afterwards: 12 `senior` (5 to 15+ years, each stated in the text; "8-12+" and
+  "5-7" read as their lower figure), 4 `junior` (the four assistant and
+  officer roles) and the Portuguese notice `unspecified`, correctly for its card text, which has no
+  qualifications section (they are in its PDF, which nothing reads, and its
+  English-only patterns would not read "anos" anyway). No PhD requirement. So
+  most of the board would also fall at Layer 5 as senior.
 - **Source added anyway (owner's decision, 2026-10-09).** By the shared rule a
   board that passes nothing is not worth a fetch per run (SP12), and I proposed
   `sources candidate add` instead. The owner chose to add it as a live source.
