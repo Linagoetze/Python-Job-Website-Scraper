@@ -853,22 +853,25 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "norrsken": {
-        # norrsken.py. No bug: the one card matches the page, and the Teamtailor
-        # career site behind the widget listed the same single posting.
+        # teamtailor.py since SP8. Norrsken's own reader read the widget on its
+        # website; the board behind it is an image grid and gives the same one
+        # posting, plus the workplace tag ("Onsite") the widget did not carry.
         "count": 1,
         "first_job": {
             "source_name": "norrsken",
             "title": "Membership Growth Associate",
             "location": "Barcelona, Spain",
             "department": "Norrsken House Barcelona",
-            "listing_url": "https://www.norrsken.org/work-at-norrsken",
+            "listing_url": "https://careers.norrskenfoundation.org/jobs",
             "detail_url": (
                 "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
             ),
             "apply_url": (
                 "https://careers.norrskenfoundation.org/jobs/8505941-membership-growth-associate"
             ),
-            "raw_snippet": "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain",
+            "raw_snippet": (
+                "Membership Growth Associate Norrsken House Barcelona Barcelona, Spain Onsite"
+            ),
         },
     },
     "oatly": {
