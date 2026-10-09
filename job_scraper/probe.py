@@ -406,6 +406,12 @@ _FOUND_TOTAL = re.compile(
 _LABELLED_TOTAL = re.compile(
     r"(?:vacant\s+positions|open\s+positions|jobs|vacancies)\s*:\s*(?P<total>[\d,]+)\b", re.I
 )
+# A heading that is only a count ("7 jobs", Teamtailor's list heading). Anchored
+# to a whole heading so a sentence that mentions "12 jobs" is not a total.
+_HEADING_TOTAL = re.compile(
+    r"^\s*(?P<total>\d[\d,]*)\s+(?:open\s+)?(?:jobs?|positions?|vacanc(?:y|ies)|openings?|roles?)\s*$",
+    re.I,
+)
 _JSON_TOTAL = re.compile(r"\"(?P<key>totalFound|totalJobs|totalCount|total_count)\"\s*:\s*(\d+)")
 _PAGER_QUERY = re.compile(r"[?&](?:page|startrow|offset|start|pg)=(?P<n>\d+)", re.I)
 _PAGER_CLASS = re.compile(r"paginat|pager\b|paging", re.I)
@@ -441,6 +447,10 @@ def declared_total(soup: BeautifulSoup, html: str) -> DeclaredTotal | None:
             match = pattern.search(text)
             if match:
                 return DeclaredTotal(_number(match.group("total")), match.group(0).strip())
+    for heading in soup.find_all(("h1", "h2", "h3")):
+        match = _HEADING_TOTAL.match(heading.get_text(" ", strip=True))
+        if match:
+            return DeclaredTotal(_number(match.group("total")), match.group(0).strip())
     match = _JSON_TOTAL.search(html)
     if match:
         return DeclaredTotal(int(match.group(2)), match.group(0))

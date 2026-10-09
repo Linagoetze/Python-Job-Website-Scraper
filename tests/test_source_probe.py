@@ -925,6 +925,15 @@ class TestPagination:
         assert found is not None
         assert (found.total, found.page_size) == (total, page_size)
 
+    def test_a_count_heading_is_a_total(self) -> None:
+        html = "<html><body><h2>7 jobs</h2></body></html>"
+        found = probe.scan_page(html, FABRIKAM, "static").total
+        assert found is not None and (found.total, found.page_size) == (7, None)
+
+    def test_a_sentence_mentioning_jobs_is_not_a_total(self) -> None:
+        html = "<html><body><h2>We have 12 jobs for you</h2><p>12 jobs</p></body></html>"
+        assert probe.scan_page(html, FABRIKAM, "static").total is None
+
     def test_a_json_total_is_read(self) -> None:
         html = '<script>window.x = {"totalFound": 42, "content": []}</script>'
         found = probe.scan_page(html, FABRIKAM, "static").total
