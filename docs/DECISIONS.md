@@ -1845,8 +1845,10 @@ session — see `CLAUDE.md`.
   refused 2,296 of 2,297, correctly. The opposite case was silent. A posting
   removed after it was read moves the rest *up*, one posting slides onto a
   page already fetched, and the walk ends holding exactly the new total while
-  missing a live posting (pinned by a test that passes 25 rows through the old
-  reader). Two runs in a row like that would delist the posting. So
+  missing a live posting. A test pins that the new reader refuses this case;
+  that the old reader passed it, returning 25 rows with the posting missing,
+  was shown once by running the test's pages through it, and no test runs the
+  old reader. Two runs in a row like that would delist the posting. So
   `successfactors_html` now raises `BoardMovedError`, a `ShortWalkError`, as
   soon as a page states a total other than the one before it. The source fails,
   stored jobs are kept and nothing is delisted. A page whose label cannot be
