@@ -1857,3 +1857,52 @@ session — see `CLAUDE.md`.
   supplied as `description_text` (the owner's choice). The fixture
   `sida.paged.html` is run 38's own response, taken from the HTTP cache with
   the owner's approval and committed as captured (SP6's rule for this page).
+- **A CSOD career site's list needs a token the page issues, so no CSOD reader
+  was built (SP11, 2026-10-09, the owner's choice).** The rendered listing is
+  filled by `POST us.api.csod.com/rec-job-search/external/jobs`, which states
+  `totalCount` and pages by `pageNumber` (25 a page). It answers 401 without
+  an `Authorization: Bearer` token, which the page apparently embeds in its
+  own server-rendered HTML (a JWT-shaped string is in the static detail page;
+  the listing page's HTML was not checked). The pager is buttons that re-send the POST, so a
+  `fetch(url) -> str` fetcher reads one page of three. The only complete walk
+  is to lift the page's token, which is rung 3–4: a credential every capture would
+  record. The owner declined it for a board an aggregator lists about as much
+  of (Impactpool listed 67 of its postings in run 37 against the board's 70,
+  compared as counts, not matched one by one; none of 161 passed Layer 0 in
+  the 9 retained runs that list the employer).
+  The candidate was re-checked with that blocker. Three facts any future CSOD
+  attempt would otherwise re-derive, the first two seen on one posting only.
+  (1) The listing's `externalDescription` stopped before the "Selection
+  Criteria" section, so it may not be a posting's full text; check before
+  supplying it as `description_text`. (2) The static detail page held the
+  whole posting only as JSON-LD, which Layer 5 read as unreadable (0
+  characters), so detail pages likely need `strategy: dynamic`. (3) The
+  token was observed by its header's scheme and length only, never read. A
+  session that re-opens this should do the same, without searching a page for
+  the token's shape as this one did once, and should check the
+  aggregator overlap first, as here: it decided the package before the route
+  did.
+- **A SuccessFactors walk whose stated total changes is refused, at the page
+  where it changes (2026-10-10, after run 38).** dsv's walk is about 230
+  pages of 10 and takes four minutes. In run 38 its pages stated 2,296 up to
+  startrow 270 and 2,297 from 280, and one posting appeared on both pages 270
+  and 280. A posting added ahead of the walk's position had moved the rest
+  down a place, so one was read twice and the new one never: `reconcile`
+  refused 2,296 of 2,297, correctly. The opposite case was silent. A posting
+  removed after it was read moves the rest *up*, one posting slides onto a
+  page already fetched, and the walk ends holding exactly the new total while
+  missing a live posting. A test pins that the new reader refuses this case;
+  that the old reader passed it, returning 25 rows with the posting missing,
+  was shown once by running the test's pages through it, and no test runs the
+  old reader. Two runs in a row like that would delist the posting. So
+  `successfactors_html` now raises `BoardMovedError`, a `ShortWalkError`, as
+  soon as a page states a total other than the one before it. The source fails,
+  stored jobs are kept and nothing is delisted. A page whose label cannot be
+  read is not a change. Stopping at the change also spares the site the rest
+  of the walk: run 38's replay stops after 29 requests, not 230. Limits: an
+  addition and a removal between the same two pages cancel out and go unseen,
+  and nothing retries. A retry would double the load on a board whose rows all
+  fail Layer 0 today, and narrowing dsv's board (fewer pages, a shorter
+  window) is the owner's open question, with SP12. The probe still reports
+  this error as "a bug in successfactors_html.py", which is wrong: a moved
+  board is not the reader's fault. That is not changed here.

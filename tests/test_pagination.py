@@ -412,6 +412,89 @@ def test_successfactors_lapping_the_list_early_raises() -> None:
         )
 
 
+def _sf_rows_page(ids: list[int], total: int | None) -> str:
+    """A classic-layout page holding exactly the postings *ids*, in that order."""
+    rows = "".join(
+        f'<tr><td><a href="/job/City-Role-{i}/{i}/">Role {i}</a></td>'
+        f'<td class="colLocation"><span class="jobLocation">Copenhagen</span></td></tr>'
+        for i in ids
+    )
+    label = ""
+    if total is not None:
+        label = (
+            f'<span class="paginationLabel" aria-label="Search results for . Page 1 of 9, '
+            f'Results 1 to {len(ids)} of {total}">Results</span>'
+        )
+    return f"<html><body>{label}<table>{rows}</table></body></html>"
+
+
+def _sf_walk(pages: dict[int, str], asked: list[int]) -> list[dict[str, Any]]:
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        startrow = int(url.rsplit("startrow=", 1)[1])
+        asked.append(startrow)
+        return pages[startrow]
+
+    return successfactors_html.extract(
+        "https://jobs.dsv.com/search/",
+        fetch,
+        source_name="dsv",
+        page_step=10,
+        base_search_url="https://jobs.dsv.com/search/",
+    )
+
+
+def test_successfactors_a_posting_removed_behind_the_walk_is_refused() -> None:
+    """The silent case: 26 postings, the first removed once page one is read.
+
+    Every later posting moves up a place, so posting 10 slides onto page one
+    after it was fetched and is never read. The walk then holds 25, and the last
+    page states 25, so a count check alone passes a list missing a live posting.
+    Only the stated total changing between pages shows the board moved.
+    """
+    before = list(range(26))
+    after = before[1:]
+    pages = {
+        0: _sf_rows_page(before[0:10], total=26),
+        10: _sf_rows_page(after[10:20], total=25),
+        20: _sf_rows_page(after[20:30], total=25),
+    }
+    with pytest.raises(successfactors_html.BoardMovedError, match="changed during the walk"):
+        _sf_walk(pages, [])
+
+
+def test_successfactors_a_posting_added_ahead_of_the_walk_stops_it_there() -> None:
+    """Run 38's shape: a new posting moves the rest down, so one is read twice.
+
+    The walk stops at the first page that states a different total rather than
+    fetching the rest of a board it can no longer trust.
+    """
+    before = list(range(25))
+    after = [99, *before]
+    pages = {
+        0: _sf_rows_page(before[0:10], total=25),
+        10: _sf_rows_page(after[10:20], total=26),
+        20: _sf_rows_page(after[20:30], total=26),
+    }
+    asked: list[int] = []
+    with pytest.raises(successfactors_html.BoardMovedError, match="stated 25 .* and 26"):
+        _sf_walk(pages, asked)
+    assert asked == [0, 10]
+
+
+def test_successfactors_a_moved_board_fails_the_source_like_a_short_walk() -> None:
+    """A run counts it as a failed source: stored jobs kept, nothing delisted."""
+    assert issubclass(successfactors_html.BoardMovedError, ShortWalkError)
+
+
+def test_successfactors_a_page_without_a_total_is_not_a_change() -> None:
+    """An unreadable label says nothing about the board; the walk is still checked."""
+    pages = {
+        0: _sf_rows_page(list(range(10)), total=15),
+        10: _sf_rows_page(list(range(10, 15)), None),
+    }
+    assert len(_sf_walk(pages, [])) == 15
+
+
 def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
     pages = {0: _sf_page(10, total=15), 10: _sf_page(5, total=15, offset=10)}
 

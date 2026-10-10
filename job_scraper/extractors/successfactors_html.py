@@ -10,6 +10,14 @@ how many postings there are — "Page 1 of 201, Results 1 to 10 of 2010" in the
 classic pagination label, "Showing 1 to 20 of 62 Jobs" on the tile skin — so a
 walk is checked against that count before it returns; see `pagination.py`.
 
+Every page states that count, and the walk also checks that it does not change.
+A posting added or removed ahead of the walk's position moves every later
+posting by one place, so one is read twice or one is never read, and a board
+that loses a posting already read ends with a walk that matches its new total
+while missing a live posting. DSV's walk of about 230 pages takes four minutes,
+and on 2026-10-09 (run 38) its pages stated 2,296 up to startrow 270 and 2,297
+from 280. So a change in the stated total stops the walk with `BoardMovedError`.
+
 Whether a page needs JavaScript is the caller's business, not this module's:
 `sources.yaml`'s `strategy` picks the fetcher, and this extractor uses whatever
 callable it is handed. When that callable renders, it is wrapped with a selector
@@ -36,6 +44,16 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from bs4 import BeautifulSoup
 
 from job_scraper.extractors import pagination
+
+
+class BoardMovedError(pagination.ShortWalkError):
+    """The board's stated total changed between two pages of one walk.
+
+    A `ShortWalkError`, so a run treats it as a failed source: stored jobs are
+    kept and nothing is delisted. It is raised at the first page that disagrees,
+    because nothing fetched after that point can be trusted either.
+    """
+
 
 _WAIT_SELECTOR = 'a[href*="/job/"]'
 
@@ -279,6 +297,7 @@ def extract(
     startrow = 0
 
     total: int | None = None
+    stated_at = ""
 
     while True:
         url = _set_startrow(base_search_url, startrow)
@@ -287,8 +306,19 @@ def extract(
         if not jobs:
             break
 
-        # Only a page that parsed can be asked how long the board is.
-        total = _declared_total(soup) or total
+        # Only a page that parsed can be asked how long the board is. A page
+        # whose label cannot be read says nothing about the board, so it is
+        # not a change; the walk is still reconciled against the last total.
+        declared = _declared_total(soup)
+        if declared is not None and total is not None and declared != total:
+            raise BoardMovedError(
+                f"{source_name}: the board changed during the walk: it stated {total} "
+                f"posting(s) up to {stated_at} and {declared} at {url}. A posting added "
+                "or removed ahead of the walk moves the rest by a place, so one is read "
+                "twice or never read; refusing a list that may be short."
+            )
+        if declared is not None:
+            total, stated_at = declared, url
 
         new_jobs = 0
         for job in jobs:
