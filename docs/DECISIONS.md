@@ -1836,6 +1836,27 @@ session — see `CLAUDE.md`.
   exclusion of tax roles to their Swedish spelling. `retrofilter --dry-run`
   showed one stored `new` row it will reject at the next scrape.
 
+- **sida is read from the page's own data, because its cards are a slice
+  (2026-10-10, after run 38).** The listing grew a pager ("Sida 1 av 2") when
+  it reached eleven postings, and the reader, which read the cards, read ten
+  and refused on its stated total: the guard working. The pager is buttons, and
+  it pages nothing on the server: the static response's `__NUXT_DATA__` held
+  all eleven ads, the hidden one included. So `sida.py` reads the ads there
+  (title, `Area2` as the place, the job number from `rmjob=`) and keeps the
+  "Totalt N" check against them. The data does not carry a posting's sida.se
+  address, which is the dedupe key, so a posting the page links is keyed on
+  its link, and only a posting the page hides gets a built address,
+  `<listing>/<rmjob>-<slug>`. Lower-case, å and ä to a, ö to o, every other
+  run of non-alphanumerics to one hyphen, matched 31 of 31 real addresses
+  (21 stored, 10 linked). The rule is re-checked against every link on every
+  run, and a hidden title with a letter outside ASCII and å, ä, ö is refused
+  rather than keyed by a guess: a wrong key would make the posting look new
+  once it moved onto page 1, and the old key would be delisted. On the
+  earlier nine-posting fixture the new reader's output equals the old one's
+  row for row. The descriptions in the same data were deliberately not
+  supplied as `description_text` (the owner's choice). The fixture
+  `sida.paged.html` is run 38's own response, taken from the HTTP cache with
+  the owner's approval and committed as captured (SP6's rule for this page).
 - **A CSOD career site's list needs a token the page issues, so no CSOD reader
   was built (SP11, 2026-10-09, the owner's choice).** The rendered listing is
   filled by `POST us.api.csod.com/rec-job-search/external/jobs`, which states

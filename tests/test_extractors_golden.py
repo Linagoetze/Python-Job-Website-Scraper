@@ -21,8 +21,10 @@ the change matches what the site now serves, and paste the new values in.
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import pytest
 
@@ -1421,19 +1423,110 @@ def test_sida_says_an_unread_empty_page_may_be_a_day_without_vacancies() -> None
         _sida("<html><body><p>Inga lediga jobb just nu.</p></body></html>")
 
 
-def test_sida_fails_loudly_when_no_posting_carries_the_place_label() -> None:
-    page = _sida_page().replace("Plats:", "Ort:")
-    with pytest.raises(ValueError, match="may have been renamed"):
+def _sida_paged_page() -> str:
+    """Run 38's own response (2026-10-09): 11 postings, ten shown, "Sida 1 av 2"."""
+    return (FIXTURES_DIR / "sida.paged.html").read_text(encoding="utf-8")
+
+
+def _with_sida_ads(page: str, edit: Callable[[list[Any], list[dict[str, Any]]], None]) -> str:
+    """*page* with its `__NUXT_DATA__` payload edited by *edit*(payload, ads).
+
+    The payload is Nuxt's flat array, in which an ad's fields are indices into
+    the same array, and equal strings share one slot. Editing it as JSON keeps
+    the rest of the page exactly as captured.
+    """
+    match = re.search(r'(<script[^>]*id="__NUXT_DATA__"[^>]*>)(.*?)(</script>)', page, re.S)
+    assert match
+    payload = json.loads(match.group(2))
+    ads = [item for item in payload if isinstance(item, dict) and "projectNr" in item]
+    edit(payload, ads)
+    return page[: match.start(2)] + json.dumps(payload) + page[match.end(2) :]
+
+
+def _set_ad_field(payload: list[Any], ad: dict[str, Any], field: str, value: str) -> None:
+    payload.append(value)
+    ad[field] = len(payload) - 1
+
+
+_SIDA_LISTING = "https://www.sida.se/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/"
+
+
+def test_sida_reads_the_posting_its_pager_hides() -> None:
+    """The run-38 failure: page 1 shows ten, the page's own data holds all eleven.
+
+    The pager is a slice made in the browser, so the eleventh posting is in the
+    one response the reader already fetched; its address is built from its id
+    and title by the rule every linked posting is checked against.
+    """
+    jobs = _sida(_sida_paged_page())
+    assert len(jobs) == 11
+    hidden = next(job for job in jobs if "/5693-" in job["detail_url"])
+    assert hidden["detail_url"] == (
+        _SIDA_LISTING + "5693-vill-du-arbeta-med-utvecklingsfinansiering-och-mobilisera-kapital-"
+        "for-en-hallbar-global-utveckling-sida-soker-1-2-nya-medarbetare-till-garantiverksamheten"
+    )
+    assert hidden["location"] == "Sundbyberg"
+
+
+def test_sida_keys_every_shown_posting_on_the_page_s_own_link() -> None:
+    """The detail URL is the dedupe key: a shown posting keeps the address it links."""
+    page = _sida_paged_page()
+    linked = {
+        urljoin(_SIDA_LISTING, href)
+        for href in re.findall(
+            r'href="(/jobba-med-bistand/jobba-pa-sida/lediga-tjanster/\d+-[^"]+)"', page
+        )
+    }
+    assert len(linked) == 10
+    assert linked < {job["detail_url"] for job in _sida(page)}
+
+
+def test_sida_fails_loudly_when_its_address_rule_disagrees_with_a_link() -> None:
+    """A changed slug rule would key every hidden posting wrongly; a shown one says so."""
+    page = _sida_paged_page().replace("5688-sakerhetsspecialist-", "5688-sakerhets-specialist-")
+    with pytest.raises(ValueError, match="does not build the address the page links"):
         _sida(page)
 
 
-def test_sida_warns_about_one_posting_without_the_place_label(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    page = _sida_page().replace("Plats:", "Ort:", 1)
-    jobs = _sida(page)
+def test_sida_fails_loudly_when_the_page_shows_a_posting_its_data_lacks() -> None:
+    page = _sida_paged_page().replace("lediga-tjanster/5688-", "lediga-tjanster/9999-")
+    with pytest.raises(ValueError, match="not in the page's data"):
+        _sida(page)
+
+
+def test_sida_refuses_to_build_an_address_from_a_letter_its_rule_was_not_checked_on() -> None:
+    """Only ASCII and å, ä, ö were checked against the site's own links (31 of 31)."""
+
+    def retitle(payload: list[Any], ads: list[dict[str, Any]]) -> None:
+        hidden = next(ad for ad in ads if payload[ad["url"]].endswith("rmjob=5693"))
+        _set_ad_field(payload, hidden, "title", "Rådgivare för Bistånd i Tromsø")
+
+    with pytest.raises(ValueError, match="cannot build the address"):
+        _sida(_with_sida_ads(_sida_paged_page(), retitle))
+
+
+def test_sida_fails_loudly_without_the_page_s_data() -> None:
+    page = re.sub(r'<script[^>]*id="__NUXT_DATA__".*?</script>', "", _sida_page(), flags=re.S)
+    with pytest.raises(ValueError, match="no embedded postings"):
+        _sida(page)
+
+
+def test_sida_fails_loudly_when_no_posting_carries_a_place() -> None:
+    def drop_places(payload: list[Any], ads: list[dict[str, Any]]) -> None:
+        for ad in ads:
+            del ad["Area2"]
+
+    with pytest.raises(ValueError, match="may have been renamed"):
+        _sida(_with_sida_ads(_sida_page(), drop_places))
+
+
+def test_sida_warns_about_one_posting_without_a_place(caplog: pytest.LogCaptureFixture) -> None:
+    def drop_one_place(payload: list[Any], ads: list[dict[str, Any]]) -> None:
+        del ads[0]["Area2"]
+
+    jobs = _sida(_with_sida_ads(_sida_page(), drop_one_place))
     assert [job["location"] for job in jobs].count("") == 1
-    assert "1 posting(s) with no 'Plats:' label" in caplog.text
+    assert "1 posting(s) with no place" in caplog.text
 
 
 def test_asana_warns_when_some_postings_have_no_embedded_description(
