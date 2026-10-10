@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8–SP10 are done** (as of 2026-10-09); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8–SP11 are done** (as of 2026-10-09; SP11 ended at its stop-and-ask, with no reader); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -111,7 +111,7 @@ the ordering below.
 | 8 | The Teamtailor reader meets a layout it has not seen | 1.5 hr | Sonnet 5 | `think` | done: reader, guard and probe check built; source added; norrsken moved onto the reader | `sp8-teamtailor-image-cards` |
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | done: reader and pin built; source added at the owner's request though nothing passes Layer 0 | `sp9-accordion-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | done: no private API; a generic Jobylon feed reader, `static`; source added | `sp10-jobylon-reader` |
-| 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | not started | `sp11-csod-reader` |
+| 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | done: stopped at step 2, no reader; the listing API needs a page-issued token and an aggregator already carries the board; candidate re-checked | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | not started | `sp12-source-yield` |
 | 13 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | not started | `sp13-years-lead-ins` |
 | 14 | The probe's strategy for Workable, and what its "no postings" means | 1.5 hr | Sonnet 5 | `think` | not started | `sp14-probe-corrections` |
@@ -4778,6 +4778,97 @@ recorded blocker and date: read both.
 Branch sp11-csod-reader. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-09, branch `sp11-csod-reader`: no reader, the owner's choice
+
+The package ended at step 2's stop-and-ask. The owner chose not to build, so
+there is no `csod.py`, no fixture, no `Platform` entry and no source. Steps 3–6
+did not run. Tests and README are unchanged. Live traffic: the probe; one
+Browser pane session on the board (the listing, three pager presses, each of
+which made the page send its POST, and one detail page); one POST without a
+token; and the same static detail page fetched twice, the second time only
+because the first copy was not saved. The last two went through `http.py`'s
+polite fetchers. Corrected 2026-10-09 after the owner asked for an account of
+the session: the first version of this result said two presses and one GET.
+
+- **check and probe, run again.** The board is a candidate, last checked
+  2026-10-06, blocker "needs a new extractor, strategy dynamic". The probe's
+  verdict is unchanged: a 5 KB static shell, then 25 posting-shaped links and a
+  `<nav>` pager after rendering, and no ATS of the ten. robots.txt has no group
+  for us on the board's host.
+- **Overlap (step 2).** The board stated 70 postings. Impactpool listed 67 of
+  this employer's postings in run 37, and 161 distinct ones in the drop log's
+  retained runs (28–37; the employer appears in 9 of them, not run 30, whose
+  Impactpool rows had shifted fields). These are counts compared, not
+  postings matched one by one, so "67 of 70" says Impactpool lists about as
+  many, not that it lists the same ones. Every one of those 161 was dropped at
+  Layer 0 as "city not on the list", and the store holds no row for the
+  employer. A crude check against `rules.json`, not Layer 0's matcher (a
+  substring test, either way round, counts only): none of the board's 29
+  facet cities matched `locations`, `conditional_locations` or
+  `remote_regions`, and two matched a term in `non_place_locations`. Which two,
+  and whether Layer 0 would defer them, was not checked. On that evidence a
+  scratch run would most likely pass nothing, which would end a package
+  without a source under the shared rules even before the route question.
+  It was not run.
+- **(a) The list.** `POST https://us.api.csod.com/rec-job-search/external/jobs`,
+  JSON body `{"careerSiteId": <site>, "careerSitePageId": 1, "pageNumber": N,
+  "pageSize": 25, "cultureId": 1, "cultureName": "en-US", "searchText": "", ...}`
+  with empty filter lists. The response's `data` holds `totalCount` (70),
+  `requisitions` (25 a page) and the facets. Each requisition carries
+  `requisitionId`, `displayJobTitle`, `locations` (`[{city, country}]`, a city
+  sometimes absent), posting and expiry dates, and `externalDescription`. There
+  is no workplace field. The request carries `Authorization: Bearer` with a token
+  of about 2,100 characters. The same POST without it, through `post_json`,
+  answered **401 "no Authorization header found"**. Where the page gets the
+  token is inferred, not shown: none of the requests the listing page made
+  (as `performance.getEntriesByType('resource')` lists them) looks like one
+  that issues a token, and the static *detail* page holds a JWT-shaped string,
+  found by a regex for that shape. That regex was itself a search for the key,
+  which the shared rules say not to do, and it should not be repeated. The
+  listing page's HTML was not checked. The token was not read, used or kept;
+  the browser hook recorded only the header's scheme and length, and the one
+  scratch copy holding the token was deleted. `post_json` checked
+  `us.api.csod.com`'s robots.txt before the 401, and it allowed the request.
+- **(b) The pager.** `<button data-pageindex="N">` with no `href`. A press sends
+  the same POST with the next `pageNumber`, and the page URL does not change.
+  The paging is done on the server, and a `fetch(url) -> str` fetcher cannot reach
+  page 2.
+- **(c) The detail page.** `/ux/ats/careersite/<site>/home/requisition/<id>?c=<corp>`,
+  the shape of the listing's own links. It is client-rendered by further calls
+  to the board's `services/x/...` API (whose headers were not inspected), but
+  its static HTML embeds a schema.org `JobPosting` in JSON-LD with the whole
+  posting. **All of what follows was seen on one posting**, not across the
+  board: Layer 5's `_strip_html` read **0 characters** from that page
+  (unreadable), so a reader would most likely need `strategy: dynamic` for
+  detail pages, and SP4d rejected reading JSON-LD in Layer 5. That posting's
+  `externalDescription` (one of the 25 on page 1, whose lengths ran from about
+  3,100 to 13,400 characters) is **not** the whole text: it stops right before
+  "Selection Criteria", where the years requirement sits. If that holds
+  generally, supplying it as `description_text` would starve Layer 5 (SP10's
+  `skills` lesson). The other 69 were not compared.
+- **The options put to the owner.** (1) Lift the page's token and POST, at 1 GET
+  and 3 POSTs a run, the only complete walk: rung 3–4, a credential every
+  capture would record. (2) Render the listing, which reads 25 of 70 and raises
+  every run unless a URL filter narrows the board, and a narrowed board here
+  would usually be empty. (3) A fetcher that presses the pager: a design change
+  to `http.py`, `probably_good`'s dead end. (4) Build nothing and re-check the
+  candidate. **The owner chose (4), 2026-10-09**, as recommended.
+- **Candidate re-checked** with `sources candidate recheck`, the command shown
+  to the owner and run as approved. It records the new blocker (token, button
+  pager, aggregator overlap), `last_checked` 2026-10-09 and `ats` still `csod`.
+  The old finding is kept in `source_of_record`. Backup written and committed
+  to the curated repository. A second `recheck` the same day, also shown
+  to the owner first and run as approved, reworded that blocker to state the
+  overlap as a count comparison and the token's source as inferred; the first
+  wording is kept in `source_of_record`.
+- **For the next CSOD employer.** Everything above describes the platform, not
+  this board: the endpoint, body, response fields, pager, detail URL shape and
+  JSON-LD detail page should all recur, with the corporation name and site id
+  from the board URL. The route question will recur with them, so start from
+  this result and docs/DECISIONS.md rather than from step 1's prompt. A board
+  with postings in the owner's places would change the cost side of option 1,
+  not its rung.
+
 ### Your to-dos (SP8–SP11)
 
 - [ ] Give each session its company's URL in chat (SP8 company 2, SP9
@@ -4785,6 +4876,8 @@ Branch sp11-csod-reader. Commit, do not push. Update this plan file.
       are in the chat of that session).
 - [ ] SP10 and SP11 each stop for an owner decision about a private API. That
       is a decision for you, not a formality: say which you want and why.
+      **SP11 decided 2026-10-09: no reader** (option 4); SP10's feed was
+      judged public, which you confirmed.
 - [ ] SP8 adds a source on its own, SP9–SP11 add theirs as the last step; each
       asks before `candidate activate`.
 
