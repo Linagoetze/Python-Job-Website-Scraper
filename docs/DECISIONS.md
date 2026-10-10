@@ -1835,3 +1835,26 @@ session — see `CLAUDE.md`.
   SP4h's seven). It is a policy decision, not a bug fix: it extends the owner's
   exclusion of tax roles to their Swedish spelling. `retrofilter --dry-run`
   showed one stored `new` row it will reject at the next scrape.
+
+- **A SuccessFactors walk whose stated total changes is refused, at the page
+  where it changes (2026-10-10, after run 38).** dsv's walk is about 230
+  pages of 10 and takes four minutes. In run 38 its pages stated 2,296 up to
+  startrow 270 and 2,297 from 280, and one posting appeared on both pages 270
+  and 280. A posting added ahead of the walk's position had moved the rest
+  down a place, so one was read twice and the new one never: `reconcile`
+  refused 2,296 of 2,297, correctly. The opposite case was silent. A posting
+  removed after it was read moves the rest *up*, one posting slides onto a
+  page already fetched, and the walk ends holding exactly the new total while
+  missing a live posting (pinned by a test that passes 25 rows through the old
+  reader). Two runs in a row like that would delist the posting. So
+  `successfactors_html` now raises `BoardMovedError`, a `ShortWalkError`, as
+  soon as a page states a total other than the one before it. The source fails,
+  stored jobs are kept and nothing is delisted. A page whose label cannot be
+  read is not a change. Stopping at the change also spares the site the rest
+  of the walk: run 38's replay stops after 29 requests, not 230. Limits: an
+  addition and a removal between the same two pages cancel out and go unseen,
+  and nothing retries. A retry would double the load on a board whose rows all
+  fail Layer 0 today, and narrowing dsv's board (fewer pages, a shorter
+  window) is the owner's open question, with SP12. The probe still reports
+  this error as "a bug in successfactors_html.py", which is wrong: a moved
+  board is not the reader's fault. That is not changed here.
