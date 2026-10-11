@@ -5057,6 +5057,43 @@ stored. That is a question for the later layers, not a yield one, and no class
 changes for it; the report prints each source's stored rows by status so it can
 be seen. Noted, not pursued.
 
+**Follow-up, the same day, at the owner's request: the 23, and dsv.** Offline,
+on the scratch copy; every stored rejected row of the 23 sources re-judged
+under today's ladder from its stored fields and description (a scratch
+script, nothing written).
+
+- *Most rejections still hold.* Of 223 rejected rows, 162 are rejected again
+  today on years, location, hybrid or title (sida's 20, below, among them), 55
+  only by the owner's own "no" (today's ladder would keep them), and 6 have no
+  stored text to re-judge. Nothing automatic should undo any of them. path's two old "40+ years" rows (SP4b F4) now read 5+ years, so
+  they stay rejected on a correct reading.
+- **sida: 20 jobs lost to the hybrid gate, the expensive direction.** Every
+  one was rejected as "non-hybrid in a conditional city", and every one's
+  description carries the employer's standard line offering remote work to some
+  extent, in Swedish. The hybrid gate matches the word "hybrid" (English, and in
+  a Swedish compound) but neither that Swedish phrasing nor its English
+  translation. 17 of the 20 read no years requirement, so they would otherwise
+  have been kept; 9 were still listed on run 37. Whether "remote work to some
+  extent" counts as hybrid is the owner's policy call; if it does, it is a
+  hybrid-pattern change, not a new layer, and reviving the 20 is a store write
+  the owner must authorise (SP4c's revival is the precedent). Proposed as a
+  package, not built. dsv's 9, pwc_sweden's 3 and bearingpoint_sweden's 1
+  hybrid rejections carry no such wording.
+- **dsv: one country's slice of a worldwide board.** Its URL is the board's
+  unfiltered search: about 2,250 rows a run, roughly 230 pages, 3,028 distinct
+  postings dropped at Layer 0 in the window, and 26% of the window's drop-log
+  rows. Every row it has ever passed or stored is in one country (bar two
+  empty-location rows on a single day in August, since delisted), and that
+  country's slice was 24 rows on run 37, about 3 pages. The board's own search
+  form offers country and city facets by GET (`optionsFacetsDD_country`,
+  `optionsFacetsDD_city`), and the reader keeps any query on the URL, so
+  narrowing is a `sources.yaml` edit, as airbus's Workday filter was (SP3c).
+  Unverified offline: the facet's codes are filled in by script, so whether a
+  static fetch honours it needs one live check, and the reader has no guard
+  that a facet was applied (SP3c's Workday rule: an unproven facet fails the
+  source). A facet narrower than the owner's location list would lose postings
+  in a listed place outside that country. Proposed as a package, not built.
+
 **Expectations, checked.**
 1. *Removing a B source changes nothing in the spreadsheet.* True: none ever
    stored a row. The saving is small. All ten are `static`, so no render is
@@ -5079,7 +5116,8 @@ history (D), a row deferred at Layer 0 and dropped at Layer 5 counted as a pass,
 a reconciliation gap that exits non-zero, a missing store refused rather than
 created, a byte-for-byte check that the report writes nothing, and the front
 door. Suite: 1,429 passed. README's count read 1,399 before this package, four
-behind the suite; it now matches.
+behind the suite: two branches each added tests from 1,392 and updated it
+correctly, and the merge kept one branch's figure. It now matches.
 
 ### Your to-dos (SP12)
 
