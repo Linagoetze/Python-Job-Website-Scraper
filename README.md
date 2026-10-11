@@ -408,7 +408,8 @@ all absent when they have nothing to say: failed sources, refused sources,
 tombstoned sources, source health, empty sources, one-page sources, unreadable
 pages, then the dry-run notice. None of them is a filter layer, none skips or
 delists a source, and a source that drops everything at Layer 0 is not one of
-them (that audit is its own package, SP12).
+them: that is a question across runs, and
+[`source_yield`](#which-sources-never-pass-the-location-filter) answers it.
 
 **Unreadable pages** get a third block, for a different question again — "could
 the pages behind the listing be read?":
@@ -836,6 +837,41 @@ indistinguishable from one you reviewed. Use `python -m job_scraper.run`
 followed by `python -m job_scraper.review --seen-all` once you have actually
 read the sheet.
 
+### Which sources never pass the location filter?
+
+```bash
+python -m job_scraper.tools.source_yield
+python -m job_scraper.tools.source_yield --places 0 --db /path/to/a/copy.sqlite3
+```
+
+**Read-only.** It opens the store in SQLite's read-only mode, reads
+`sources.yaml`, and writes nothing, edits no config and removes no source. It
+never reads `rules.json`. For each configured source, over the drop log's last
+ten scrape runs, it prints the source's `strategy` (a `dynamic` one costs a
+browser render per fetch), its runs in `source_health` and in the window, rows
+seen, rows that passed Layer 0, Layer 0 drops by rule, the rows ever stored and
+the date of the last, its share of the drop log, and the distinct locations it
+was dropped on, most frequent first (`--places N`, 0 for all). A row that
+Layer 0 *deferred* (a conditional city, a placeholder, an empty field) counts as
+a pass, even when Layer 5 later dropped it. Each source gets a class, with the
+evidence beside it:
+
+| class | meaning |
+| --- | --- |
+| **A** working | passed Layer 0 in the window, or has ever stored a row. A stored row is history, so such a source is never B. |
+| **B** truthfully elsewhere | no pass, nothing ever stored, and every value it was dropped on is shaped like a place. Read the places to see it is a board of somewhere else. |
+| **C** starved, not dead | no pass, but the location field cannot carry the verdict: a quarter or more of its drops are empty, a placeholder, a label, a grade or the title; one value on five or more postings; nothing listed at all; or every drop is one rule other than "city not on the list", which is a configuration question. Treat it as a bug report, never as B. |
+| **D** too new to say | fewer than five scrape runs in the window (`--min-runs`). The line says which class its evidence points at so far. |
+
+Before the classes it reconciles: every run's `L1 − N → M match your
+criteria`, rebuilt from the per-source rows, so you can compare it with that
+run's summary; for the latest run it also accounts for every pass (dropped on
+the title, held back unverified, or sighted in the store). If the per-source
+rows do not add up it says so and exits non-zero.
+
+Removing a source is your edit to `sources.yaml`. Removing a B source changes
+nothing in the spreadsheet, since none of its rows ever reached it.
+
 ### The curated source lists
 
 ```bash
@@ -1079,7 +1115,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1399 tests, about fifteen seconds, no network access required.
+1429 tests, about twenty seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

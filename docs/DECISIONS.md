@@ -1906,3 +1906,61 @@ session — see `CLAUDE.md`.
   window) is the owner's open question, with SP12. The probe still reports
   this error as "a bug in successfactors_html.py", which is wrong: a moved
   board is not the reader's fault. That is not changed here.
+- **A source's yield is judged in four classes, and only one of them is a
+  removal question (SP12, 2026-10-11).** `python -m job_scraper.tools.source_yield`
+  is read-only: it opens the store with `mode=ro`, reads `sources.yaml`, and
+  never reads `rules.json`. Over the drop log's window (the last ten scrape runs)
+  each configured source is **A, working**: it passed Layer 0 in the window, or
+  has ever stored a row (a stored row is history, so such a source is never B);
+  **B, truthfully elsewhere**: no pass, nothing stored, and every value it was
+  dropped on is place-shaped; **C, starved, not dead**: no pass, and the location
+  field cannot carry the verdict (a quarter or more of its Layer 0 drops empty,
+  a placeholder, a label, a grade or equal to the title; one value on five or
+  more distinct postings; nothing listed in the window at all), or every drop is
+  one rule other than "city not on the list", which is a configuration
+  question; **D, too new to say**: fewer than five scrape runs in the window.
+  The order is A, C, D, B: a starved field needs no history to be true, and B,
+  the only class that invites removal, is what is left when nothing else fits.
+  A D line names the class its evidence points at so far.
+- **A row Layer 0 deferred passed Layer 0 (SP12).** A conditional city, a
+  placeholder and an empty field are deferred to Layer 5, not dropped, so for
+  yield they count as passes even when Layer 5 then drops them. Passes are
+  `source_health.rows_found` less the Layer 0 drop-log rows, run by run, which
+  is exactly the run summary's "L1 − N → M match your criteria"; `refilter/`
+  rows are never counted, because they judge stored jobs, not the scrape.
+- **Why five runs and a quarter (SP12, measured 2026-10-11).** In the store a
+  board's second run lists almost exactly its first run's postings, and a small
+  board's first new posting in the window typically came three or four runs in,
+  so fewer than five runs has usually not seen a board change at all. The
+  quarter: a one-country board may carry the odd placeholder, but once a quarter
+  of its drops name no place, its Layer 0 verdict is not about geography. No
+  live source sat near either line when they were chosen.
+- **One constant on many postings is C, not B, though it may be a real city
+  (SP12).** A one-office employer and a reader that writes a default (the
+  jobsinlund reader writes its own city when the API gives none, SP4b) look the
+  same from the store. Calling a starved board B costs a source the owner stops
+  watching; calling a one-office board C costs a glance at the printed value. So
+  the report errs towards C and prints the value. A single posting seen run
+  after run is one posting, not a constant, which is why it takes five.
+- **How SP12 reconciled, and why nothing else could be used (SP12).** The run
+  summary is printed, never stored, so the report rebuilds each run's L1 line
+  from the per-source rows and fails (exit 1) if a drop names a source with no
+  clean scrape that run, or a source has more Layer 0 drops than rows. For the
+  latest run it also accounts for every pass: dropped at Layers 2-3, held back
+  unverified, or sighted in the store (`jobs.last_run_id`, which covers rows
+  already stored and Layer 4's and Layer 5's rejections, all refreshed by the
+  run). Blank-title postings are split off before `rows_found` is counted, so
+  they sit on neither side. On a copy of the store, two runs matched summaries
+  the runs had printed into earlier session transcripts, to the row, and the
+  latest run's passes were accounted for with no leftover: no posting was
+  listed twice in a run and none lacked a dedupe key.
+- **Removing a B source saves little, and changes nothing the owner sees
+  (SP12, measured 2026-10-11).** None of its rows reached the sheet, so the
+  saving is the listing fetch and the drop-log rows: on the day, every B source
+  was `static` (no render), and together they held 1.2% of the window's
+  drop-log rows. A removed source's stored `new` rows are never sighted or missed
+  again (delisting counts scraped sources only), so they stay in the review
+  sheet; a B source has none, but any other source removed would. Parking a
+  dormant board as a candidate (`sources candidate add` with the blocker, after
+  the owner removes it) is the existing home; a per-source `enabled: false` key
+  would be a config change and its own package. Neither was built.
