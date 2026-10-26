@@ -114,7 +114,7 @@ the ordering below.
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | done: stopped at step 2, no reader; the listing API needs a page-issued token and an aggregator already carries the board; candidate re-checked | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | done: read-only report built; 40 A, 10 B, 2 C, 2 D | `sp12-source-yield` |
 | 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | not started | `sp13-workable-walk` |
-| 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | not started | `sp14-years-lead-ins` |
+| 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | done: lead-ins, the tie before a figure and a colleague's years read; typicality left unread; 3 rejected rows put to you | `sp14-years-lead-ins` |
 | 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | not started | `sp15-sida-hybrid-wording` |
 | 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp16-hibob-reader` |
 | 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | not started | `sp17-dsv-facets` |
@@ -172,9 +172,9 @@ of eleven or more is read short and silently, and simprints sits at the cap
 today. It is independent of everything but SP4's fixtures and SP4d's reader,
 and touches `probe.py` as OP1 does, so whichever lands second rebases over the
 first.
-SP14 next, and before the owner's next real run if the two excluded Manager
-roles matter to them, since that run stores them `rejected`. SP4e must be
-merged.
+SP14 next. **Done 2026-10-26**, ahead of SP13, which it does not depend on;
+the real run came first, so the two excluded Manager roles are stored
+`rejected`, and reviving them is an owner to-do under SP14.
 SP15 once the owner has said whether remote work "to some extent" counts as
 hybrid; if it does not, the package ends there.
 SP16 only if the owner wants the HiBob employer or others on the platform: the
@@ -5377,11 +5377,116 @@ what each costs on the kept side.
 Branch sp14-years-lead-ins. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-26, branch `sp14-years-lead-ins`
+
+**About the number.** The prompt the owner pasted into the session was a copy
+made before the 2026-10-26 renumbering, so it said SP13 and
+`sp13-years-lead-ins`. Its text was this package's. The plan had renumbered
+the package to SP14 that day, and `docs/DECISIONS.md` says branch names follow
+the new numbers, so the session ran it as SP14 on `sp14-years-lead-ins`: two
+commits, not pushed. SP13 is still the Workable walk, not started.
+
+**Step 1, against main.** The invented cases and their controls are
+`TestSP14Findings`. On main: the lead-in case read 5, the colleague case read
+20 and "(5-10 years)" read nothing, so those three failed for the stated
+reasons; the two controls for the range, the "ideally" control and the
+typicality case passed. Three more classes were written against main before
+any change: `TestPreferenceLeadIns` (lead-ins and inline preferences in four
+languages, and requirements beside them), `TestTiesBeforeTheFigure` and
+`TestAThirdPersonsYears`. 49 of their 68 cases failed on main.
+
+**What changed** (each recorded in `docs/DECISIONS.md`):
+
+- **2, the lead-in.** A preference lead-in opens a section as SP4e's headings
+  do, only with its colon: "Ideally, you have:", "It would be an advantage if
+  you have:", "Vi ser gärna att du har:", "Vi ser gerne, at du har:", "Det er en
+  fordel, hvis du har:", "Wünschenswert:", "Von Vorteil sind:", "Idealerweise
+  bringst du mit:". A requirement lead-in closes it ("To be considered you must
+  have:", "Das bringst du mit:", a capitalised "Du har:"). A lower-case
+  "preferred" still opens nothing. Inline preferences learnt their Swedish,
+  Danish and German words before and after the figure. Kept-side cost: a section
+  runs to the next requirement heading or lead-in, or to the end, so a
+  requirement after it under an unknown heading is dropped. None was in the
+  corpus.
+- **3, the range.** The cause was that a tie to experience was looked for only
+  after the figure: "(3+ years)" read by its plus sign alone. A figure the word
+  for experience introduces directly ("experience (5-10 years)", "Experience:
+  5 years", "Berufserfahrung von 5 Jahren") is now tied. Its error falls on the
+  excluded side, so it is direct only, and every veto still applies. One
+  misreading of the new rule found by hand, "a unique learning experience of six
+  months", is fixed and pinned. The prompt said to ask first which way the new
+  reading's error falls. The session did not ask the owner: it reasoned it
+  through by SP4e's rule (a figure wrongly read as a requirement raises the
+  answer and costs a job, so the tie is direct only) and recorded that answer
+  here and in `docs/DECISIONS.md`. Treat it as the session's call, not an
+  owner's approval.
+- **3b, a third person.** A role named with "your", in a relative clause, or by
+  a third-person pronoun holds its own years, in four languages. "Colleagues who
+  have 5 years" is a colleague's; "candidates who have", "he/she" and a role
+  being sought are the candidate. The first-person veto also learnt "söker",
+  "søger" and "suchen", as it knew "looking for".
+- **3c, typicality.** A typicality word makes a bare figure nothing, and leaves
+  a tied one as it was. The error falls on the kept side.
+
+**Measured** (step 4), on scratch copies of the store and the HTTP cache as of
+run 39: 2,804 texts, 1,841 stored and 963 supplied. 12 changed, each read by
+hand: 7 kept → excluded (the tie before the figure: impactpool 2, company 11
+1, and one jobsinlund posting in 2 stored rows and 2 supplied copies, each
+stating its years outright), 4 excluded → kept (company 11's two lead-in roles
+and one "gerne" preference, and one pwc_sweden supplied text with no stored
+row), and 1 level only (company 10, 20+ → 8+, a head of department's years). The
+pwc_sweden text is the "gärna med minst tre års" misreading SP10's result
+found, now read as the preference it is. No rule was changed to move a count.
+Every stored row among the 12 is `rejected`, so nothing in the sheet moves.
+Suite: **1,504 passed** (was 1,429); 1,521 after the review fixes below.
+
+**asana, measured afterwards.** The corpus above left asana out: its listing is
+rendered, the HTTP cache holds only plain fetches, and the store holds no asana
+row. Its saved fixture (`tests/fixtures/asana.html`, captured for SP6 on
+2026-10-08) was replayed offline through the reader: 100 postings, each with a
+readable supplied description. Judged by main's module and the branch's, **none
+changed**, in verdict or in level.
+
+**Review fixes, 2026-10-26.** A reviewer tried phrasings the session had not,
+on main and on the branch, and found three regressions and one over-reach.
+Each is now a test in `TestSP14ReviewFindings`, run against main and the
+branch before the fix.
+- **The expensive one.** "Meriterande kvalifikationer: 5 års …" (a common
+  Swedish heading, "desirable qualifications") read 5 on the branch and nothing
+  on main. The session had taught the reading that "Kvalifikationer:" opens a
+  requirement section, so the word after "Meriterande" closed the preference
+  section at once: the hole the prompt said not to reopen. A preference word
+  followed by a requirement noun is now one heading, capitalised or with its
+  colon. That also closes a gap main had too: "Önskvärda kvalifikationer:",
+  "Ønskede kvalifikationer:", "Ønskede kompetencer:", "Wünschenswerte
+  Qualifikationen:" and "Gewünschte Qualifikationen:" all read as requirements
+  before.
+- **Two cheap ones.** "He or she has at least 5 years", "(S)he has", and the
+  Swedish, Danish and German pairs read nothing: the session knew "he/she" but
+  took "he or she" for a colleague. "Reporting to your manager, you'll have at
+  least 5 years" read nothing because "you'll" was not "you", and neither was a
+  subject with two words before its verb ("you must already have"). Both read 5
+  again, as on main.
+- **The over-reach.** "Customer experience: 5 years of growth" read 5 through
+  the new tie before the figure. A figure tied only that way no longer binds when
+  "of" then names something other than work.
+Re-measured on the same corpus and on asana's fixture: the same 12 changes, and
+none for asana. The measurement could not have caught these, because no stored
+text used them; a reviewer's invented ads did, as in SP4e.
+
+**Stored rows** (step 5). `retrofilter --dry-run` on a scratch copy of the
+store: 0 status changes and 0 level-only changes, because the store held no
+`new` row (222 delisted, 1,888 rejected, 3 seen, 6 shortlisted). The
+`rejected` rows the new reading would keep: **company 11, 3** (all three
+rejected on years, all listed on run 39). The real pass and any revival were
+not run.
+
 ### Your to-dos (SP14)
 
-- [ ] After the session, decide which `rejected` rows it lists you want
-      revived. Note that company 11's two excluded Manager roles will be stored
-      `rejected` by the first real run, before this package lands.
+- [ ] Decide whether to revive company 11's 3 `rejected` rows that the new
+      reading keeps (two of them are the Manager roles this package was found
+      on). A row revived after a better reading keeps its description and gets
+      the new reading's level, `unspecified` for all three (SP4e).
 
 ### SP15 — sida's remote-work wording reaches the hybrid gate
 

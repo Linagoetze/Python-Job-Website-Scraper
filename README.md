@@ -82,9 +82,13 @@ a role that asks for 5. Where a posting offers alternative routes in (a Master's
 and 2 years, or a Bachelor's and 4; or one figure per level it hires at), the
 lowest route decides. Figures that are not requirements are not read: an age, a
 cap ("up to 7 years"), a contract's length, a time window, a preference
-("ideally 5 years", "3 years preferred", or anything under a "Preferred
-qualifications" or "Nice to have" heading), or the employer's own history. A
-posting that only *prefers* some years reads as `unspecified`. A PhD excludes a
+("ideally 5 years", "3 years preferred", "4 års erfaring er en fordel", or
+anything under a "Preferred qualifications" or "Nice to have" heading or a
+lead-in such as "Ideally, you have:" or "Vi ser gärna att du har:"), the
+employer's own history, or a colleague's ("your new team leader has 20 years").
+A figure counts when the word for experience introduces it, as in "proven
+experience (5-10 years)", as well as when it follows. A posting that only
+*prefers* some years reads as `unspecified`. A PhD excludes a
 job only when it is what the posting requires ("must hold a PhD", "a PhD is
 required"), not when it is offered beside a Master's, when the job is itself a
 doctoral position, or when the ad merely mentions PhD colleagues.
@@ -1115,7 +1119,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1429 tests, about twenty seconds, no network access required.
+1521 tests, about twenty seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
