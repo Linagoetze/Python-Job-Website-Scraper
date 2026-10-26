@@ -1721,8 +1721,8 @@ session — see `CLAUDE.md`.
   token, and the Workable reader sends one POST and reads neither. The golden
   test had pinned the short read of 10. Workable's page is 10; `total` is the
   board's count; and a full page carries a token even at the end of a board
-  (simprints today: 10 results, `total: 10`, a token, an empty second page). SP18
-  fixes the reader. The rule said what it should, five runs in.
+  (simprints today: 10 results, `total: 10`, a token, an empty second page). SP13
+  (SP18 before the renumbering of 2026-10-26) fixes the reader. The rule said what it should, five runs in.
   **No guarded exemption (the owner's decision, 2026-10-08).** The question was
   whether to skip readers that walk and check a stated total (Workday,
   SmartRecruiters, SuccessFactors), for which a constant count should mean a
@@ -1964,3 +1964,14 @@ session — see `CLAUDE.md`.
   dormant board as a candidate (`sources candidate add` with the blocker, after
   the owner removes it) is the existing home; a per-source `enabled: false` key
   would be a config change and its own package. Neither was built.
+- **The remaining sources-plan packages were reordered, split and renumbered
+  (owner's decision, 2026-10-26).** Kept in `docs/SOURCES-PLAN.md`, in this
+  order: SP13 the Workable walk (was SP18) and SP14 the years lead-ins (was
+  SP13), which stop jobs being lost; SP15 sida's remote-work wording and SP17
+  narrowing dsv, both new from SP12's follow-up; and SP16 the HiBob reader (was
+  SP15), at the owner's request. Moved to `docs/OPTIONAL-PLAN.md`, because each
+  has a workaround or serves one employer: OP1 the probe corrections (was
+  SP14), OP2 `candidate activate --board` (was SP17), OP3 the Taleo reader (was
+  SP16) and OP4 a per-source `enabled: false` (SP12's proposal). Branch names
+  follow the new numbers; older commits, branches and transcripts use the old
+  ones.
