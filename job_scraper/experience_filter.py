@@ -372,6 +372,13 @@ _TIE_BEFORE = re.compile(
 _AN_EXPERIENCE_BEFORE = re.compile(
     r"\ban?\s+(?:[\w-]+\s+){0,2}?experience\b[^.;:()]{0,30}$", re.IGNORECASE
 )
+# "Customer experience: 5 years of growth" names what the years were of, and it
+# is not work (SP14 review). "Experience: 5 years of progressive work" is.
+_OF_SOMETHING_ELSE = re.compile(
+    r"^\s*of\s+(?!(?:[\w’'-]+\s+){0,3}?(?:experience|expertise|work|working|employment"
+    r"|service|practice)\b)",
+    re.IGNORECASE,
+)
 _MINIMUM_BEFORE = re.compile(
     r"(?:\bminimum(?:\s+of)?|\bmin\.?|\bat\s+least|\bno\s+less\s+than|\bnot\s+less\s+than"
     r"|\bminst|\bmindst|\bmindestens)\s*[(:]?\s*$",
@@ -459,6 +466,13 @@ _PREFERENCE_HEADING = re.compile(
 # colon. The same words inline mostly mean something else ("ser gärna att du
 # skickar in din ansökan", "preferably in economics"), and an inline preference
 # is read beside its figure instead (_PREFERENCE_BEFORE).
+_PREFERRED_WORD = (
+    r"meriterande|önskvärda|önskade|ønskede|ønskelige|wünschenswerte|gewünschte|erwünschte"
+)
+_REQUIREMENT_NOUN = (
+    r"(?:kvalifikationer|kompetenser|kompetencer|krav|qualifikationen|anforderungen|kenntnisse"
+    r"|erfarenheter|erfaringer)"
+)
 _PREFERENCE_LEAD_IN = re.compile(
     r"\b(?:ideally|preferably|optimally)\b,?\s+(?:you|we)\b[^.:;•\n]{0,40}?:"
     r"|\bit\s+(?:is|would\s+be|will\s+be)\s+(?:an?\s+|considered\s+an?\s+)?"
@@ -469,7 +483,13 @@ _PREFERENCE_LEAD_IN = re.compile(
     r"|et\s+plus|önskvärt|ønskeligt)\b[^.:;•\n]{0,40}?:"
     r"|\b(?:önskvärt|ønskeligt|ein\s+plus|pluspunkte?)\s*:"
     r"|\b(?:idealerweise|vorzugsweise|wünschenswert|von\s+vorteil"
-    r"|gerne\s+(?:bringst|hast|verfügst|bringen|haben|verfügen))\b[^.:;•\n]{0,40}?:",
+    r"|gerne\s+(?:bringst|hast|verfügst|bringen|haben|verfügen))\b[^.:;•\n]{0,40}?:"
+    # A preference word before a requirement noun is one heading, and must
+    # match as one, or the noun closes the section it opens (SP14 review):
+    # "Meriterande kvalifikationer:", "Ønskede kvalifikationer:", "Wünschenswerte
+    # Qualifikationen:". Capitalised, or with its colon.
+    rf"|(?-i:\b(?:{_PREFERRED_WORD.title()}))\s+{_REQUIREMENT_NOUN}\b"
+    rf"|\b(?:{_PREFERRED_WORD})\s+{_REQUIREMENT_NOUN}\s*:",
     re.IGNORECASE,
 )
 # A requirement lead-in closes a preference section, as a requirement heading
@@ -596,10 +616,18 @@ _SEEKING = re.compile(
     re.IGNORECASE,
 )
 # The candidate as the verb's own subject: "Your manager will support you, and
-# you have 5 years".
+# you have 5 years", "you'll have", "you must already have". Both pronouns
+# together ("he or she", "(s)he", "han eller hon", "er oder sie") are the
+# candidate too (SP14 review).
+_EITHER_PRONOUN = (
+    r"\b(?:he\s*(?:or|/)\s*she|she\s*(?:or|/)\s*he|han\s*(?:eller|/)\s*(?:hon|hun)"
+    r"|(?:hon|hun)\s*(?:eller|/)\s*han|er\s*(?:oder|/)\s*sie|sie\s*(?:oder|/)\s*er)\b"
+    r"|\(s\)he\b"
+)
 _CANDIDATE_HAS = re.compile(
-    rf"\b(?:you|du|we|vi|wir|candidates?|applicants?|kandidat\w*|sökande|ansøger\w*"
-    rf"|bewerber\w*|person|individual|someone|somebody)\s+(?:[\w’'-]+\s+)?{_HAVING}{_HAVING_GAP}",
+    rf"(?:\b(?:you(?:['’](?:ll|ve|d|re))?|du|we|vi|wir|candidates?|applicants?|kandidat\w*"
+    rf"|sökande|ansøger\w*|bewerber\w*|person|individual|someone|somebody)|{_EITHER_PRONOUN})"
+    rf"\s+(?:[\w’'-]+\s+){{0,2}}?{_HAVING}{_HAVING_GAP}",
     re.IGNORECASE,
 )
 
@@ -974,7 +1002,9 @@ def _read_figure(
         or _ROUTE_AFTER.match(text[end : end + _ROUTE_CHARS])
         or _LEVEL_WORD_AFTER.match(after)
     )
-    tied_before = bool(_TIE_BEFORE.search(before)) and not _AN_EXPERIENCE_BEFORE.search(before)
+    tied_before = bool(_TIE_BEFORE.search(before)) and not (
+        _AN_EXPERIENCE_BEFORE.search(before) or _OF_SOMETHING_ELSE.match(after)
+    )
     tied = bool(_TIE_AFTER.match(after)) or tied_before or worked_for
     minimum = bool(
         _MINIMUM_BEFORE.search(before)

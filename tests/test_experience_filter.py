@@ -443,6 +443,67 @@ class TestAThirdPersonsYears:
         assert _read_years_requirement(text) == years
 
 
+class TestSP14ReviewFindings:
+    """Cases from the review of SP14 (2026-10-26), invented like the rest.
+
+    The first group is the expensive one: a preference heading whose second
+    word is a requirement word closed its own section, so the old code kept a
+    job that SP14's first version dropped.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Meriterande kvalifikationer: 5 års erfarenhet av redovisning.",
+            "Önskvärda kvalifikationer: 5 års erfarenhet av redovisning.",
+            "Ønskede kvalifikationer: 5 års erfaring med regnskab.",
+            "Ønskede kompetencer: 5 års erfaring med regnskab.",
+            "Wünschenswerte Qualifikationen: 5 Jahre Berufserfahrung im Controlling.",
+            "Gewünschte Qualifikationen: 5 Jahre Berufserfahrung im Controlling.",
+        ],
+    )
+    def test_a_preference_heading_with_a_requirement_noun(self, text):
+        assert _read_years_requirement(text) is None
+
+    def test_lower_case_without_a_colon_is_no_heading(self):
+        # "the desired qualifications" inside a sentence opens nothing.
+        text = "Du har de önskade kvalifikationer och minst 5 års erfarenhet av redovisning."
+        assert _read_years_requirement(text) == 5
+
+    def test_a_requirement_heading_after_it_still_closes_it(self):
+        text = (
+            "Meriterande kvalifikationer: 6 års erfarenhet av revision. "
+            "Krav: 3 års erfarenhet av redovisning."
+        )
+        assert _read_years_requirement(text) == 3
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Both pronouns together are how a posting addresses its candidate.
+            "He or she has at least 5 years of relevant experience.",
+            "(S)he has at least 5 years of relevant experience.",
+            "Han eller hon har minst 5 års erfarenhet av redovisning.",
+            "Hun eller han har mindst 5 års erfaring med regnskab.",
+            "Er oder sie hat mindestens 5 Jahre Berufserfahrung im Controlling.",
+            # The candidate as subject, contracted or with two words before the verb.
+            "Reporting to your manager, you'll have at least 5 years of experience in audit.",
+            "Reporting to your manager, you must already have 5 years of experience in audit.",
+        ],
+    )
+    def test_the_candidate_with_a_colleague_nearby(self, text):
+        assert _read_years_requirement(text) == 5
+
+    def test_experience_introducing_something_else(self):
+        text = "Customer experience: 5 years of growth in the region."
+        assert _read_years_requirement(text) is None
+
+    def test_experience_introducing_years_of_work(self):
+        # Control: "of work" is the candidate's experience.
+        text = "Experience: 5 years of progressive work in security."
+        assert _read_years_requirement(text) == 5
+
+
 class TestHowRequirementsCombine:
     """Step 3 of the reading (SP4e): the largest requirement, the lowest route."""
 
