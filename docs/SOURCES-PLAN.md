@@ -5414,7 +5414,12 @@ languages, and requirements beside them), `TestTiesBeforeTheFigure` and
   5 years", "Berufserfahrung von 5 Jahren") is now tied. Its error falls on the
   excluded side, so it is direct only, and every veto still applies. One
   misreading of the new rule found by hand, "a unique learning experience of six
-  months", is fixed and pinned.
+  months", is fixed and pinned. The prompt said to ask first which way the new
+  reading's error falls. The session did not ask the owner: it reasoned it
+  through by SP4e's rule (a figure wrongly read as a requirement raises the
+  answer and costs a job, so the tie is direct only) and recorded that answer
+  here and in `docs/DECISIONS.md`. Treat it as the session's call, not an
+  owner's approval.
 - **3b, a third person.** A role named with "your", in a relative clause, or by
   a third-person pronoun holds its own years, in four languages. "Colleagues who
   have 5 years" is a colleague's; "candidates who have", "he/she" and a role
@@ -5431,8 +5436,16 @@ stating its years outright), 4 excluded → kept (company 11's two lead-in roles
 and one "gerne" preference, and one pwc_sweden supplied text with no stored
 row), and 1 level only (company 10, 20+ → 8+, a head of department's years). The
 pwc_sweden text is the "gärna med minst tre års" misreading SP10's result
-found, now read as the preference it is. No rule was changed to move a count. Every stored row among the 12 is `rejected`,
-so nothing in the sheet moves. Suite: **1,504 passed** (was 1,429).
+found, now read as the preference it is. No rule was changed to move a count.
+Every stored row among the 12 is `rejected`, so nothing in the sheet moves.
+Suite: **1,504 passed** (was 1,429).
+
+**asana, measured afterwards.** The corpus above left asana out: its listing is
+rendered, the HTTP cache holds only plain fetches, and the store holds no asana
+row. Its saved fixture (`tests/fixtures/asana.html`, captured for SP6 on
+2026-10-08) was replayed offline through the reader: 100 postings, each with a
+readable supplied description. Judged by main's module and the branch's, **none
+changed**, in verdict or in level.
 
 **Stored rows** (step 5). `retrofilter --dry-run` on a scratch copy of the
 store: 0 status changes and 0 level-only changes, because the store held no

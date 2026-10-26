@@ -2060,7 +2060,9 @@ session — see `CLAUDE.md`.
   replayed from the cached responses through the readers' own functions
   (jobsinlund 783, through its page parser dated to run 39 so its stale-posting
   cut matches; monday_com 108, strava 35, pure_earth 20, pwc_sweden 12, kognity 4,
-  coefficient_giving 1). Each text was judged by a copy of main's module and by
+  coefficient_giving 1). asana's rendered listing is not in the cache, so its
+  100 descriptions were judged afterwards from its saved fixture: none changed.
+  Each text was judged by a copy of main's module and by
   the branch's, each change was attributed by switching each of the branch's
   changes off in turn, and every changed verdict was read by hand. 12 texts
   changed: 7 kept → excluded (the backward tie: impactpool 2, company 11 1,
