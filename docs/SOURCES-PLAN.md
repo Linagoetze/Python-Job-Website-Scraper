@@ -113,19 +113,25 @@ the ordering below.
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | done: no private API; a generic Jobylon feed reader, `static`; source added | `sp10-jobylon-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | done: stopped at step 2, no reader; the listing API needs a page-issued token and an aggregator already carries the board; candidate re-checked | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | done: read-only report built; 40 A, 10 B, 2 C, 2 D | `sp12-source-yield` |
-| 13 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | not started | `sp13-years-lead-ins` |
-| 14 | The probe's strategy for Workable, and what its "no postings" means | 1.5 hr | Sonnet 5 | `think` | not started | `sp14-probe-corrections` |
-| 15 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp15-hibob-reader` |
-| 16 | A generic reader for Taleo career sites | 3 hr | Opus 5 | `think hard` | not started | `sp16-taleo-reader` |
-| 17 | `candidate activate` for a board hosted elsewhere | 1 hr | Sonnet 5 | `think` | not started | `sp17-activate-board` |
-| 18 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | not started | `sp18-workable-walk` |
+| 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | not started | `sp13-workable-walk` |
+| 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | not started | `sp14-years-lead-ins` |
+| 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | not started | `sp15-sida-hybrid-wording` |
+| 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp16-hibob-reader` |
+| 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | not started | `sp17-dsv-facets` |
+
+**Renumbered on 2026-10-26** (owner's decision, see `docs/DECISIONS.md`). The
+remaining packages were put in order and the optional ones moved to
+`docs/OPTIONAL-PLAN.md`. Old to new: SP18 → SP13, SP13 → SP14, SP15 → SP16;
+SP14 → OP1, SP17 → OP2, SP16 → OP3. SP15 and SP17 are new, from SP12's
+follow-up, and OP4 is SP12's `enabled: false` proposal. This file uses the new
+numbers throughout; older commits, branches and transcripts use the old ones.
 
 **Roughly 23 hours** for SP0–SP4 (SP2b, SP3b and SP3c included) and SP7, plus SP5 and SP6 as recurring
 instalments. Take the estimates the way the refactor's were taken: the refactor
 estimated 30 hours and the packages that overran were the ones where a capture
-revealed a bug. SP4 is that package here. SP8–SP17, added from SP5's first batch, come to about
-21 hours more (1.5, 2, 2, 3, 2.5, 2, 1.5, 2, 3 and 1), and SP15 and SP16 are
-optional. SP18, found by SP7, adds 2.
+revealed a bug. SP4 is that package here. SP8–SP12, added from SP5's first batch, came to about
+11 hours more (1.5, 2, 2, 3 and 2.5). SP13–SP17 come to about 9 (2, 2, 1.5, 2
+and 1.5). The optional packages are costed in `docs/OPTIONAL-PLAN.md`.
 
 **Ordering.** SP0 first and non-negotiable — nothing writes to an unbacked
 directory. SP0b next, because it makes every session after it cheaper, this
@@ -160,17 +166,23 @@ company added. SP12 is independent of everything but the store, and the best
 time for it is after SP7, whose warnings may already name some of what it
 finds, and before the next large SP5 batch, so that new sources are judged
 against a list that has been cleaned.
-SP13 should go before the owner's next real run if the two excluded Manager
-roles matter to them, since that run stores them `rejected`; otherwise whenever.
-SP14 after SP8 (both touch the probe's report). SP15 and SP16 are optional and
-only as wanted: SP16's first step may end it. SP17 is independent and small, and
-best before the next SP5 batch, since a candidate recorded under an employer's
-own page will meet it again.
-**SP18 before any further Workable employer is added** (found by SP7, 2026-10-08; SP5's prompt is unchanged, the owner having done SP5): the
-reader returns at most ten postings, so a Workable board of eleven or more is
-read short and silently. It is independent of everything but SP4's fixtures and
-SP4d's reader, and touches `probe.py` as SP14 does, so whichever lands second
-rebases over the first.
+**SP13 first, and before any further Workable employer is added** (found by
+SP7, 2026-10-08): the reader returns at most ten postings, so a Workable board
+of eleven or more is read short and silently, and simprints sits at the cap
+today. It is independent of everything but SP4's fixtures and SP4d's reader,
+and touches `probe.py` as OP1 does, so whichever lands second rebases over the
+first.
+SP14 next, and before the owner's next real run if the two excluded Manager
+roles matter to them, since that run stores them `rejected`. SP4e must be
+merged.
+SP15 once the owner has said whether remote work "to some extent" counts as
+hybrid; if it does not, the package ends there.
+SP16 only if the owner wants the HiBob employer or others on the platform: the
+board has four postings.
+SP17 whenever convenient: no job is lost meanwhile, and it saves most of dsv's
+230 listing pages a run.
+The optional packages carry their own ordering notes in
+`docs/OPTIONAL-PLAN.md`.
 
 ### Model recommendations
 
@@ -193,15 +205,16 @@ SP7 now carries `think` rather than no cue, for the one-page warning SP3b's
 findings added to it:
 choosing its threshold means weighing a warning that cries wolf against one
 that stays silent for months, measured on the real store.
-`Opus 5` for SP11, SP12, SP13 and SP16 as well (added 2026-10-06). SP11's route is a choice
+`Opus 5` for SP11, SP12, SP14 and OP3 as well (added 2026-10-06). SP11's route is a choice
 between fragile ways to read a platform whose pager cannot be pressed, with a
 stop-and-ask on a session token, as SP3b's was. SP12 is a count, but its whole
 value is telling a board truthfully elsewhere from a starved location field,
 and a wrong call stops the owner watching a source that was merely broken.
-SP13 is SP4e's reading again, with its own lesson about unrecognised
-alternatives; SP16 is SP11's route choice on another platform. SP8, SP9, SP10,
-SP14, SP15, SP17 and SP18 are `Sonnet 5`: capture, fix, pin, with the stop-and-ask in SP10
-and SP15 written into their prompts.
+SP14 is SP4e's reading again, with its own lesson about unrecognised
+alternatives; OP3 is SP11's route choice on another platform. SP8, SP9, SP10,
+SP13, SP15, SP16 and SP17 are `Sonnet 5`, and so are OP1 and OP2
+(`docs/OPTIONAL-PLAN.md`): capture, fix, pin, with the stop-and-ask in SP10
+and SP16 written into their prompts.
 
 `Sonnet 5` for SP0b, SP3c, SP4, SP5, SP6
 and SP7: capture, diagnose, fix, pin — mechanical work with a strong test net
@@ -222,12 +235,12 @@ The surfaces, and what invalidates each:
 | Surface | Invalidated by | Notes |
 | --- | --- | --- |
 | `README.md` — "Adding a source" | SP3 | Currently three steps that omit the tombstone check and the fixture capture. SP3 rewrites it as the real routine, not an appended command. |
-| `README.md` — "Maintenance commands" | SP1, SP2, SP2b, SP4g, SP12, SP17 | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
+| `README.md` — "Maintenance commands" | SP1, SP2, SP2b, SP4g, SP12, OP2 | The new CLI belongs beside `retrofilter` and `blocklist_all`, including the `--help`-exits-cleanly behaviour that section already warns about. |
 | `README.md` — "Reading the run summary" | SP7, SP4c, SP12 | SP7: three new blocks (failed sources, one-page sources, the tombstone warning) and a changed `Sources` line are all user-visible output. SP4c: the unreadable-detail-pages block. The section prints a real rendered summary; if the `Sources` line or a preamble changes, the block changes with it. **SP7 landed 2026-10-08** with the blocks in this order: failed, refused, tombstoned, source health, empty, one-page, unreadable. A new block goes in that list, and its README example is checked line for line against the rendered output (a test-built summary, printed). SP12: the README says the Layer 0 audit is SP12's; make that sentence a link to the command. |
-| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP5, SP6, SP7, SP8–SP18 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
+| `README.md` — test count, "thirteen of the twenty-six extractors are uncovered" | SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP5, SP6, SP7, SP8–SP17, OP1–OP3 | Every package that adds a test or pins a fixture moves these. The coverage sentence moves on **every SP4 and SP6 instalment** — that is the number the whole exercise is about. The README has no fixture count (found in SP3c; earlier prompts asked for one), so the coverage sentence is the fixture measure: do not invent a count to update. |
 | `README.md` — "How this is built and maintained" table | SP0b | Says "Three documents, all public" and lists them. There are now five: `docs/SOURCES-PLAN.md` and `docs/DECISIONS.md` join it. The existing `docs/REFACTOR-PLAN.md` row is stale twice over — it was written while the file was still a working plan, and it credits it with holding the decisions log, which SP0b moves out. Rewrite it as an archive. |
 | `README.md` — the `#future-work` anchor link | SP0b | Line 716 links into a section SP0b shrinks to a pointer. A dangling anchor in a public README. |
-| `README.md` — the `sources.yaml` section | SP3c | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
+| `README.md` — the `sources.yaml` section | SP3c, SP17 | A Workday `url` may carry the listing's own filter query. One sentence, and why airbus has one. |
 | `README.md` — Layout table | SP1 | The `data/curated/` row lists what lives there. |
 | `job_scraper/config/sources.example.yaml` | SP3 | Its header explains how to add a source. That advice becomes "run `probe` first". |
 | `CLAUDE.md` | SP0b, SP2b | Startup reads, the stale architecture block, the Definition of done. |
@@ -3426,8 +3439,8 @@ TWO PLATFORM RULES FROM SP4d (amended 2026-10-02):
 - A Workable board needs `strategy: dynamic`: the listing still comes from
   Workable's JSON, but each posting's page is a JS shell to a static fetch, so
   Layer 5 reads nothing. The probe still suggests `static` for Workable
-  (`probe.py`'s Platform entry) until SP14 lands. Correct the entry you paste,
-  and say so in the plan. Fixing the probe's suggestion is SP14, because the
+  (`probe.py`'s Platform entry) until OP1 lands. Correct the entry you paste,
+  and say so in the plan. Fixing the probe's suggestion is OP1, because the
   probe also uses that strategy to run the reader. Do not fold it in.
 After the pipeline run below, read its "Unreadable pages" block. A new source
 named there is starved at Layer 5 from its first run. Stop and report it, as
@@ -3513,7 +3526,7 @@ LESSONS FROM BATCH 1 (2026-10-07). Each one cost a session something.
 - A CANDIDATE'S BLOCKER CAN BE STALE. Re-read the rendered page's text before
   renewing it: two old blockers said "no job content" and "login required"
   while the page showed its postings. The probe's "shows no postings" means "no
-  posting-shaped link" (SP14).
+  posting-shaped link" (OP1).
 - NO BOARD URL FOUND? ASK FOR ONE POSTING'S ADDRESS. A platform's fingerprint
   with no board is common. The posting's own "Apply" link usually names the
   board (SP5's company 10: a slug the probe could not guess), and the Browser
@@ -3524,7 +3537,7 @@ LESSONS FROM BATCH 1 (2026-10-07). Each one cost a session something.
   3-4 of the CU2 ladder, so STOP and put it to the owner. Do not look for the
   credential in the page's scripts.
 - A CANDIDATE RECORDED UNDER THE EMPLOYER'S OWN PAGE cannot be activated once
-  the source is on a hosted board, until SP17 lands. Record a `recheck` and say so.
+  the source is on a hosted board, until OP2 lands. Record a `recheck` and say so.
 
 THEN CHECK LAYER 5'S YEARS READING ON EACH NEW SOURCE (amended 2026-10-02, from
 SP4e and its review). The reading was tuned on today's boards: UN rosters,
@@ -3719,7 +3732,7 @@ a flag, in three countries (listed for the owner in chat), and are dropped by
 written. The two rows rejected as "non-hybrid" are internships with no platform
 flag. Layer 5's years reading: six exclusions, all Swedish and Danish "Minst
 / min. / minimum N års erfarenhet", read correctly. Two misreadings, neither
-patched, both folded into SP13's cases: (a) a posting introducing its new
+patched, both folded into SP14's cases: (a) a posting introducing its new
 manager ("har 20 års erfaring fra [the employer]") read as a 20+ years
 requirement, which did not change that posting's verdict (its own requirement
 is 8) but would wrongly exclude one with no stated figure, the expensive
@@ -4118,7 +4131,7 @@ exemption for guarded readers.
    five). Historic false positives, a line each: givewell, mammut, oatly, planted,
    new_incentives, sida. nutrition_international sat at 10 in runs 4-29 then fell
    to 6 and 3. **Resolved the same day: it was a page of ten, a reader bug, not a
-   board** (SP18, below). Its own saved fixture, captured 2026-09-24, states
+   board** (SP13, below). Its own saved fixture, captured 2026-09-24, states
    `total: 11` beside 10 results and a `nextPage` token; the golden test pinned
    the 10. The rule named it from run 8, and it was right.
 3. **Tombstone guard.** `curated.tombstoned_sources` by board identity, run before
@@ -4137,7 +4150,7 @@ Layer 0 audit is its own package and links nothing.
 **Found, not fixed (outside this package):**
 - **The Workable reader reads one page of ten and ignores the `total` and
   `nextPage` its response carries.** Found by following up the one-page rule's
-  only unexplained hit; now SP18. nutrition_international's board held 11 when
+  only unexplained hit; now SP13. nutrition_international's board held 11 when
   captured and the reader returned 10, for 26 runs. Today's boards are read
   correctly (3 and 10), but simprints sits exactly at the cap.
 
@@ -4147,7 +4160,7 @@ Layer 0 audit is its own package and links nothing.
 - [x] When the session reports which sources the one-page rule would flag
       today, say whether any of them is known to be a genuinely small board.
       None are flagged today. `nutrition_international` was a reader that read
-      one page of 10 from a board of 11 or more: see SP18.
+      one page of 10 from a board of 11 or more: see SP13.
 
 ---
 
@@ -4189,7 +4202,7 @@ a prompt does not have to repeat them.
 - **A fixture that states its own total must parse to it.** SP7 found a golden
   pinning 10 postings from a saved response that said `total: 11` beside a
   `nextPage` token: the test was green on a short read for three weeks, and the
-  store showed it as a constant row count for 26 runs (SP18). When capturing,
+  store showed it as a constant row count for 26 runs (SP13). When capturing,
   read the saved response for a stated total, a token, a pager or "N of M", and
   compare it with what the golden pins before trusting either. SP7's one-page
   block will now name a reader that reads one page, but only after five runs;
@@ -4654,7 +4667,7 @@ employer's, which is what the result of step 2 turned the package into.
   three years") reads as `experience: 3+ years required`, so the job would be
   stored `senior`. The English "preferably with at least three years of
   experience" reads the same, so it is not a Swedish gap: SP4e's preference
-  handling does not cover a preference that precedes "at least", and SP13 is the
+  handling does not cover a preference that precedes "at least", and SP14 is the
   package for it. That job was rejected on the hybrid gate in this run, so no
   stored level is affected yet. The other four read correctly ("2–5 års" as 2,
   "Minst 3-5 års" as 3, two with no years stated).
@@ -4740,7 +4753,7 @@ URL in chat. If the company is a candidate, `sources check` prints its
 recorded blocker and date: read both.
 
 1. check, then probe. A changed verdict ends the package with a report.
-2. IS IT ALREADY IN THE STORE? As for SP16 step 2: multilateral employers are
+2. IS IT ALREADY IN THE STORE? As for OP3 step 2: multilateral employers are
    on Impactpool. Count the stored rows whose company is this employer, by
    source and status, against the board's stated total, and put a large overlap
    to the owner before building. Then STOP AND ASK BEFORE BUILDING. Establish,
@@ -5077,7 +5090,7 @@ script, nothing written).
   extent" counts as hybrid is the owner's policy call; if it does, it is a
   hybrid-pattern change, not a new layer, and reviving the 20 is a store write
   the owner must authorise (SP4c's revival is the precedent). Proposed as a
-  package, not built. dsv's 9, pwc_sweden's 3 and bearingpoint_sweden's 1
+  package, not built: now SP15. dsv's 9, pwc_sweden's 3 and bearingpoint_sweden's 1
   hybrid rejections carry no such wording.
 - **dsv: one country's slice of a worldwide board.** Its URL is the board's
   unfiltered search: about 2,250 rows a run, roughly 230 pages, 3,028 distinct
@@ -5092,7 +5105,8 @@ script, nothing written).
   static fetch honours it needs one live check, and the reader has no guard
   that a facet was applied (SP3c's Workday rule: an unproven facet fails the
   source). A facet narrower than the owner's location list would lose postings
-  in a listed place outside that country. Proposed as a package, not built.
+  in a listed place outside that country. Proposed as a package, not built:
+  now SP17.
 
 **Expectations, checked.**
 1. *Removing a B source changes nothing in the spreadsheet.* True: none ever
@@ -5125,21 +5139,137 @@ correctly, and the merge kept one branch's figure. It now matches.
       whether to keep it (a board that may open a matching city), remove it
       from `sources.yaml` yourself, or park it as a candidate.
 - [ ] Every type-C source is a bug report. Say which you want fixed first.
-- [ ] Decide whether you want a per-source `enabled: false` (its own package).
+- [ ] Decide whether you want a per-source `enabled: false` (its own package):
+      now OP4 in `docs/OPTIONAL-PLAN.md`.
 
 ---
 
-## SP13–SP17 — More packages from SP5's first batch
+## SP13–SP17 — The remaining packages, in order
 
-Added 2026-10-06 (SP17 on 2026-10-07), after SP8–SP12, from what SP5's batch 1 and the
-owner's follow-up left over. SP5's follow-up fixed two small things on the spot (the curated
-writer's backup name, and the SmartRecruiters reader's workplace flags);
-these are the ones that are not small. SP15 and SP16 follow the shared
-rules for the new-extractor packages above; SP17 is a change to the curated-list
-tool. As before, **no company names or
-URLs are in this file**: the owner gives them to each session in chat.
+Added between 2026-10-06 and 2026-10-11 from what SP5's batch 1, SP7 and SP12
+left over, and put in this order by the owner on 2026-10-26: the two that stop
+jobs being lost first, then the hybrid wording SP12 found, then the two that add
+or lighten a source. Four packages from the same period, none needed to keep
+data safe or to add companies, moved to `docs/OPTIONAL-PLAN.md` as OP1–OP4; the
+renumbering is under Status. SP5's follow-up fixed two small things on the spot
+(the curated writer's backup name, and the SmartRecruiters reader's workplace
+flags); these are the ones that are not small. SP16 follows the shared rules
+for the new-extractor packages above. As before, **no candidate's name or URL
+is in this file**: the owner gives them to each session in chat.
 
-### SP13 — Layer 5 reads a preference list and a parenthetical range
+### SP13 — The Workable reader walks its whole board
+
+Found by SP7 (2026-10-08). The one-page rule's only unexplained hit was
+nutrition_international: exactly 10 rows in runs 4–29, then 6, then 3. The reader
+(`extractors/workable.py`) sends one POST with an empty body and never reads the
+response's `total` or follows its `nextPage` token. Workable's page is 10. The
+board's own saved fixture, captured 2026-09-24, says it plainly: `total: 11`, 10
+results, a `nextPage` token. The golden test pins 10, so a short read has been
+the test's expected answer since SP4. One posting was never seen; how many
+more over the 26 runs is unknowable.
+
+What the live boards showed on 2026-10-08, one request each (a fourth followed
+simprints' token): nutrition_international `total: 3`, no token, read correctly;
+simprints `total: 10`, 10 results **and** a token, whose second page is empty, so
+the board is exactly 10 and a full page carries a token even at the end. Both read
+correctly today. simprints is at the cap, and a Workable board of eleven or more
+is read short. Nutrition_international's other 25 hits were rows Layer 0 drops
+anyway (no stored rows), so no stored job was lost, but a new Workable employer
+would lose postings that pass.
+
+This is WP11's failure in a reader WP11 did not cover, and SP3b's for Workday: the
+response states its own length, and the reader does not check it. `total` is the
+board's count, not the page's (11 beside 10 results), which is what makes the
+check possible.
+
+Sonnet 5, `think`, 2 hr. It needs SP4 (the fixtures and the `post_json` seam) and
+SP4d (the reader's present shape); it must land before another Workable
+board is added. OP1 (`docs/OPTIONAL-PLAN.md`) also edits `probe.py`: whichever lands second rebases over the first.
+
+```
+think
+
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP13
+only. Read SP7's result and the DECISIONS entry on the one-page rule first, and
+SP3b's prompt: this is SP3b's walk on a smaller API, with the same stop rule.
+
+1. PIN THE BUG FIRST. tests/fixtures/nutrition_international.json holds
+   `total: 11`, 10 results and a `nextPage`. Write a test against the reader as
+   it is today that fails because it returns 10: a replayed fetcher whose first
+   POST gives that response and whose second gives a hand-written second page
+   with the eleventh posting, so the test expects 11. Watch it fail, then keep
+   it. The existing golden for nutrition_international pins the short read and
+   WILL change; say so in the commit.
+
+2. WALK THE BOARD. After the first POST, while the response carries `nextPage`,
+   POST again with {**body, "token": <nextPage>} through the SAME fetcher's
+   post_json (never http.post_json: the capture script and the probe replace
+   it). Rules, each with a test written to fail without the guard:
+   - the walk ends on a page with no results, or a response with no
+     `nextPage`;
+   - it then reconciles with extractors/pagination.reconcile against the first
+     response's `total`: fewer postings read than `total` raises ShortWalkError
+     (so the run keeps the source's stored jobs and says so in SP7's Failed
+     sources block); more is fine;
+   - a token that repeats, or a walk past a sane page cap (pick one from the
+     largest board you can justify, say it, and raise rather than stop
+     silently), raises;
+   - a token with an empty next page and results already equal to `total` is
+     the END, not a failure: simprints is exactly that today (10 results, a
+     token, an empty second page). Test it with simprints' real saved page
+     plus an empty one. This is the case a naive "token means more" gets wrong
+     and the case that would fail a healthy source on every run.
+   - a response with no `total` key: do not guess. Raise, or fall back to
+     "read until empty" with unverifiable_end, whichever pagination.py's
+     existing wording supports; say which and why.
+   Detail URLs and keys are unchanged (built from slug and shortcode), so no
+   stored row's key moves; say that you checked.
+
+3. THE FIXTURE. capture_fixtures.py --pages all records a whole walk, but no
+   live board here holds more than ten, so it cannot capture a multi-page one.
+   Do NOT scrape other Workable employers to find one (CLAUDE.md). Build the
+   two-page case from the real saved first page plus a hand-written second page
+   under tests/fixtures/ in a name capture_fixtures._page_of does not own (the
+   `path.rendered.html` rule), with a README line saying which page is invented,
+   as tests/fixtures/probe/ does. Re-capture simprints with --pages all (it
+   makes one extra POST, to the empty page) so its fixture holds the walk it
+   ends on. ASK THE OWNER before keeping any fixture past a megabyte; these are
+   a few kilobytes. If the owner knows a real board past ten, they may give it
+   in chat and you may capture it once.
+
+4. THE PROBE. Workable's Platform entry is not `guarded`. Once the reader walks
+   and checks a total it is, so set `guarded=True` and rewrite its `walk` text.
+   Check the probe's short-read verdict for it reads as a reader bug (SP3b's
+   review rule), not "needs a new extractor". Do not touch the strategy
+   suggestion: that is OP1
+   (docs/OPTIONAL-PLAN.md).
+
+5. MEASURE, THEN REPORT. One polite request to each of the two live Workable
+   boards, through the reader (python, not a capture), with nothing saved: the
+   postings read before and after. Expected: 3 and 10, unchanged. Then replay the
+   rule against a copy of the store as in SP7 and say that source_health will show
+   a different count for any Workable source that was capped. List, by name, any
+   stored job whose key this changes: expected none. Do not repair the past:
+   no row was stored from the lost postings (Layer 0 dropped them), and nothing
+   automatic would revive one.
+
+6. DOCS. README: test count; "Adding a source" if it describes the Workable
+   limit. docs/DECISIONS.md: that Workable's page is 10, that `total` is the
+   board's count, that a full page carries a token even at the end (so the end is
+   an empty page with the count reached), and that the golden had pinned a short
+   read. Plan: edit the shared rule that cites this package.
+
+Branch sp13-workable-walk. Commit, do not push. Update this plan file.
+```
+
+### Your to-dos (SP13)
+
+- [ ] Say whether you know a real Workable board with more than ten postings; a
+      real two-page capture is worth more than a hand-written second page.
+- [ ] Until this lands, do not add a Workable employer without first comparing
+      the board's `total` with the postings the reader returns (one request).
+
+### SP14 — Layer 5 reads a preference list and a parenthetical range
 
 Found in SP5 (company 11's descriptions, the years-reading check SP4e's review
 asked for). Two misreadings in company 11's descriptions and two more in company 10's, in
@@ -5183,7 +5313,7 @@ code as well as the new" (docs/DECISIONS.md).
 ```
 think hard
 
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP13
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP14
 only. Read SP4e's result and its review entries in docs/DECISIONS.md first,
 and then the whole of `_read_years_requirement` and its helpers in
 job_scraper/experience_filter.py. SP4e must be merged. This package changes
@@ -5244,75 +5374,80 @@ how Layer 5 reads, not what Layer 5 is: no new layer, no new rule string
 DOCS. Test count. docs/DECISIONS.md: the lead-in rule and the range rule, and
 what each costs on the kept side.
 
-Branch sp13-years-lead-ins. Commit, do not push. Update this plan file.
+Branch sp14-years-lead-ins. Commit, do not push. Update this plan file.
 ```
 
-### SP14 — The probe's strategy for Workable, and what its "no postings" means
+### Your to-dos (SP14)
 
-Found in SP5. Three corrections to `probe.py`, small, all about a verdict that reads more
-certain than what the probe saw or could do.
+- [ ] After the session, decide which `rejected` rows it lists you want
+      revived. Note that company 11's two excluded Manager roles will be stored
+      `rejected` by the first real run, before this package lands.
 
-1. **Workable's suggested strategy is wrong.** The probe's Platform entry for
-   Workable says `static`, so a pasted block gives a source whose posting pages
-   are a JS shell to Layer 5 (SP4d: it needs `strategy: dynamic`). The probe
-   also uses that strategy to run the reader, so the entry cannot simply be
-   edited: what is *suggested* and what is *run* have to be told apart.
-2. **"The HTML shows no postings" means "no posting-shaped link".** On two old
-   candidates the rendered page held its postings (a stated "Total: 4", and
-   "1 - 25 of 69 Job Openings") as cards that are not links, and the verdict
-   said rungs 1-2 showed no postings. The recorded blocker then said "no job
-   content", which was false, and a second session would have renewed it. The
-   probe should say what it saw: that the page states a count, or repeats a
-   card structure, and that it found no link of the shape it looks for.
+### SP15 — sida's remote-work wording reaches the hybrid gate
 
-Sonnet 5, `think`, 1.5 hr (2 with the exemption flag). It touches only `probe.py` and its tests, and the
-verdict text is a contract the tests pin, so every changed string is a
-deliberate edit.
+Found by SP12's follow-up (2026-10-11). Every one of sida's 20 jobs rejected as
+"non-hybrid in a conditional city" carries the employer's standard line
+offering remote work to some extent, in Swedish. The hybrid gate matches the
+word "hybrid" (in English and in a Swedish compound) but neither that Swedish
+phrasing nor its English translation. 17 of the 20 read no years requirement,
+so they would otherwise have been kept; 9 were still listed on run 37. dsv's 9,
+pwc_sweden's 3 and bearingpoint_sweden's 1 hybrid rejections carry no such
+wording.
+
+Two decisions belong to the owner: whether "remote work to some extent" counts
+as hybrid, and which of the 20 rows to revive (SP4c's revival is the
+precedent). If it counts, this is a change to the hybrid pattern, not a new
+layer. The re-filter pass never settles a deferred hybrid state (SP4g), so a
+fixed pattern does not reach the stored rows on its own.
+
+Sonnet 5, `think`, 1.5 hr (estimated when the package was written, 2026-10-26).
 
 ```
 think
 
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP14
-only. SP3 must be merged, and SP8 if it has landed (it adds a check to the same
-report: rebase over it rather than overwrite it).
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP15
+only. Read SP12's result and its follow-up first, then the hybrid gate in full,
+where it is defined and every caller, before changing anything. This package
+changes what the hybrid gate recognises, not what it is: no new layer, no new
+rule string (WP8a: a drop-log rule string is a contract).
 
-1. WORKABLE. Give the Platform entry a way to say "suggest `dynamic`, run
-   `static`" or the reverse, whichever the code needs: read how `probe.py`
-   passes `strategy` to the reader and prints it in the sources.yaml block
-   before choosing. The printed block for a Workable board must say
-   `strategy: dynamic`, with one sentence of why (SP4d). Check the other nine
-   platforms' suggested strategies against the listing page's behaviour, and
-   report any that are wrong; do not change one without a measurement. Write
-   the test against the old probe first and watch it fail.
+1. ASK THE OWNER FIRST whether an offer of remote work "to some extent" counts
+   as hybrid. If not, record that in docs/DECISIONS.md and end the package.
 
-2. THE VERDICT'S WORDS. In the rung 1-2 failure, report what the probe saw in
-   the page text: a stated total or range ("N openings", "1 - 25 of N"), a
-   repeated card structure, a pager; and say "no link of the shape the probe
-   looks for" in place of "shows no postings" when any of those is present.
-   When the page really holds nothing (a shell, a 29-character mount point),
-   keep today's wording. The verdict category and exit code do not change: it
-   is still `not feasible`, and rungs 3-4 are still the owner's. Add tests
-   with small handwritten pages under tests/fixtures/probe/ (the README there
-   says they are invented): one with a stated total and card divs, one that is a
-   bare shell.
+2. TESTS FIRST, AGAINST THE CODE AS IT IS. Invented cases, never the
+   employer's text: the Swedish phrasing and its English translation, each in
+   a description for a job in a conditional city, should pass the gate and
+   fail on main today; a description that only names the office's city, and
+   one that rules remote work out, stay rejected. Show the run.
 
-3. AN EXEMPTION THE OWNER HAS GIVEN. The probe passes no `ignore_robots` on
-   purpose ("a probe asks may we?", docs/DECISIONS.md), so a SmartRecruiters
-   board is always `not feasible, rung 2` and a session has had to capture
-   instead of re-probing. ASK THE OWNER FIRST whether the probe should take an
-   explicit `--ignore-robots HOST`, per invocation, never from sources.yaml and
-   never as a default, so that the owner's yes can be run through the probe and
-   the probe's report then says the exemption was applied. If the owner says
-   no, leave it and say so in the result.
+3. THE PATTERN. Compile it once with the gate's other patterns (CLAUDE.md).
+   Check Danish and German equivalents against tests, not by assumption, and
+   say which direction each new phrase's error falls: a false match keeps an
+   on-site job in the sheet, a missed one drops a hybrid job.
 
-4. DOCS. README's "Adding a source" if it quotes either text, and the test
-   count. docs/DECISIONS.md: that the probe reports what it saw, and that "no
-   posting-shaped link" is not "no postings".
+4. MEASURE, READ-ONLY. A copy of the store in the scratchpad, never the live
+   file: every stored description judged with main's gate and with yours; read
+   every changed verdict by hand and quote the counts by source. Expected:
+   sida's 20 change; dsv's, pwc_sweden's and bearingpoint_sweden's hybrid
+   rejections do not.
 
-Branch sp14-probe-corrections. Commit, do not push. Update this plan file.
+5. STORED ROWS. List the `rejected` rows the new pattern would keep, by source
+   and count, and how many are still listed. Reviving any is the owner's call
+   (SP4c); do not run any revival unasked.
+
+DOCS. Test count. docs/DECISIONS.md: what the gate now counts as hybrid, and
+why.
+
+Branch sp15-sida-hybrid-wording. Commit, do not push. Update this plan file.
 ```
 
-### SP15 — A generic reader for HiBob career sites
+### Your to-dos (SP15)
+
+- [ ] Before the session, say whether an offer of remote work "to some extent"
+      counts as hybrid.
+- [ ] After it, decide which of sida's 20 rejected rows you want revived.
+
+### SP16 — A generic reader for HiBob career sites
 
 Found in SP5 (company 6, an existing candidate): the rendered page lists its
 postings ("Total: 4", with titles, teams and posting dates) as cards that are
@@ -5327,10 +5462,10 @@ first step is the one SP4b taught.
 ```
 think
 
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP15
+Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP16
 only, following "Shared rules for the new-extractor packages" and SP10's step
 2 (find where the list comes from before parsing markup). SP3 and SP5's batch 1
-must be merged, and SP14 if it has landed. The owner gives you the board's URL
+must be merged, and OP1 (docs/OPTIONAL-PLAN.md) if it has landed. The owner gives you the board's URL
 in chat; `sources check` prints its recorded finding, which is out of date:
 say so rather than build on it.
 
@@ -5358,271 +5493,75 @@ say so rather than build on it.
    propose `sources candidate activate` once the source and fixture are
    committed, and ask first.
 
-Branch sp15-hibob-reader. Commit, do not push. Update this plan file.
+Branch sp16-hibob-reader. Commit, do not push. Update this plan file.
 ```
 
-### SP16 — A generic reader for Taleo career sites
+### Your to-dos (SP16)
 
-Found in SP5 (company 7, an existing candidate whose recorded blocker, login
-required and "No jobs", does not hold: the rendered page, not signed in, states
-"1 - 25 of 69 Job Openings"). The probe found no posting-shaped link and
-fingerprints no Taleo. Taleo is a long-lived Oracle platform with many
-employers, so this is a **generic ATS reader**. Taleo's classic career section is
-a search form whose results are filled and paged by a script, with a session
-and anti-forgery value the page issues, which is why the route is the hard part
-and why this one is **Opus 5, `think hard`, 3 hr**, with the same stop-and-ask
-as SP11.
+- [ ] Say whether the HiBob board (four postings) is worth SP16 at all.
+- [ ] SP16 stops for an owner decision if the list comes from a private route.
 
-```
-think hard
+### SP17 — Narrow dsv to its one country
 
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP16
-only, following "Shared rules for the new-extractor packages", and read SP3b's
-result and docs/DECISIONS.md's Workday entries and SP11's prompt first: this is
-the same kind of choice. SP3 and SP5's batch 1 must be merged, and SP14 if it
-has landed. The owner gives you the board's URL in chat.
+Found by SP12's follow-up (2026-10-11). dsv's URL is the board's unfiltered
+search: about 2,250 rows a run, roughly 230 pages, 3,028 distinct postings
+dropped at Layer 0 in the window, and 26% of the window's drop-log rows. Every
+row it has ever passed or stored is in one country (bar two empty-location rows
+on a single day in August, since delisted), and that country's slice was 24
+rows on run 37, about 3 pages. The board's search form offers country and city
+facets by GET (`optionsFacetsDD_country`, `optionsFacetsDD_city`), and the
+reader keeps any query on the URL, so narrowing is a `sources.yaml` edit, as
+airbus's Workday filter was (SP3c). Unverified offline: the facet's codes are
+filled in by script, so whether a static fetch honours one needs a live check,
+and the reader has no guard that a facet was applied. A facet narrower than the
+owner's location list would lose postings in a listed place outside that
+country.
 
-1. check, then probe. A changed verdict ends the package with a report.
-2. IS IT ALREADY IN THE STORE? Before building anything, measure how many of
-   the board's postings the aggregators already deliver: Impactpool lists UN-
-   system and multilateral roles, and its rows carry the employer. Count the
-   stored rows whose company is this employer, by source and status, and
-   compare with the board's stated 69. If most of what Layer 0 would admit is
-   already stored from Impactpool, the new source adds duplicates under a
-   different dedupe key (a different URL), and that is a decision for the
-   owner before it is a reader. Report it and wait.
-3. STOP AND ASK BEFORE BUILDING, as SP11 does: what the page requests to fill
-   and page its list, its method and body, what it needs (a session cookie, a
-   token the page issues, a form value), how many postings a response holds,
-   whether it states a total, and what the pager does. Put the options to the
-   owner with their fragility and cost per run. A pager the fetcher cannot
-   press and a token the page issues are rung 3-4 of the CU2 ladder: the
-   owner's call, and no token goes into a fixture.
-4. Build the chosen route as a generic reader, `job_scraper/extractors/
-   taleo.py`, with the board as arguments. It walks the whole listing, checks
-   the stated total, raises on a short read, uses the fetcher it is given
-   (including `post_json` if it POSTs), supplies `description_text` if the
-   response has it, reads a workplace field into `raw_snippet`, and builds the
-   detail URL exactly as the board links it (it is a dedupe key: SP3b).
-5. Capture the whole walk (`--pages all`), pin it, add the `Platform` entry to
-   `probe.py`, then SP5's checks on this source. Say in the README's coverage
-   sentence that the reader is covered by one employer's capture.
-
-Branch sp16-taleo-reader. Commit, do not push. Update this plan file.
-```
-
-### Your to-dos (SP13–SP16)
-
-- [ ] SP13: after the session, decide which `rejected` rows it lists you want
-      revived. Note that company 11's two excluded Manager roles will be stored
-      `rejected` by the first real run, before this package lands.
-- [ ] SP15 and SP16 each stop for an owner decision about a private route, and
-      SP16 may end at its step 2 if Impactpool already delivers the board.
-- [ ] Say whether the HiBob board (four postings) is worth SP15 at all.
-
----
-
-### SP17 — `candidate activate` for a board hosted elsewhere
-
-Found in SP5 (company 10). A candidate whose recorded URL is the employer's own
-careers page became a source on a hosted board (a SmartRecruiters board found
-from one posting's "Apply" link). `candidate activate` removes a candidate only
-when its **recorded board** is in `sources.yaml`, and the two boards differ, so
-the command refuses and the candidate stays on the list. SP5's follow-up
-recorded a `recheck` saying so ("now an active source"), which is honest but
-leaves an entry on a list whose meaning is "not a source yet". It will happen
-again: the probe's own advice for a page that embeds a hosted board is to
-probe the hosted board, and a candidate is often recorded under the employer's
-own page.
-
-Owner-approved on 2026-10-07 as the second exception's natural extension: it
-removes an entry on evidence, and it needs two pieces of evidence where
-`activate` today needs one. Sonnet 5, `think`, 1 hr.
+No job is lost today, so this serves CLAUDE.md's third priority (be a good
+citizen) and a lighter drop log, not recall. Sonnet 5, `think`, 1.5 hr, as
+SP3c was (estimated 2026-10-26).
 
 ```
 think
 
 Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP17
-only. SP2b must be merged. Read SP2b's prompt and result, and the two
-DECISIONS.md entries on `recheck` and `activate` ("the second exception, and
-each needs its own evidence"), before changing anything: this is that
-exception, one step wider, and the reasoning for how narrow it is has to
-survive.
+only. Read SP3c's prompt and result and SP12's follow-up first: this is SP3c's
+narrowing on another reader, with SP3c's rule that an unproven facet fails the
+source.
 
-Add an optional `--board URL` to `sources candidate activate`, with the logic
-in curated.py beside `activate`, not in the CLI.
+1. ONE LIVE CHECK. One polite request with the country facet on the URL,
+   through the reader's own fetcher and strategy, nothing saved: does the
+   response hold only that country's postings, and how many? If a static fetch
+   ignores the facet, stop and report: whether a render is worth it is the
+   owner's call.
 
-  sources candidate activate <org> [--board <url>]
+2. THE GUARD. Decide what proves the facet was applied (a stated total that
+   matches, every row's country, the facet echoed in the page) and make the
+   reader raise when it was not, so a facet that stops working fails the
+   source loudly rather than reading as a quiet board. Tests first, written to
+   fail without the guard, against saved fixtures, never a live scrape.
 
-Without `--board`, nothing changes: the candidate's own recorded board must be
-in sources.yaml, and every existing test passes unchanged.
+3. THE LOCATION LIST. Compare the facet's country with the owner's location
+   list. If any listed place lies outside it, put the choice to the owner (a
+   second facet, or a wider one) before narrowing.
 
-With `--board`, the candidate is removed ONLY when ALL of these hold, and the
-command refuses, changing nothing, naming the one that failed, when any does
-not:
-  1. sources.yaml exists and was read (a missing file is a refusal, never "not
-     active": the existing rule).
-  2. The `--board` URL's board identity (curated.find_board, never host) is in
-     sources.yaml. A different slug on the same host is not a match (two
-     Greenhouse employers; two SmartRecruiters ones).
-  3. That sources.yaml entry's `company` is set and equals the candidate's
-     organisation, case-insensitively and trimmed. An aggregator entry has no
-     `company`, and a name that differs is a different employer: refuse in both
-     cases. The owner's assertion that the two are the same company is not
-     enough on its own, because it is the one thing the command cannot check
-     and a typo would remove the wrong entry.
-  4. The `--board` board is not on the tombstone, and is not the recorded board
-     of a DIFFERENT candidate (that would be a conflict for the owner, as in
-     `recheck`).
-Print the whole entry being removed before writing, as `activate` does, and
-add to the commit message and the terminal output which board it was matched
-to. No `--force`, and no removal by name alone. Everything else follows the
-writer: argparse front door and --help exits without acting, timestamped .bak
-(a counter, never overwritten: see "A backup is never replaced by another
-backup"), temp file plus os.replace(), commit to the curated repository, and
-the unmigrated-list refusal.
+4. THE CONFIG. sources.yaml is gitignored and the owner's: print the new `url`
+   for the owner to paste. Re-capture dsv's fixture with
+   scripts/capture_fixtures.py once the owner has pasted it.
 
-Build nothing broader: not a way to change a candidate's URL, not an `--org`
-rename, no bulk activation.
+5. MEASURE. Rows and pages a run before and after, and the drop log's share,
+   against a copy of the store. Expected: about 24 rows and 3 pages from about
+   2,250 and 230, and nothing that passed Layer 0 before is lost.
 
-Tests, in tmp_path as in SP2b. Removed: a candidate recorded under its own
-page with `--board` naming a hosted board in sources.yaml whose `company`
-matches, and no other entry changes. Refused with the file byte-identical: a
-board not in sources.yaml; a missing sources.yaml; the same host with a
-different slug; a sources.yaml entry with no `company`; a `company` that
-differs; a tombstoned board; a board that is another candidate's. No
-`--board` and a board that does not match still refuses as before. Both:
---help writes nothing, the backup is the file as it was, an interrupted write
-leaves the original intact. Run one removal as a real process.
+DOCS. README's sources.yaml section, beside airbus's sentence (SP3c). Test
+count. docs/DECISIONS.md: the facet and its guard.
 
-THEN, WITH THE OWNER'S YES IN CHAT, USE IT ONCE: the candidate recorded in SP5
-as company 10 is the first case. Show the command first; do not run it unasked.
-
-DOCS. README "Maintenance commands": `--board`, and that it needs the source's
-`company` to equal the candidate's name. CLAUDE.md's sentence naming the
-curated-list exceptions: say that `activate` also removes a candidate named by
-board, on the two pieces of evidence. docs/DECISIONS.md: the extension and
-why `company` is required.
-
-Branch sp17-activate-board. Commit, do not push. Update this plan file.
+Branch sp17-dsv-facets. Commit, do not push. Update this plan file.
 ```
 
 ### Your to-dos (SP17)
 
-- [x] This widens an exception to CLAUDE.md's rule about `data/curated/`, so it
-      is yours to grant: say yes or no to the `company`-must-match evidence
-      before the session starts. **Granted by the owner on 2026-10-07.**
-
-### SP18 — The Workable reader walks its whole board
-
-Found by SP7 (2026-10-08). The one-page rule's only unexplained hit was
-nutrition_international: exactly 10 rows in runs 4–29, then 6, then 3. The reader
-(`extractors/workable.py`) sends one POST with an empty body and never reads the
-response's `total` or follows its `nextPage` token. Workable's page is 10. The
-board's own saved fixture, captured 2026-09-24, says it plainly: `total: 11`, 10
-results, a `nextPage` token. The golden test pins 10, so a short read has been
-the test's expected answer since SP4. One posting was never seen; how many
-more over the 26 runs is unknowable.
-
-What the live boards showed on 2026-10-08, one request each (a fourth followed
-simprints' token): nutrition_international `total: 3`, no token, read correctly;
-simprints `total: 10`, 10 results **and** a token, whose second page is empty, so
-the board is exactly 10 and a full page carries a token even at the end. Both read
-correctly today. simprints is at the cap, and a Workable board of eleven or more
-is read short. Nutrition_international's other 25 hits were rows Layer 0 drops
-anyway (no stored rows), so no stored job was lost, but a new Workable employer
-would lose postings that pass.
-
-This is WP11's failure in a reader WP11 did not cover, and SP3b's for Workday: the
-response states its own length, and the reader does not check it. `total` is the
-board's count, not the page's (11 beside 10 results), which is what makes the
-check possible.
-
-Sonnet 5, `think`, 2 hr. It needs SP4 (the fixtures and the `post_json` seam) and
-SP4d (the reader's present shape); it must land before another Workable
-board is added. SP14 also edits `probe.py`: whichever lands second rebases over the first.
-
-```
-think
-
-Read CLAUDE.md, docs/DECISIONS.md and docs/SOURCES-PLAN.md, then work on SP18
-only. Read SP7's result and the DECISIONS entry on the one-page rule first, and
-SP3b's prompt: this is SP3b's walk on a smaller API, with the same stop rule.
-
-1. PIN THE BUG FIRST. tests/fixtures/nutrition_international.json holds
-   `total: 11`, 10 results and a `nextPage`. Write a test against the reader as
-   it is today that fails because it returns 10: a replayed fetcher whose first
-   POST gives that response and whose second gives a hand-written second page
-   with the eleventh posting, so the test expects 11. Watch it fail, then keep
-   it. The existing golden for nutrition_international pins the short read and
-   WILL change; say so in the commit.
-
-2. WALK THE BOARD. After the first POST, while the response carries `nextPage`,
-   POST again with {**body, "token": <nextPage>} through the SAME fetcher's
-   post_json (never http.post_json: the capture script and the probe replace
-   it). Rules, each with a test written to fail without the guard:
-   - the walk ends on a page with no results, or a response with no
-     `nextPage`;
-   - it then reconciles with extractors/pagination.reconcile against the first
-     response's `total`: fewer postings read than `total` raises ShortWalkError
-     (so the run keeps the source's stored jobs and says so in SP7's Failed
-     sources block); more is fine;
-   - a token that repeats, or a walk past a sane page cap (pick one from the
-     largest board you can justify, say it, and raise rather than stop
-     silently), raises;
-   - a token with an empty next page and results already equal to `total` is
-     the END, not a failure: simprints is exactly that today (10 results, a
-     token, an empty second page). Test it with simprints' real saved page
-     plus an empty one. This is the case a naive "token means more" gets wrong
-     and the case that would fail a healthy source on every run.
-   - a response with no `total` key: do not guess. Raise, or fall back to
-     "read until empty" with unverifiable_end, whichever pagination.py's
-     existing wording supports; say which and why.
-   Detail URLs and keys are unchanged (built from slug and shortcode), so no
-   stored row's key moves; say that you checked.
-
-3. THE FIXTURE. capture_fixtures.py --pages all records a whole walk, but no
-   live board here holds more than ten, so it cannot capture a multi-page one.
-   Do NOT scrape other Workable employers to find one (CLAUDE.md). Build the
-   two-page case from the real saved first page plus a hand-written second page
-   under tests/fixtures/ in a name capture_fixtures._page_of does not own (the
-   `path.rendered.html` rule), with a README line saying which page is invented,
-   as tests/fixtures/probe/ does. Re-capture simprints with --pages all (it
-   makes one extra POST, to the empty page) so its fixture holds the walk it
-   ends on. ASK THE OWNER before keeping any fixture past a megabyte; these are
-   a few kilobytes. If the owner knows a real board past ten, they may give it
-   in chat and you may capture it once.
-
-4. THE PROBE. Workable's Platform entry is not `guarded`. Once the reader walks
-   and checks a total it is, so set `guarded=True` and rewrite its `walk` text.
-   Check the probe's short-read verdict for it reads as a reader bug (SP3b's
-   review rule), not "needs a new extractor". Do not touch the strategy
-   suggestion: that is SP14.
-
-5. MEASURE, THEN REPORT. One polite request to each of the two live Workable
-   boards, through the reader (python, not a capture), with nothing saved: the
-   postings read before and after. Expected: 3 and 10, unchanged. Then replay the
-   rule against a copy of the store as in SP7 and say that source_health will show
-   a different count for any Workable source that was capped. List, by name, any
-   stored job whose key this changes: expected none. Do not repair the past:
-   no row was stored from the lost postings (Layer 0 dropped them), and nothing
-   automatic would revive one.
-
-6. DOCS. README: test count; "Adding a source" if it describes the Workable
-   limit. docs/DECISIONS.md: that Workable's page is 10, that `total` is the
-   board's count, that a full page carries a token even at the end (so the end is
-   an empty page with the count reached), and that the golden had pinned a short
-   read. Plan: edit the shared rule that cites this package.
-
-Branch sp18-workable-walk. Commit, do not push. Update this plan file.
-```
-
-### Your to-dos (SP18)
-
-- [ ] Say whether you know a real Workable board with more than ten postings; a
-      real two-page capture is worth more than a hand-written second page.
-- [ ] Until this lands, do not add a Workable employer without first comparing
-      the board's `total` with the postings the reader returns (one request).
+- [ ] After the session, paste the narrowed `url` into `sources.yaml` yourself.
 
 ---
 
