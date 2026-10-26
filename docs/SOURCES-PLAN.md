@@ -172,9 +172,9 @@ of eleven or more is read short and silently, and simprints sits at the cap
 today. It is independent of everything but SP4's fixtures and SP4d's reader,
 and touches `probe.py` as OP1 does, so whichever lands second rebases over the
 first.
-SP14 next, and before the owner's next real run if the two excluded Manager
-roles matter to them, since that run stores them `rejected`. SP4e must be
-merged.
+SP14 next. **Done 2026-10-26**, ahead of SP13, which it does not depend on;
+the real run came first, so the two excluded Manager roles are stored
+`rejected`, and reviving them is an owner to-do under SP14.
 SP15 once the owner has said whether remote work "to some extent" counts as
 hybrid; if it does not, the package ends there.
 SP16 only if the owner wants the HiBob employer or others on the platform: the
@@ -5379,8 +5379,12 @@ Branch sp14-years-lead-ins. Commit, do not push. Update this plan file.
 
 ### Result — done 2026-10-26, branch `sp14-years-lead-ins`
 
-Run from a prompt that still carried the old number (SP13); this is the package
-it described, under its new number and branch name.
+**About the number.** The prompt the owner pasted into the session was a copy
+made before the 2026-10-26 renumbering, so it said SP13 and
+`sp13-years-lead-ins`. Its text was this package's. The plan had renumbered
+the package to SP14 that day, and `docs/DECISIONS.md` says branch names follow
+the new numbers, so the session ran it as SP14 on `sp14-years-lead-ins`: two
+commits, not pushed. SP13 is still the Workable walk, not started.
 
 **Step 1, against main.** The invented cases and their controls are
 `TestSP14Findings`. On main: the lead-in case read 5, the colleague case read
@@ -5425,8 +5429,9 @@ hand: 7 kept → excluded (the tie before the figure: impactpool 2, company 11
 1, and one jobsinlund posting in 2 stored rows and 2 supplied copies, each
 stating its years outright), 4 excluded → kept (company 11's two lead-in roles
 and one "gerne" preference, and one pwc_sweden supplied text with no stored
-row), and 1 level only (company 10, 20+ → 8+, a head of department's years). No
-rule was changed to move a count. Every stored row among the 12 is `rejected`,
+row), and 1 level only (company 10, 20+ → 8+, a head of department's years). The
+pwc_sweden text is the "gärna med minst tre års" misreading SP10's result
+found, now read as the preference it is. No rule was changed to move a count. Every stored row among the 12 is `rejected`,
 so nothing in the sheet moves. Suite: **1,504 passed** (was 1,429).
 
 **Stored rows** (step 5). `retrofilter --dry-run` on a scratch copy of the
