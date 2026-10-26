@@ -212,6 +212,237 @@ class TestReviewFindings:
         assert _read_years_requirement("5 (five) years of experience in finance.") == 5
 
 
+class TestSP14Findings:
+    """The four misreadings SP5's years check found (SP14), invented like the rest.
+
+    The first two excluded a job (the expensive direction); the last two let
+    a figure go unread. Each control is the nearest phrasing that already read
+    correctly, so a fix that moves one of them has changed more than it meant to.
+    """
+
+    def test_a_preference_lead_in_opens_a_section(self):
+        text = (
+            "Qualifications Ideally, you have: 5 years of relevant experience in "
+            "logistics. A degree in engineering."
+        )
+        assert _read_years_requirement(text) is None
+
+    def test_ideally_inside_a_sentence_is_a_preference(self):
+        # Control.
+        text = "We would ideally like 5 years of relevant experience in logistics."
+        assert _read_years_requirement(text) is None
+
+    def test_a_colleagues_years_are_not_the_requirement(self):
+        text = "Your new team leader has 20 years of experience with us."
+        assert _read_years_requirement(text) is None
+
+    def test_typically_with_no_word_for_experience_is_not_read(self):
+        # Danish, "solid experience from a similar role, typically 6-7 years or
+        # more": the figure stands apart from the noun, and a typicality word
+        # does not make a bare figure a requirement (SP14, 3c).
+        text = "Du har solid erfaring fra en lignende rolle, typisk 6-7 år eller mere."
+        assert _read_years_requirement(text) is None
+
+    def test_a_parenthetical_range_is_tied_to_the_experience_before_it(self):
+        text = "Proven experience (5-10 years) in a Project Manager, PMO or Workstream Lead role"
+        assert _read_years_requirement(text) == 5
+
+    def test_a_range_after_experience_of(self):
+        # Control.
+        text = "Proven experience of 5-10 years in a Project Manager role"
+        assert _read_years_requirement(text) == 5
+
+    def test_a_minimum_in_brackets(self):
+        # Control.
+        text = "You have solid experience (3+ years) as an auditor"
+        assert _read_years_requirement(text) == 3
+
+
+class TestPreferenceLeadIns:
+    """A lead-in ending in a colon opens a preference section, in four languages (SP14).
+
+    Written against main first: the ones main already read were kept as
+    pins, the rest are what this package fixed. A lead-in counts only with its
+    colon, because the same words inline usually mean something else ("ser
+    gärna att du skickar in din ansökan", "preferably in economics").
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Preferably, you have: 4+ years of experience in sales.",
+            "Ideally you also have: 4+ years of experience in sales.",
+            "It would be an advantage if you have: 4+ years of experience in sales.",
+            "Nice to have: 4+ years of experience in sales.",
+            "Vi ser gärna att du har: 4 års erfarenhet av redovisning.",
+            "Det är meriterande om du har: 4 års erfarenhet av redovisning.",
+            "Meriterande: 4 års erfarenhet av redovisning.",
+            "Vi ser gerne, at du har: 4 års erfaring med regnskab.",
+            "Det er en fordel, hvis du har: 4 års erfaring med regnskab.",
+            "Wünschenswert: 4 Jahre Berufserfahrung im Controlling.",
+            "Von Vorteil sind: 4 Jahre Berufserfahrung im Controlling.",
+            "Idealerweise bringst du mit: 4 Jahre Berufserfahrung im Controlling.",
+        ],
+    )
+    def test_a_lead_in_opens_a_preference_section(self, text):
+        assert _read_years_requirement(text) is None
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Inline, before the figure.
+            "Ideally, you have 4+ years of experience in sales.",
+            "It would be an advantage if you have 4+ years of experience in sales.",
+            "Du har gärna 4 års erfarenhet av redovisning.",
+            "Du har gerne 4 års erfaring med regnskab.",
+            "Gerne hast du bereits 4 Jahre Berufserfahrung im Controlling.",
+            # Inline, after it.
+            "4 års erfarenhet av redovisning är meriterande.",
+            "4 års erfarenhet av redovisning är en fördel.",
+            "4 års erfaring med regnskab er en fordel.",
+            "4 års erfaring med regnskab (en fordel, men ikke et krav).",
+            "4 års erfarenhet av redovisning (meriterande men inte krav).",
+            "4 Jahre Berufserfahrung im Controlling sind von Vorteil.",
+            "4 Jahre Berufserfahrung im Controlling sind wünschenswert.",
+        ],
+    )
+    def test_an_inline_preference(self, text):
+        assert _read_years_requirement(text) is None
+
+    @pytest.mark.parametrize(
+        ("text", "years"),
+        [
+            # The prompt's own order: requirement first, then the preference.
+            (
+                "To be considered you must have: 2 years of experience in logistics. "
+                "Ideally you also have: 6 years of experience in fintech.",
+                2,
+            ),
+            # The other order: a requirement lead-in closes the section.
+            (
+                "Ideally you also have: 6 years of experience in fintech. "
+                "To be considered you must have: 4 years of experience in logistics.",
+                4,
+            ),
+            (
+                "Du har minst 2 års erfarenhet av redovisning. "
+                "Vi ser gärna att du har: 5 års erfarenhet av revision.",
+                2,
+            ),
+            (
+                "Du har mindst 2 års erfaring med regnskab. "
+                "Det er en fordel, hvis du har: 5 års erfaring med revision.",
+                2,
+            ),
+            (
+                "Du bringst mindestens 2 Jahre Berufserfahrung mit. "
+                "Wünschenswert: 5 Jahre Erfahrung in der Revision.",
+                2,
+            ),
+            # A lower-case "preferred" still ends the item before it (SP4e).
+            ("A degree in a related field preferred 6 years of experience in audit.", 6),
+            # "Ideally" without a lead-in's colon is no section: the next
+            # sentence's requirement binds.
+            (
+                "Ideally you speak German. You have 5+ years of experience in sales.",
+                5,
+            ),
+        ],
+    )
+    def test_a_requirement_beside_a_lead_in_still_binds(self, text, years):
+        assert _read_years_requirement(text) == years
+
+
+class TestTiesBeforeTheFigure:
+    """A figure the word for experience introduces is tied to it (SP14).
+
+    Until SP14 a tie was looked for only after the figure, so "(3+ years)"
+    read through its plus sign alone and "(5-10 years)" did not read at all.
+    """
+
+    @pytest.mark.parametrize(
+        ("text", "years"),
+        [
+            ("Proven experience of 5 years in a project manager role.", 5),
+            ("Relevant experience: 4-6 years.", 4),
+            ("Experience: more than 3 years in audit.", 3),
+            ("Experience (5 years) in financial audit.", 5),
+            ("Relevant experience of approximately 4 years in procurement.", 4),
+            ("Du har erfarenhet (3-5 år) av projektledning.", 3),
+            ("Du har erfaring (3-5 år) med projektledelse.", 3),
+            ("Erfaring: 3-5 år inden for regnskab.", 3),
+            ("Sie haben Berufserfahrung (3-5 Jahre) im Projektmanagement.", 3),
+            ("Berufserfahrung von 5 Jahren im Controlling.", 5),
+        ],
+    )
+    def test_tied_before(self, text, years):
+        assert _read_years_requirement(text) == years
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Every veto still applies to a figure tied this way.
+            "Experience (2 years) preferred.",
+            "Relevant experience (within the last 5 years) in audit.",
+            "Experience: 3 years ago we opened our office in Lund.",
+            "We have experience of 20 years in the field.",
+            "Your manager has experience of 15 years in the field.",
+            # An experience the employer offers, found in SP14's measurement.
+            "The fellowship is a rewarding experience of three years in the field.",
+            "The programme offers a unique learning experience of 18 months to graduates.",
+        ],
+    )
+    def test_a_veto_still_applies(self, text):
+        assert _read_years_requirement(text) is None
+
+
+class TestAThirdPersonsYears:
+    """A named person or a role the candidate will meet is not the candidate (SP14).
+
+    The line is the subject of the verb that holds the figure: the candidate
+    ("you", "the ideal candidate", "a team lead we are looking for") is read,
+    anyone else ("your new team leader", "colleagues who have", "she") is not.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Your new team leader has 20 years of experience with us.",
+            "You will report to the team lead, who has 15 years of experience in the field.",
+            "Your manager, Anna, trained as an engineer and has 20 years of experience in audit.",
+            "You will work with colleagues who have 5 years of experience in audit.",
+            "She has 12 years of experience in tax law and will be your mentor.",
+            "Din nya chef har 20 års erfarenhet av branschen.",
+            # "i" is a preposition here, not a speaker.
+            "Din chef i Lund har 20 års erfarenhet av branschen.",
+            "Du får en mentor som har 15 års erfarenhet av revision.",
+            "Din nye leder har 20 års erfaring med revision.",
+            "Du får kolleger, der har 10 års erfaring med revision.",
+            "Deine Teamleiterin hat 20 Jahre Berufserfahrung im Controlling.",
+            "Du arbeitest mit Kollegen, die 10 Jahre Berufserfahrung haben.",
+        ],
+    )
+    def test_not_the_candidate(self, text):
+        assert _read_years_requirement(text) is None
+
+    @pytest.mark.parametrize(
+        ("text", "years"),
+        [
+            ("The ideal candidate has 5+ years of experience in sales.", 5),
+            ("We are looking for a team lead who has 5+ years of experience.", 5),
+            ("Candidates who have 5 years of experience in audit are encouraged to apply.", 5),
+            ("He/she has at least 5 years of relevant experience.", 5),
+            ("Vi söker en teamledare som har 5 års erfarenhet av revision.", 5),
+            ("Vi søger en teamleder, der har 5 års erfaring med revision.", 5),
+            ("Du hast 5 Jahre Berufserfahrung im Controlling.", 5),
+            # The candidate is the subject even with a colleague in the sentence.
+            ("Your manager will support you, and you have 5 years of experience in audit.", 5),
+        ],
+    )
+    def test_the_candidate(self, text, years):
+        assert _read_years_requirement(text) == years
+
+
 class TestHowRequirementsCombine:
     """Step 3 of the reading (SP4e): the largest requirement, the lowest route."""
 

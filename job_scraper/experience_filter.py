@@ -254,13 +254,15 @@ def apply_combined_title_filter(
 # 1. Find every *figure*: a number with a unit of time, in English, Swedish,
 #    Danish or German ("3 years", "five (5) years", "3–5 yrs", "3 års").
 # 2. Decide whether each figure is a *requirement*. It is when it is tied to
-#    experience ("3 years of relevant experience", "3 års erfarenhet"), stated
-#    as a minimum ("at least 3 years", "3+ years"), or tied to a qualification
-#    ("a Master's degree and 2 years"). It is not when its context says it is
-#    something else: an age, a time ago, a window ("in the last 3 years"), a
-#    contract's length, a cap ("up to 7 years"), an additive clause ("an
-#    additional 2 years ... in lieu of"), a preference ("ideally 5 years"), or
-#    the employer speaking about itself.
+#    experience ("3 years of relevant experience", "3 års erfarenhet",
+#    "experience (3-5 years)"), stated as a minimum ("at least 3 years", "3+
+#    years"), or tied to a qualification ("a Master's degree and 2 years"). It
+#    is not when its context says it is something else: an age, a time ago, a
+#    window ("in the last 3 years"), a contract's length, a cap ("up to 7
+#    years"), an additive clause ("an additional 2 years ... in lieu of"), a
+#    preference ("ideally 5 years", or anything after "Ideally, you have:"),
+#    the employer speaking about itself, or a colleague ("your new team leader
+#    has 20 years").
 # 3. Combine the requirements. A candidate must meet every requirement, so
 #    separate requirements combine by the *largest*. But a posting may offer
 #    alternative routes to the same role, one per qualification or per level
@@ -351,6 +353,25 @@ _TIE_AFTER = re.compile(
 _EXPERIENCE_NOUN = re.compile(
     r"\b(?:experience|expertise|erfarenhet|erfaring|erfahrung)", re.IGNORECASE
 )
+# The word for experience may also introduce its figure: "Proven experience
+# (5-10 years) in ...", "Relevant experience: 4-6 years", "Berufserfahrung von
+# 5 Jahren". Only directly, through "of", a colon or an opening bracket, and at
+# most a hedge between. "Erfaring fra en lignende rolle, typisk 6-7 år" is not
+# tied: a figure standing apart from the noun is the reading most likely to be
+# something else, and a figure wrongly read raises the answer (SP14).
+_TIE_BEFORE = re.compile(
+    r"\b\w*(?:experience|erfarenhet|erfaring|erfahrung)\s*(?:of|von|på)?\s*[:(]?\s*"
+    r"(?:approximately|approx\.|around|about|circa|ca\.|cirka|omkring|ungefär|etwa|ungefähr"
+    r"|over|more\s+than|mer\s+än|mere\s+end|über|mehr\s+als)?\s*$",
+    re.IGNORECASE,
+)
+# "A unique learning experience of six months" is an event the employer offers,
+# not a candidate's experience: in English an article makes the noun a count of
+# events. Found by hand in SP14's measurement. German is left out, because
+# "eine Berufserfahrung von 3 Jahren" is a requirement.
+_AN_EXPERIENCE_BEFORE = re.compile(
+    r"\ban?\s+(?:[\w-]+\s+){0,2}?experience\b[^.;:()]{0,30}$", re.IGNORECASE
+)
 _MINIMUM_BEFORE = re.compile(
     r"(?:\bminimum(?:\s+of)?|\bmin\.?|\bat\s+least|\bno\s+less\s+than|\bnot\s+less\s+than"
     r"|\bminst|\bmindst|\bmindestens)\s*[(:]?\s*$",
@@ -408,10 +429,15 @@ _VETO_AFTER = re.compile(
 # A preference is not a requirement. Read before the figure only when it says so
 # unmistakably ("ideally", "Preferred:"). A bare "preferred" just before a figure
 # usually ends the item before it in a stripped list ("... a related field
-# preferred 6 years of experience"), so it is not read there.
+# preferred 6 years of experience"), so it is not read there. The subject and
+# verb may sit between ("Ideally, you have 4+ years", "Du har gerne 4 års",
+# "Gerne hast du bereits 4 Jahre"), in four languages (SP14).
 _PREFERENCE_BEFORE = re.compile(
     r"(?:\bideally|\bpreferably|\bdesirably|\boptimally|\bpreferred:|\bdesirable:|\bdesired:"
-    r"|\bnice\s+to\s+have:|\bmeriterande:?|\bhelst)\s*(?:\w+\s+){0,2}?$",
+    r"|\bnice\s+to\s+have:|\bmeriterande:?|\bhelst|\bgärna|\bgerne|\bgern|\bidealerweise"
+    r"|\bvorzugsweise|\bfortrinsvis|\bföreträdesvis"
+    r"|\b(?:advantage|plus|fördel|fordel|vorteil)\s+(?:if|om|hvis|wenn))"
+    r"\s*,?\s*(?:\w+\s+){0,3}?$",
     re.IGNORECASE,
 )
 # A heading opens a section, and every figure under it until the next heading
@@ -427,6 +453,38 @@ _PREFERENCE_HEADING = re.compile(
     r"|(?i:\b(?:nice|good)[-\s]to[-\s]haves?\b|\bbonus\s+points?\b|\bit\s+would\s+be\s+(?:great|nice)"
     r"\s+if\b|\b(?:det\s+är\s+)?meriterande\b|\bextra\s+plus\b)"
 )
+# A lead-in opens a preference section as a heading does: "Ideally, you have:",
+# "It would be an advantage if you have:", "Vi ser gärna att du har:", "Det er
+# en fordel, hvis du har:", "Wünschenswert:" (SP14). It counts only with its
+# colon. The same words inline mostly mean something else ("ser gärna att du
+# skickar in din ansökan", "preferably in economics"), and an inline preference
+# is read beside its figure instead (_PREFERENCE_BEFORE).
+_PREFERENCE_LEAD_IN = re.compile(
+    r"\b(?:ideally|preferably|optimally)\b,?\s+(?:you|we)\b[^.:;•\n]{0,40}?:"
+    r"|\bit\s+(?:is|would\s+be|will\s+be)\s+(?:an?\s+|considered\s+an?\s+)?"
+    r"(?:advantage|plus|bonus|asset|benefit)\w*\b[^.:;•\n]{0,40}?:"
+    r"|\b(?:even\s+better|bonus\s+points?|extra\s+points?)\s+if\s+you\b[^.:;•\n]{0,40}?:"
+    r"|\b(?:vi\s+ser|ser\s+vi)\s+(?:\w+\s+)?(?:gärna|gerne)\b[^.:;•\n]{0,40}?:"
+    r"|\bdet\s+(?:är|er|vore|vil\s+være|skulle\s+vara)\s+(?:en\s+fördel|en\s+fordel|ett\s+plus"
+    r"|et\s+plus|önskvärt|ønskeligt)\b[^.:;•\n]{0,40}?:"
+    r"|\b(?:önskvärt|ønskeligt|ein\s+plus|pluspunkte?)\s*:"
+    r"|\b(?:idealerweise|vorzugsweise|wünschenswert|von\s+vorteil"
+    r"|gerne\s+(?:bringst|hast|verfügst|bringen|haben|verfügen))\b[^.:;•\n]{0,40}?:",
+    re.IGNORECASE,
+)
+# A requirement lead-in closes a preference section, as a requirement heading
+# does: "Ideally you also have: ... To be considered you must have: ...".
+# "Du har:" only capitalised, so that "Vi ser gärna att du har:" stays a
+# preference.
+_REQUIREMENT_LEAD_IN = re.compile(
+    r"(?i:\byou\s+(?:must|need\s+to|will\s+need\s+to|should)\s+(?:also\s+)?have\s*:"
+    r"|\byou\s+(?:will\s+)?need\s*:|\bwe\s+require\s*:|\bto\s+be\s+considered\b[^.:;•\n]{0,40}?:"
+    r"|\b(?:du\s+(?:ska|skal|måste|behöver)\s+(?:ha|have)|vi\s+söker\s+dig\s+som(?:\s+har)?"
+    r"|vi\s+forventer,?\s+at\s+du(?:\s+har)?|kvalifikationer|das\s+bringst\s+du\s+mit"
+    r"|das\s+bringen\s+sie\s+mit|was\s+du\s+mitbringst|was\s+sie\s+mitbringen|dein\s+profil"
+    r"|ihr\s+profil|anforderungen|voraussetzungen|qualifikationen)\s*:)"
+    r"|\bDu\s+(?:har|bör\s+ha)\s*:"
+)
 _REQUIREMENT_HEADING = re.compile(
     r"(?<![\w-])(?:Minimum|Basic|Required|Essential|Mandatory|Key|MINIMUM|BASIC|REQUIRED|ESSENTIAL)"
     r"(?i:\s+(?:qualifications?|requirements?|skills?|experience|criteria|competenc\w*))\b"
@@ -440,7 +498,10 @@ _REQUIREMENT_HEADING = re.compile(
 )
 _PREFERENCE_AFTER = re.compile(
     r"\b(?:preferred|preferable|desirable|desired|advantageous|an?\s+(?:additional\s+|added\s+)?"
-    r"(?:asset|plus|advantage|bonus)|nice\s+to\s+have|meriterande|önskvärt|ett\s+plus)\b",
+    r"(?:asset|plus|advantage|bonus)|nice\s+to\s+have|meriterande|önskvärt|ett\s+plus"
+    # Danish and German, and the Swedish "en fördel" (SP14).
+    r"|en\s+fördel|en\s+fordel|et\s+plus|ønskeligt?|von\s+vorteil|wünschenswert|erwünscht"
+    r"|ein\s+plus)\b",
     re.IGNORECASE,
 )
 # "5+ years of sales experience, knowledge of Salesforce is a plus": after a
@@ -459,13 +520,23 @@ _OTHER_SUBJECT = re.compile(
 # services").
 _PREFERENCE_REACH = 250
 _NAMED_PARENTHETICAL = re.compile(
-    r"\((?!\s*(?:is\s+|are\s+|would\s+be\s+)?(?:an?\s+)?(?:added\s+|additional\s+)?"
+    r"\((?!\s*(?:is\s+|are\s+|would\s+be\s+)?(?:an?\s+|en\s+|et\s+|ett\s+|ein\s+)?"
+    r"(?:added\s+|additional\s+)?"
     r"(?:preferred|preferable|desirable|desired|advantageous|asset|plus|advantage|bonus"
-    r"|nice\s+to\s+have)\s*\))[^)]*\)"
+    r"|nice\s+to\s+have|meriterande|önskvärt|fördel|fordel|ønskeligt?|von\s+vorteil"
+    r"|wünschenswert)"
+    # "(en fordel, men ikke et krav)", "(meriterande men inte krav)" (SP14).
+    r"\s*(?:,?\s*(?:but|men|aber)\b[^)]*)?\))[^)]*\)"
 )
+# German capitalises every noun, so its articles and prepositions are words that
+# cannot end an item too ("4 Jahre Berufserfahrung im Controlling sind von
+# Vorteil"; SP14).
 _ITEM_START = re.compile(
     r"(?<=[a-z])(?<!\bof)(?<!\bin)(?<!\bon)(?<!\bat)(?<!\bby)(?<!\bto)(?<!\ba)(?<!\ban)(?<!\bthe)"
-    r"(?<!\band)(?<!\bor)(?<!\bwith)(?<!\bfor)(?<!\bfrom)\s+(?=[A-Z][a-z])"
+    r"(?<!\band)(?<!\bor)(?<!\bwith)(?<!\bfor)(?<!\bfrom)"
+    r"(?<!\bim)(?<!\bam)(?<!\bzum)(?<!\bzur)(?<!\bder)(?<!\bdie)(?<!\bdas)(?<!\bden)(?<!\bdem)"
+    r"(?<!\bdes)(?<!\bein)(?<!\beine)(?<!\beiner)(?<!\beinem)(?<!\bmit)(?<!\bvon)(?<!\bfür)"
+    r"(?<!\bund)(?<!\boder)(?<!\bbei)(?<!\baus)(?<!\bnach)(?<!\bauf)\s+(?=[A-Z][a-z])"
 )
 
 # The employer speaking about itself ("with more than 40 years of experience,
@@ -479,7 +550,56 @@ _ADDRESSED_TO_CANDIDATE = re.compile(
     r"\b(?:you|your|you['’](?:ll|ve|re|d)|candidates?|applicants?|du|dig|din|ditt|dina|sie"
     r"|required|requires?|requirements?|must|should|essential|qualifications?|qualified"
     r"|someone|somebody|person|individual|profile|looking\s+for|seeking|ideal|need|needs"
-    r"|expect|expects|must-haves?|bring)\b",
+    r"|expect|expects|must-haves?|bring"
+    # "Vi söker en teamledare som har 5 års erfarenhet" seeks the candidate,
+    # as "we are looking for" does (SP14).
+    r"|söker|søger|suchen|sucht)\b",
+    re.IGNORECASE,
+)
+
+# A colleague's years are not the candidate's (SP14), the same speaker rule as
+# the employer's own. The figure belongs to the subject of the verb that holds
+# it. A role the candidate will meet is named with "your" ("your new team
+# leader ... has 20 years"), by a relative clause ("the team lead, who has",
+# "colleagues who have", "Kollegen, die 10 Jahre ... haben"), or by a
+# third-person pronoun ("she has"). A role the posting is seeking ("we are
+# looking for a team lead who has") is the candidate, and so is "the ideal
+# candidate has", which names no role here.
+_ROLE = (
+    r"(?:\w*(?:leader|manager|director|supervisor|mentor|founder|colleagues?|teammates?)"
+    r"|head(?:\s+of\s+[\w-]+)?|lead|boss|ceo|cto|cfo|coo|chief|team(?:\s+members?)?|staff|coach"
+    r"|\w*chef(?:en|er|erna)?|\w*ledare(?:n|na)?|\w*leder(?:en|e|ne)?|kolleg\w*|handledare\w*"
+    r"|teamet|gruppen|\w*leiter(?:in|innen)?|\w*leitung|vorgesetzte\w*|führungskraft)"
+)
+_HAVING = r"(?:has|have|had|har|hade|havde|hat|hatte)"
+# What may sit between the verb and its figure: "has over", "har mere end".
+_HAVING_GAP = r"\s+(?:[\w’'-]+\s+){0,3}?$"
+_YOUR_ROLE_HAS = re.compile(
+    rf"\b(?:your|din|dina|ditt|dine|dein\w*|ihr\w*)\s+(?:[\w’'-]+\s+){{0,3}}?{_ROLE}\b"
+    rf"[^.;•\n]{{0,80}}?\b{_HAVING}{_HAVING_GAP}",
+    re.IGNORECASE,
+)
+_ROLE_WHO_HAS = re.compile(
+    rf"\b{_ROLE}\s*,?\s+(?:who|that|som|der|die)\s+(?:(?:also|även|også|auch|already|redan"
+    rf"|allerede|bereits)\s+)?(?:{_HAVING}\s+)?(?:[\w’'-]+\s+){{0,2}}?$",
+    re.IGNORECASE,
+)
+# "he/she", "s/he" and "han/hon" are how a posting addresses its candidate.
+_PRONOUN_HAS = re.compile(
+    r"(?<![/\w])(?:(?:he|she)(?!\s*/)\s+(?:[\w’'-]+\s+){0,2}?(?:has|had)"
+    r"|(?:han|hon|hun)(?!\s*/)\s+(?:[\w’'-]+\s+){0,2}?(?:har|hade|havde)"
+    rf"|(?:er|sie)\s+(?:[\w’'-]+\s+){{0,2}}?(?:hat|hatte)){_HAVING_GAP}",
+    re.IGNORECASE,
+)
+_SEEKING = re.compile(
+    r"\b(?:looking\s+for|seek\w*|search\w*|hir(?:e|ing)|recruit\w*|söker|søger|such\w*)\b",
+    re.IGNORECASE,
+)
+# The candidate as the verb's own subject: "Your manager will support you, and
+# you have 5 years".
+_CANDIDATE_HAS = re.compile(
+    rf"\b(?:you|du|we|vi|wir|candidates?|applicants?|kandidat\w*|sökande|ansøger\w*"
+    rf"|bewerber\w*|person|individual|someone|somebody)\s+(?:[\w’'-]+\s+)?{_HAVING}{_HAVING_GAP}",
     re.IGNORECASE,
 )
 
@@ -737,6 +857,20 @@ def _sentence(text: str, start: int, end: int) -> str:
     return head + text[start:end] + tail
 
 
+def _third_persons(text: str, start: int) -> bool:
+    """True when the figure at `start` is a colleague's, not the candidate's (SP14)."""
+    head = text[max(0, start - 2 * _CONTEXT_CHARS) : start]
+    cut = [m.end() for m in _SENTENCE_END.finditer(head)]
+    if cut:
+        head = head[cut[-1] :]
+    if _CANDIDATE_HAS.search(head):
+        return False
+    if _YOUR_ROLE_HAS.search(head) or _PRONOUN_HAS.search(head):
+        return True
+    relative = _ROLE_WHO_HAS.search(head)
+    return bool(relative) and not _SEEKING.search(head[: relative.start()])
+
+
 def _preferred_after(text: str, end: int) -> bool:
     """True when a preference later in the figure's sentence is about this figure.
 
@@ -764,16 +898,24 @@ def _preferred_after(text: str, end: int) -> bool:
 
 
 def _preference_sections(text: str) -> list[tuple[int, int]]:
-    """Where the text is under a preference heading, as (start, end) spans.
+    """Where the text is under a preference heading or lead-in, as (start, end) spans.
 
-    A section runs from a preference heading to the next requirement heading,
-    or to the end of the text. Reaching too far only drops figures, which keeps
-    a job, so the end of the text is the safe default.
+    A section runs from a preference heading or lead-in to the next
+    requirement heading or lead-in, or to the end of the text. Reaching too far
+    only drops figures, which keeps a job, so the end of the text is the safe
+    default.
     """
-    headings = sorted(
-        [(m.start(), True) for m in _PREFERENCE_HEADING.finditer(text)]
-        + [(m.start(), False) for m in _REQUIREMENT_HEADING.finditer(text)]
-    )
+    opening = [
+        m.span() for p in (_PREFERENCE_HEADING, _PREFERENCE_LEAD_IN) for m in p.finditer(text)
+    ]
+    # "Wünschenswert sind folgende Qualifikationen:" must not close itself.
+    closing = [
+        m.start()
+        for p in (_REQUIREMENT_HEADING, _REQUIREMENT_LEAD_IN)
+        for m in p.finditer(text)
+        if not any(lo <= m.start() < hi for lo, hi in opening)
+    ]
+    headings = sorted([(lo, True) for lo, _ in opening] + [(at, False) for at in closing])
     sections: list[tuple[int, int]] = []
     open_at: int | None = None
     for position, preference in headings:
@@ -832,7 +974,8 @@ def _read_figure(
         or _ROUTE_AFTER.match(text[end : end + _ROUTE_CHARS])
         or _LEVEL_WORD_AFTER.match(after)
     )
-    tied = bool(_TIE_AFTER.match(after)) or worked_for
+    tied_before = bool(_TIE_BEFORE.search(before)) and not _AN_EXPERIENCE_BEFORE.search(before)
+    tied = bool(_TIE_AFTER.match(after)) or tied_before or worked_for
     minimum = bool(
         _MINIMUM_BEFORE.search(before)
         or _MINIMUM_AFTER.match(after)
@@ -844,6 +987,8 @@ def _read_figure(
         return None
 
     if _FIRST_PERSON_PLURAL.search(sentence) and not _ADDRESSED_TO_CANDIDATE.search(sentence):
+        return None
+    if _third_persons(text, start):
         return None
     if route and _SUBSTITUTE.search(sentence):
         return _Figure(years=years, kind=_Kind.SUBSTITUTE)
