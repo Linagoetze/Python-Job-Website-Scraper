@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8–SP11 are done** (as of 2026-10-09; SP11 ended at its stop-and-ask, with no reader); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8–SP12 are done** (as of 2026-10-11; SP11 ended at its stop-and-ask, with no reader); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -112,7 +112,7 @@ the ordering below.
 | 9 | A bespoke reader for an HTML careers page on no ATS | 2 hr | Sonnet 5 | `think` | done: reader and pin built; source added at the owner's request though nothing passes Layer 0 | `sp9-accordion-reader` |
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | done: no private API; a generic Jobylon feed reader, `static`; source added | `sp10-jobylon-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | done: stopped at step 2, no reader; the listing API needs a page-issued token and an aggregator already carries the board; candidate re-checked | `sp11-csod-reader` |
-| 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | not started | `sp12-source-yield` |
+| 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | done: read-only report built; 40 A, 10 B, 2 C, 2 D | `sp12-source-yield` |
 | 13 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | not started | `sp13-years-lead-ins` |
 | 14 | The probe's strategy for Workable, and what its "no postings" means | 1.5 hr | Sonnet 5 | `think` | not started | `sp14-probe-corrections` |
 | 15 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp15-hibob-reader` |
@@ -5012,6 +5012,112 @@ Branch sp12-source-yield. Commit, do not push. Update this plan file with the
 counts per class, as counts only, no source names and no places. The names go
 to the owner in CHAT.
 ```
+
+### Result — done 2026-10-11, branch `sp12-source-yield`
+
+`python -m job_scraper.tools.source_yield`, read-only: the store opened with
+SQLite's `mode=ro`, `sources.yaml` read, `rules.json` never read, nothing
+written. Built and measured on a backup copy of the store in the session
+scratchpad (`--db`), whose checksum was the same before and after every run.
+Class definitions, the deferral rule and the choice of thresholds are in
+`docs/DECISIONS.md`; the README's "Maintenance commands" has the command. Per
+the prompt, this section gives counts only. The source names, and the places
+they were dropped on, went to the owner in chat.
+
+**Window:** the drop log's 10 scrape runs, 29 (2026-09-24) to 38 (2026-10-09),
+54 configured sources. Two sources the store holds but `sources.yaml` no longer
+lists are left out.
+
+| class | sources | drop-log rows in the window | note |
+|---|---:|---:|---|
+| A working | 40 | 84,125 (98.6%) | 1 on a single pass in the window; 23 hold no stored row that is `new`, `seen` or `shortlisted` (see below) |
+| B truthfully elsewhere | 10 | 985 (1.2%) | all `static`; 3 never listed more than one posting at a time |
+| C starved, not dead | 2 | 142 (0.2%) | one listed nothing in the window; one has one constant value on 27 postings |
+| D too new to say | 2 | 95 (0.1%) | 1 and 2 runs; the evidence of both points at B |
+
+**Reconciled.** Every run's L1 line was rebuilt from the per-source rows with no
+gap. Runs 33 and 34 matched, to the row, the summaries those runs printed into
+earlier session transcripts (the summary itself is never stored, so that was
+the only independent record). For run 38 every one of the 1,907 passes is
+accounted for: 1,175 dropped on the title, 0 held back unverified, 732 sighted
+in the store (rows already stored, Layer 4's rejections and Layer 5's included).
+No posting appeared twice in a run and none lacked a dedupe key, so no gap
+needed a cause.
+
+**The known cases.** SP5's batch-1 company 1 is **D**, not B or C: it has two
+runs in the window, below the five the report asks for, and its evidence points
+at **B** (two rules, both about real places in other countries, 11 distinct).
+The owner's decision to keep it stands. The test suite mirrors it and the
+US-only board SP5 did not add, with invented places, and both are B there.
+
+**Passing Layer 0 is not reaching the sheet.** 23 of the 40 A sources passed
+Layer 0 and hold no stored row that is `new`, `seen` or `shortlisted`: what got
+through was rejected later (Layers 1-5, or by the owner), delisted, or never
+stored. That is a question for the later layers, not a yield one, and no class
+changes for it; the report prints each source's stored rows by status so it can
+be seen. Noted, not pursued.
+
+**Follow-up, the same day, at the owner's request: the 23, and dsv.** Offline,
+on the scratch copy; every stored rejected row of the 23 sources re-judged
+under today's ladder from its stored fields and description (a scratch
+script, nothing written).
+
+- *Most rejections still hold.* Of 223 rejected rows, 162 are rejected again
+  today on years, location, hybrid or title (sida's 20, below, among them), 55
+  only by the owner's own "no" (today's ladder would keep them), and 6 have no
+  stored text to re-judge. Nothing automatic should undo any of them. path's two old "40+ years" rows (SP4b F4) now read 5+ years, so
+  they stay rejected on a correct reading.
+- **sida: 20 jobs lost to the hybrid gate, the expensive direction.** Every
+  one was rejected as "non-hybrid in a conditional city", and every one's
+  description carries the employer's standard line offering remote work to some
+  extent, in Swedish. The hybrid gate matches the word "hybrid" (English, and in
+  a Swedish compound) but neither that Swedish phrasing nor its English
+  translation. 17 of the 20 read no years requirement, so they would otherwise
+  have been kept; 9 were still listed on run 37. Whether "remote work to some
+  extent" counts as hybrid is the owner's policy call; if it does, it is a
+  hybrid-pattern change, not a new layer, and reviving the 20 is a store write
+  the owner must authorise (SP4c's revival is the precedent). Proposed as a
+  package, not built. dsv's 9, pwc_sweden's 3 and bearingpoint_sweden's 1
+  hybrid rejections carry no such wording.
+- **dsv: one country's slice of a worldwide board.** Its URL is the board's
+  unfiltered search: about 2,250 rows a run, roughly 230 pages, 3,028 distinct
+  postings dropped at Layer 0 in the window, and 26% of the window's drop-log
+  rows. Every row it has ever passed or stored is in one country (bar two
+  empty-location rows on a single day in August, since delisted), and that
+  country's slice was 24 rows on run 37, about 3 pages. The board's own search
+  form offers country and city facets by GET (`optionsFacetsDD_country`,
+  `optionsFacetsDD_city`), and the reader keeps any query on the URL, so
+  narrowing is a `sources.yaml` edit, as airbus's Workday filter was (SP3c).
+  Unverified offline: the facet's codes are filled in by script, so whether a
+  static fetch honours it needs one live check, and the reader has no guard
+  that a facet was applied (SP3c's Workday rule: an unproven facet fails the
+  source). A facet narrower than the owner's location list would lose postings
+  in a listed place outside that country. Proposed as a package, not built.
+
+**Expectations, checked.**
+1. *Removing a B source changes nothing in the spreadsheet.* True: none ever
+   stored a row. The saving is small. All ten are `static`, so no render is
+   saved, only ten listing fetches a run and about 99 drop-log rows a run (1.2%
+   of the log). The drop log's weight is elsewhere, in sources that are A.
+2. *A removed source's stored `new` rows stay in the review sheet.* None of the
+   ten B sources has any, nor do the C or D ones. Any A source the owner
+   removes would leave its `new` rows behind; the report prints each source's
+   stored rows by status, so that is visible before a removal.
+3. *Where a dormant board goes.* Not built, put to the owner: remove it from
+   `sources.yaml` and park it with `sources candidate add` and the blocker, or a
+   per-source `enabled: false` key, which would be a config change and its own
+   package.
+
+**Tests.** `tests/test_source_yield.py`, 26 tests over a synthetic store in
+`tmp_path` with invented places: every class, a source that is A on a stored row
+with a barren window, a B look-alike whose locations are empty (C), one
+repeated placeholder (C), drops that are all the remote rule (C), two runs of
+history (D), a row deferred at Layer 0 and dropped at Layer 5 counted as a pass,
+a reconciliation gap that exits non-zero, a missing store refused rather than
+created, a byte-for-byte check that the report writes nothing, and the front
+door. Suite: 1,429 passed. README's count read 1,399 before this package, four
+behind the suite: two branches each added tests from 1,392 and updated it
+correctly, and the merge kept one branch's figure. It now matches.
 
 ### Your to-dos (SP12)
 
