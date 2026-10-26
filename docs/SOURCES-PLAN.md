@@ -5438,7 +5438,7 @@ row), and 1 level only (company 10, 20+ → 8+, a head of department's years). T
 pwc_sweden text is the "gärna med minst tre års" misreading SP10's result
 found, now read as the preference it is. No rule was changed to move a count.
 Every stored row among the 12 is `rejected`, so nothing in the sheet moves.
-Suite: **1,504 passed** (was 1,429).
+Suite: **1,504 passed** (was 1,429); 1,521 after the review fixes below.
 
 **asana, measured afterwards.** The corpus above left asana out: its listing is
 rendered, the HTTP cache holds only plain fetches, and the store holds no asana
@@ -5446,6 +5446,33 @@ row. Its saved fixture (`tests/fixtures/asana.html`, captured for SP6 on
 2026-10-08) was replayed offline through the reader: 100 postings, each with a
 readable supplied description. Judged by main's module and the branch's, **none
 changed**, in verdict or in level.
+
+**Review fixes, 2026-10-26.** A reviewer tried phrasings the session had not,
+on main and on the branch, and found three regressions and one over-reach.
+Each is now a test in `TestSP14ReviewFindings`, run against main and the
+branch before the fix.
+- **The expensive one.** "Meriterande kvalifikationer: 5 års …" (a common
+  Swedish heading, "desirable qualifications") read 5 on the branch and nothing
+  on main. The session had taught the reading that "Kvalifikationer:" opens a
+  requirement section, so the word after "Meriterande" closed the preference
+  section at once: the hole the prompt said not to reopen. A preference word
+  followed by a requirement noun is now one heading, capitalised or with its
+  colon. That also closes a gap main had too: "Önskvärda kvalifikationer:",
+  "Ønskede kvalifikationer:", "Ønskede kompetencer:", "Wünschenswerte
+  Qualifikationen:" and "Gewünschte Qualifikationen:" all read as requirements
+  before.
+- **Two cheap ones.** "He or she has at least 5 years", "(S)he has", and the
+  Swedish, Danish and German pairs read nothing: the session knew "he/she" but
+  took "he or she" for a colleague. "Reporting to your manager, you'll have at
+  least 5 years" read nothing because "you'll" was not "you", and neither was a
+  subject with two words before its verb ("you must already have"). Both read 5
+  again, as on main.
+- **The over-reach.** "Customer experience: 5 years of growth" read 5 through
+  the new tie before the figure. A figure tied only that way no longer binds when
+  "of" then names something other than work.
+Re-measured on the same corpus and on asana's fixture: the same 12 changes, and
+none for asana. The measurement could not have caught these, because no stored
+text used them; a reviewer's invented ads did, as in SP4e.
 
 **Stored rows** (step 5). `retrofilter --dry-run` on a scratch copy of the
 store: 0 status changes and 0 level-only changes, because the store held no

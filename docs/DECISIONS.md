@@ -2077,3 +2077,28 @@ session — see `CLAUDE.md`.
   held no `new` row (222 delisted, 1,888 rejected, 3 seen, 6 shortlisted). Three
   `rejected` rows would be kept by the new reading, all company 11's and each
   rejected on years; they are put to the owner in the plan, as SP4e's were.
+- **A preference word and the requirement noun after it are one heading (SP14
+  review, 2026-10-26).** SP14's first version taught the reading that
+  "Kvalifikationer:" opens a requirement section, so "Meriterande
+  kvalifikationer: 5 års …" closed its own preference section at the second
+  word and read 5, where main read nothing: a job dropped unseen. Now a
+  preference word followed by a requirement noun ("Meriterande
+  kvalifikationer", "Ønskede kompetencer", "Wünschenswerte Qualifikationen")
+  matches as one preference heading, capitalised or with its colon, and a
+  closer that starts inside an opener does not close. Lower case with no colon
+  ("du har de önskade kvalifikationer och …") opens nothing. **The lesson,
+  SP4e's again:** a closer is as dangerous as a missed opener, because it ends a
+  preference section early, so a new requirement word needs a test with every
+  preference word in front of it.
+- **Both pronouns together, and "you'll", are the candidate (SP14 review).**
+  "He or she", "(s)he", "han eller hon", "hun eller han" and "er oder sie" are
+  how a posting addresses its candidate, as "he/she" is. "You'll", "you've" and
+  "you'd" are "you", and up to two words may sit between the candidate and the
+  verb ("you must already have"). Both were read on main; SP14's third-person
+  veto had taken them for a colleague's, the cheap direction.
+- **A figure tied before by the noun does not bind when "of" names something
+  else (SP14 review).** "Customer experience: 5 years of growth" is not a
+  career. When the only tie is the noun before the figure and "of" follows it,
+  the noun after "of" must be experience, work, employment, service or practice
+  within three words ("5 years of progressive work" binds). Re-measured, none of
+  the four review fixes moved a verdict on SP14's corpus or asana's fixture.
