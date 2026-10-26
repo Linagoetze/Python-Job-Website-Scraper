@@ -1975,3 +1975,103 @@ session — see `CLAUDE.md`.
   SP16) and OP4 a per-source `enabled: false` (SP12's proposal). Branch names
   follow the new numbers; older commits, branches and transcripts use the old
   ones.
+- **A preference lead-in opens a section, and only with its colon (SP14,
+  2026-10-26).** "Ideally, you have:", "Preferably, you have:", "It would be an
+  advantage if you have:", "Vi ser gärna att du har:", "Det är ett plus om du
+  har:", "Vi ser gerne, at du har:", "Det er en fordel, hvis du har:",
+  "Wünschenswert:", "Von Vorteil sind:", "Idealerweise bringst du mit:" now open a
+  preference section exactly as SP4e's headings do (`_PREFERENCE_LEAD_IN`). The
+  colon is the test. Inline, the same words mostly mean something else: the
+  corpus holds 115 "gärna" and 52 "gerne" that are not preferences ("ser gärna att
+  du skickar in din ansökan") and 143 "preferably in" a field of study. A lower-case
+  "preferred" still opens nothing, so SP4e's hole stays shut. A requirement
+  lead-in closes the section ("To be considered you must have:", "Das bringst du
+  mit:", a capitalised "Du har:"), unless it sits inside the preference lead-in
+  ("Wünschenswert sind folgende Qualifikationen:"). Inline preferences gained
+  their Swedish, Danish and German words beside the figure, before ("du har
+  gerne 4 års", "Gerne hast du bereits 4 Jahre", "Ideally, you have 4+") and
+  after ("er en fordel", "är en fördel", "sind von Vorteil", "(en fordel, men
+  ikke et krav)"); each was written as a test and run against main first, and
+  every one failed there except the four SP4e already covered ("Meriterande:",
+  "Det är meriterande om du har:", "Nice to have:" and "... är meriterande").
+  A German noun is capitalised, so its articles and prepositions joined the
+  words that cannot end a stripped list item, or "4 Jahre Berufserfahrung im
+  Controlling sind von Vorteil" was cut at "Controlling".
+  **What it costs on the kept side:** a lead-in's section runs to the next
+  requirement heading or lead-in, or to the end of the text. A requirement listed
+  after a preference lead-in under a heading the reading does not know is dropped,
+  and a senior job is kept. On SP14's corpus that cost nothing: the lead-in moved
+  exactly the two postings it was written for.
+- **A figure the word for experience introduces is tied to it (SP14).** The
+  cause of "(5-10 years)" going unread while "(3+ years)" was read: SP4e looked
+  for a tie only *after* the figure. "(3+ years)" read through its plus sign
+  alone, which counts as a minimum, and "experience of 5-10 years in X" read only
+  because a range followed by "in" counts too. "Experience: 5 years", "experience
+  of 5 years." and "Berufserfahrung von 5 Jahren" all went unread. Now
+  `_TIE_BEFORE` ties a figure that the noun introduces directly, through "of",
+  "von", "på", a colon or an opening bracket, with at most a hedge between
+  ("approximately", "more than", "über"). **Which way its error falls:** this
+  reads more figures, so a wrong one raises the answer and costs a job, which is
+  why it is direct only. "Erfaring fra en lignende rolle, typisk 6-7 år" is not
+  tied, and stripped lists that put one item's "experience" beside the next
+  item's figure ("related experience 5 years of MEAL experience") never bind,
+  because nothing joins them. Every veto still applies after the tie. One
+  misreading of my own turned up by hand and is fixed: "a unique learning
+  experience of six months" is an event the employer offers, so in English an
+  article before the noun unties it (German keeps it: "eine Berufserfahrung von 3
+  Jahren" is a requirement). **What it costs on the kept side:** nothing; it
+  only reads more. It excludes 7 corpus texts that were kept, each read by hand
+  and each stating its years in so many words.
+- **A colleague's years are not the candidate's (SP14).** SP4e's speaker rule
+  vetoed the employer talking about itself. It now vetoes a third person too, in
+  four languages (`_third_persons`). **The line** is the subject of the verb that
+  holds the figure. Not the candidate: a role named with "your" ("your new team
+  leader, <name>, ... has 20 years", "din nya chef har", "Deine Teamleiterin
+  hat"), a role in a relative clause ("the team lead, who has", "colleagues who
+  have", "en mentor som har", "kolleger, der har", "Kollegen, die 10 Jahre ...
+  haben"), or a third-person pronoun ("she has", "hun har", "er hat"). The
+  candidate: "you", "the ideal candidate has", "candidates who have", "he/she",
+  "s/he", "han/hon", and a role the posting is seeking ("we are looking for a team
+  lead who has", "Vi söker en teamledare som har"). So "you will work with
+  colleagues who have 5 years" is a colleague's, and not read. **What each side
+  costs:** a posting that describes its own hire in the third person through a
+  relative clause, with no seeking verb ("the role suits a manager who has 8
+  years"), is vetoed and the job kept, which is the cheap side. A colleague named
+  only by name ("Anna has 20 years of experience") is not recognised, and that
+  error is the expensive one; a search of the corpus for a capitalised word
+  before "has", "har" or "hat" and a figure found only "Du har". The Nordic and
+  German seeking verbs ("söker", "søger", "suchen") were also added to what addresses
+  the candidate, as "looking for" already was, because the first-person veto was
+  dropping "Vi söker en teamledare som har 5 års erfarenhet" as the employer
+  speaking about itself. On the corpus it reads one more figure and changes no
+  answer.
+- **A typicality word makes a bare figure nothing (SP14).** "Typically",
+  "usually", "typisk", "vanligtvis" neither make a figure a requirement nor turn
+  a tied one into a preference: "candidates will typically have around 3-5 years
+  of professional experience" reads 3, as it did. A bare "typisk 6-7 år eller
+  mere", with no word for experience beside the figure, stays unread. Its error
+  falls on the kept side: the owner sees a senior job and rejects it with
+  `review`. The other reading would fall on the excluded side, where nobody looks,
+  and in the corpus the other typicality figures are a roster's validity, a
+  deployment's length and a salary.
+- **How SP14 was measured (SP4e's method).** Scratch copies of the store and of
+  the HTTP cache as of run 39 (2026-10-20). The corpus is 2,804 texts: 1,841
+  stored descriptions that are not unreadable and 963 that readers supply,
+  replayed from the cached responses through the readers' own functions
+  (jobsinlund 783, through its page parser dated to run 39 so its stale-posting
+  cut matches; monday_com 108, strava 35, pure_earth 20, pwc_sweden 12, kognity 4,
+  coefficient_giving 1). Each text was judged by a copy of main's module and by
+  the branch's, each change was attributed by switching each of the branch's
+  changes off in turn, and every changed verdict was read by hand. 12 texts
+  changed: 7 kept → excluded (the backward tie: impactpool 2, company 11 1,
+  jobsinlund 2 stored and 2 supplied copies of one posting), 4 excluded → kept
+  (company 11 3: the two lead-in roles and one "gerne mere end 4 års"; pwc_sweden
+  1 supplied, "gärna med minst tre års"), and 1 level only (company 10, 20+ to
+  8+: a head of department's years). Every stored row among them is `rejected`.
+  The reading costs about 2.0 ms a posting against main's 1.45 on the same
+  machine.
+- **A better reading reaches no rejected row, again (SP14).** `retrofilter
+  --dry-run` on a scratch copy of the store changed nothing, because the store
+  held no `new` row (222 delisted, 1,888 rejected, 3 seen, 6 shortlisted). Three
+  `rejected` rows would be kept by the new reading, all company 11's and each
+  rejected on years; they are put to the owner in the plan, as SP4e's were.
