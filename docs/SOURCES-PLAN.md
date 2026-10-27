@@ -5623,7 +5623,7 @@ cancelled by a negation in the span. Empty keyword list: still `None`.
 employer's sentence is not quoted). Run on main before the change: **15 failed,
 14 passed** (the 15 are the offers, in four languages, plus Layer 5 confirming a
 Swedish and an English one; the 14 are the stay-rejected cases, the plain word
-"hybrid" and the unconfigured gate). After: 31 pass. The rejected cases include a
+"hybrid" and the unconfigured gate). After: 33 pass (two Layer 1 tests added in a follow-up; the two run-together cases were added after the pre-change run and never ran on main). Suite: 1,570. The rejected cases include a
 description that only names the city, ones that rule remote work out (with the
 extent words in the same sentence), a run-on description with a negation, and
 the two words in different sentences.
@@ -5647,7 +5647,11 @@ verdicts change, all read by hand and all genuine offers:** sida 21, impactpool
 posting offering to partly work from home; rejected for another reason, not on
 the hybrid gate). The other 1,818 do not change. **dsv's 11, pwc_sweden's 3 and
 bearingpoint_sweden's 1 hybrid rejections do not change.** Sida is 21, not
-the 20 SP12 counted: one more row has been stored since.
+the 20 SP12 counted: one more row has been stored since. Likewise dsv's hybrid
+rejections are 11 in the store now, not SP12's 9 (rows stored since; none of the
+11 changes), and 6 of the 22 are still listed now, where SP12 counted 9 of
+sida's on run 37 (postings have closed since; listed here means `misses` 0 in
+the store, not a fresh read of the board).
 
 **Stored rows** (step 5; nothing written, no revival run). Of the store's
 `non_hybrid_conditional_location` rows, the new pattern would keep **22: sida 21
@@ -5664,7 +5668,13 @@ with SQLite's backup API at
 transaction, status `new`, the description kept (no re-fetch), `experience_level`
 set to the reading (`unspecified` for all six) and `hybrid_confirmed` 1, so the
 next run does not treat them as pending. Store: rejected 1,885 to 1,879, new 3
-to 9, nothing else moved. Not yet seen in a run.
+to 9, nothing else moved. Not yet seen in a run, but checked
+offline on a copy of the live store afterwards: the re-filter pass rejects
+nothing and leaves all 9 `new` rows `new`, and a pipeline test
+(`test_a_revived_hybrid_row_is_neither_refetched_nor_rejected_again`) pins that
+a stored `new` row with `hybrid_confirmed` 1 and its description is neither
+re-fetched nor rejected by the next run (it fails with `hybrid_confirmed` 0).
+Layer 1 is covered too: two tests run the new wording through `matches_rules`.
 
 ### Your to-dos (SP15)
 

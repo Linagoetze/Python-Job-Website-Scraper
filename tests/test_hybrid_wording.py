@@ -15,6 +15,7 @@ from job_scraper.filtering import (
     _HYBRID_CONFIRMED_REASON,
     _HYBRID_PENDING_REASON,
     build_hybrid_pattern,
+    matches_rules,
 )
 from tests.pages import posting
 
@@ -116,3 +117,34 @@ def test_layer5_still_rejects_without_an_offer(text: str) -> None:
         [_pending_job()], lambda _url: posting(f"<p>{text}</p>"), hybrid_pattern=PATTERN
     )
     assert not kept and len(excluded) == 1
+
+
+_COND = {
+    "locations": ["Malmö"],
+    "conditional_locations": ["Stockholm"],
+    "conditional_location_keywords": ["hybrid"],
+    "remote_keywords": [],
+}
+
+
+def test_layer1_confirms_a_conditional_city_on_the_new_wording() -> None:
+    """The other caller of the pattern: `matches_rules` reads the Layer 1 text."""
+    job = {
+        "title": "Analyst",
+        "location": "Stockholm",
+        "raw_snippet": "Vi erbjuder möjlighet till distansarbete i viss utsträckning.",
+        "department": "",
+    }
+    ok, reasons = matches_rules(job, _COND, build_hybrid_pattern(_COND))
+    assert ok and reasons == [_HYBRID_CONFIRMED_REASON]
+
+
+def test_layer1_defers_a_conditional_city_without_it() -> None:
+    job = {
+        "title": "Analyst",
+        "location": "Stockholm",
+        "raw_snippet": "Remote work is not possible in this role.",
+        "department": "",
+    }
+    ok, reasons = matches_rules(job, _COND, build_hybrid_pattern(_COND))
+    assert ok and reasons == [_HYBRID_PENDING_REASON]
