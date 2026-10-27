@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6 and SP8–SP12 are done** (as of 2026-10-11; SP11 ended at its stop-and-ask, with no reader); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12 and SP13 are done** (as of 2026-10-11; SP11 ended at its stop-and-ask, with no reader); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -166,7 +166,7 @@ company added. SP12 is independent of everything but the store, and the best
 time for it is after SP7, whose warnings may already name some of what it
 finds, and before the next large SP5 batch, so that new sources are judged
 against a list that has been cleaned.
-**SP13 first, and before any further Workable employer is added** (found by
+**SP13 first (done 2026-10-27), and before any further Workable employer is added** (found by
 SP7, 2026-10-08): the reader returns at most ten postings, so a Workable board
 of eleven or more is read short and silently, and simprints sits at the cap
 today. It is independent of everything but SP4's fixtures and SP4d's reader,
@@ -4202,7 +4202,8 @@ a prompt does not have to repeat them.
 - **A fixture that states its own total must parse to it.** SP7 found a golden
   pinning 10 postings from a saved response that said `total: 11` beside a
   `nextPage` token: the test was green on a short read for three weeks, and the
-  store showed it as a constant row count for 26 runs (SP13). When capturing,
+  store showed it as a constant row count for 26 runs (SP13, which fixed the
+  reader and re-pinned the golden at 11). When capturing,
   read the saved response for a stated total, a token, a pager or "N of M", and
   compare it with what the golden pins before trusting either. SP7's one-page
   block will now name a reader that reads one page, but only after five runs;
@@ -5262,11 +5263,70 @@ SP3b's prompt: this is SP3b's walk on a smaller API, with the same stop rule.
 Branch sp13-workable-walk. Commit, do not push. Update this plan file.
 ```
 
+### Result — done 2026-10-27, branch `sp13-workable-walk`
+
+Committed, not pushed. Tests 1536, `ruff check` and `ruff format --check`
+clean, `run --help` works.
+
+**Step 1.** `test_workable_reads_the_eleventh_posting_from_the_second_page`
+(`tests/test_pagination.py`): the real first page (`total: 11`, 10 results, a
+token) plus a hand-written second page. It failed with `10 == 11` against the
+old reader and is kept. The existing nutrition_international golden pinned the
+short read of 10 and **changed to 11** (the commit says so).
+
+**Step 2.** The walk is in `extractors/workable.py`: POST again with
+`{**body, "token": nextPage}` through the same fetcher's `post_json` until a page
+has no results or no token, then `pagination.reconcile` against the first
+response's `total`. Each rule has a test that fails without it (checked by
+removing each guard in turn): short walk raises; a repeated token raises; a
+walk past the cap raises (100 requests, 990 postings: ninety times the larger
+of the two boards, past any employer here); a page served twice does not count
+twice; a later `total` cannot replace the first; a full page with a token and
+an empty next page, at the count, is the end, not a failure. **No `total` key:**
+read until empty and `unverifiable_end` logs it, which is what `pagination.py`
+already says; raising would fail a source for a field the API may omit.
+Detail URLs and keys are unchanged (same slug-and-shortcode construction, the
+golden's first job is identical, and a test pins them across pages).
+
+**Where the prompt's premise was out of date.** simprints is no longer a board
+of ten with a token: it held 4 postings and no token when I re-captured it, and
+its saved fixture (9, `total: 9`, no token) predates that. A re-capture would
+have replaced a real fixture the golden pins with a smaller one, so I **restored
+the original** and made no change to `simprints.json`. The end-at-the-count case
+is tested from the real saved simprints page with a token added in the test, and
+an empty second page. `capture_fixtures.py --pages all` was run once on
+simprints, one live POST, nothing kept.
+
+**Step 3.** `tests/fixtures/nutrition_international.second_page.json` is
+invented (one posting, `0000INVENT1`), listed in `tests/fixture_cases.py`
+`INVENTED_PAGES` and described in a new `tests/fixtures/README.md`. Its name is
+not one `_page_of` owns. A few kilobytes. If you know a real Workable board past
+ten, a real two-page capture is still worth more.
+
+**Step 4.** Workable is `guarded=True` in the probe and its `walk` text is
+rewritten; a test shows a short Workable read is "a bug in workable.py", not
+"needs a new extractor". The strategy suggestion is untouched (OP1).
+
+**Step 5, measured** (one request each through the reader, nothing saved):
+nutrition_international 3 before, 3 after; simprints 4 before, 4 after (not the
+expected 10: the board shrank). Replayed against a copy of the store: neither
+source is flagged by the one-page rule today; nutrition_international would
+have been from its 7th successful run (22 firing windows) until it fell to 6
+and 3. `source_health` will show a different count for any Workable board that
+was capped. Stored jobs whose key changes: none (nutrition_international has no
+stored job; the 4 simprints jobs are keyed on the same shortcode URLs). I did
+not re-request simprints to compare live shortcodes with those 4 keys; that rests
+on the unchanged construction and the golden. The past is not repaired.
+
+**Docs.** README test count; no "Adding a source" text described the limit.
+DECISIONS has one entry. The shared fixture rule that cited SP13 now says it
+landed.
+
 ### Your to-dos (SP13)
 
-- [ ] Say whether you know a real Workable board with more than ten postings; a
+- [ ] (Still open.) Say whether you know a real Workable board with more than ten postings; a
       real two-page capture is worth more than a hand-written second page.
-- [ ] Until this lands, do not add a Workable employer without first comparing
+- [x] (Landed 2026-10-27; the reader walks and checks `total`.) Until this lands, do not add a Workable employer without first comparing
       the board's `total` with the postings the reader returns (one request).
 
 ### SP14 — Layer 5 reads a preference list and a parenthetical range
