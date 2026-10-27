@@ -102,7 +102,7 @@ class StubFetcher:
         final, hops = self.redirects.get(url, (url, ()))
         return FetchedPage(url=url, final_url=final, redirects=hops, text=self._serve(final))
 
-    def text(self, url: str) -> str:
+    def text(self, url: str, **kwargs: Any) -> str:
         self.log.append(f"FETCH text {url}")
         return self._serve(url)
 
@@ -545,7 +545,7 @@ class TestFingerprint:
     def test_nothing_recognised_says_so(self, curated_dir: Path, tmp_path: Path) -> None:
         fetcher = StubFetcher([], static={LITWARE: probe_fixture("bespoke.html")})
         _, report = run_probe(LITWARE, fetcher, curated_dir, tmp_path)
-        assert "none of the ten supported platforms" in report
+        assert "none of the 11 supported platforms" in report
         assert "nothing to run: no board was found" in report
 
     def test_teamtailor_and_successfactors_are_the_page_itself(self) -> None:
@@ -609,6 +609,11 @@ class TestFingerprint:
                 "https://contoso.wd3.myworkdayjobs.com/Careers",
             ),
             ('<a href="https://contoso.breezy.hr/p/abc">', "breezy", "https://contoso.breezy.hr"),
+            (
+                '<a href="https://contoso.careers.hibob.com/jobs/abc">',
+                "hibob",
+                "https://contoso.careers.hibob.com/jobs",
+            ),
         ],
     )
     def test_each_hosted_platform_names_its_board(self, snippet: str, key: str, board: str) -> None:
@@ -619,7 +624,7 @@ class TestFingerprint:
         assert key in seen
         assert [(b.platform.key, b.url) for b in boards] == [(key, board)]
 
-    def test_all_ten_supported_platforms_are_known(self) -> None:
+    def test_all_eleven_supported_platforms_are_known(self) -> None:
         assert {p.label for p in probe.PLATFORMS} == {
             "Greenhouse",
             "Lever",
@@ -630,6 +635,7 @@ class TestFingerprint:
             "SmartRecruiters",
             "Workday",
             "Breezy",
+            "HiBob",
             "SuccessFactors",
         }
 
@@ -760,6 +766,45 @@ class TestReaders:
         assert result.kind == probe.REUSE
         assert "detail_url: https://apply.workable.com/contoso/j/ABC123/" in report
         assert "walks the API by its next-page token" in report
+
+    def test_hibob_is_reused_from_a_shell_page_through_its_api(
+        self, curated_dir: Path, tmp_path: Path
+    ) -> None:
+        # The board page is a client-rendered shell, so the platform is read
+        # off the host and the reader asks the API with the company header
+        # (SP16). The invented payload stands in for a capture.
+        board = "https://contoso.careers.hibob.com/jobs"
+        api = "https://contoso.careers.hibob.com/api/job-ad"
+        shell = probe_fixture("shell.html")
+        body = json.dumps(
+            {
+                "jobAdDetails": [
+                    {
+                        "id": "abc-123",
+                        "title": "Analyst",
+                        "department": "Research",
+                        "site": "Head Office",
+                        "country": "Contoso",
+                        "workspaceTypeId": "hybrid",
+                        "description": "<p>Do research.</p>",
+                    }
+                ]
+            }
+        )
+        seen: list[dict[str, str]] = []
+
+        class HibobFetcher(StubFetcher):
+            def text(self, url: str, **kwargs: Any) -> str:
+                seen.append(kwargs.get("headers") or {})
+                return super().text(url, **kwargs)
+
+        fetcher = HibobFetcher([], static={board: shell, api: body}, rendered={board: shell})
+        result, report = run_probe(board, fetcher, curated_dir, tmp_path)
+
+        assert result.kind == probe.REUSE
+        assert "hibob on https://contoso.careers.hibob.com/jobs (static)" in report
+        assert "reuse hibob" in result.line
+        assert {"companyIdentifier": "contoso"} in seen
 
     def test_lever_and_smartrecruiters_lines_carry_the_org_slug(self) -> None:
         for url, key in (
@@ -1499,7 +1544,7 @@ class RefusingFetcher(StubFetcher):
         super().__init__(log, **kwargs)
         self.refuse = refuse
 
-    def text(self, url: str) -> str:
+    def text(self, url: str, **kwargs: Any) -> str:
         if url in self.refuse:
             self.log.append(f"FETCH text {url} (refused)")
             raise _http_refusal(url)
@@ -1671,7 +1716,7 @@ class TestRefusalCarriesItsUrl:
         self, curated_dir: Path, tmp_path: Path
     ) -> None:
         class Reworded(StubFetcher):
-            def text(self, url: str) -> str:
+            def text(self, url: str, **kwargs: Any) -> str:
                 if url == GIVEWELL_API:
                     raise RobotsDisallowed("the site said no", url=url)
                 return super().text(url)
@@ -1683,7 +1728,7 @@ class TestRefusalCarriesItsUrl:
 
     def test_a_refusal_without_a_url_says_so(self, curated_dir: Path, tmp_path: Path) -> None:
         class Unnamed(StubFetcher):
-            def text(self, url: str) -> str:
+            def text(self, url: str, **kwargs: Any) -> str:
                 raise RobotsDisallowed("robots.txt forbids something")
 
         page = probe_fixture("greenhouse_embed.html")

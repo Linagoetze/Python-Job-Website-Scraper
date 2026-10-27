@@ -67,10 +67,17 @@ def extract(
 
     out: list[dict[str, Any]] = []
     for job in postings:
+        if job.get("isListed") is False:
+            continue
         title = (job.get("title") or "").strip()
         job_id = (job.get("id") or "").strip()
-        if not title or not job_id or job.get("isListed") is False:
-            continue
+        if not title or not job_id:
+            # Skipping would turn an API whose shape changed into a shorter
+            # list that reads as fewer vacancies.
+            raise ValueError(
+                f"{source_name}: a listed posting of the Ashby posting API has no id or no "
+                f"title ({str(job)[:80]!r})"
+            )
         dept = (job.get("department") or job.get("team") or "").strip()
         location = _location(job)
         url = f"https://jobs.ashbyhq.com/{slug}/{job_id}"

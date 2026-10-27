@@ -2165,3 +2165,26 @@ session — see `CLAUDE.md`.
   and a platform's own workplace field (SP4e's readers already carry that).
   The re-filter pass still never settles a deferred hybrid state (SP4g), so
   stored `rejected` rows are untouched; reviving them is the owner's call.
+- **HiBob career sites are read from the platform's job-ad API, with the company header ([SP16](SOURCES-PLAN.md#sp16--a-generic-reader-for-hibob-career-sites), 2026-10-27).**
+  The board page is a client-rendered shell; its list is `GET /api/job-ad` on
+  the board's host, which answers 401 without a `companyIdentifier` header and
+  200 with it. The header is the subdomain, copied by the page's own script: a
+  name, not a token, so the route is public and needs no render. The response
+  carries every posting with full HTML text and states no total, so nothing is
+  reconciled; the reader fails on a body of the wrong shape and reads an empty
+  list as an empty board. **Location is the country, and the site label goes
+  into `raw_snippet`**, because a site is the employer's own name for a shop or
+  an office, not always a place, and a country alone is a non-place that sends
+  Layer 5 to the text. **Known cost:** an employer whose every posting repeats a
+  boilerplate paragraph naming its head office will pass Layer 5's location
+  check for any posting, including one at a store elsewhere; seen on the first
+  board (one false pass of three). Putting the site in the location would
+  reject such a posting at Layer 0, but would also turn a head-office posting
+  into an unlisted place and lose it, which is the worse error (priority 1), so
+  it was not done. `http.fetch_text` gained `headers=` for this; the probe's
+  platform count is now taken from `PLATFORMS`.
+- **A posting with no title or id fails the source, in the HiBob, Ashby and Workable readers ([SP16](SOURCES-PLAN.md#sp16--a-generic-reader-for-hibob-career-sites), 2026-10-27).**
+  They skipped it quietly, so an API that changed shape read as a shorter
+  list, which priority 2 rules out and jobylon.py already refused. Ashby raises
+  only for a listed posting; Workable only for a missing title (a posting with
+  no id is still kept, under the listing URL, as before).

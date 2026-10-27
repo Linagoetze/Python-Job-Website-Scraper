@@ -51,6 +51,7 @@ from job_scraper.extractors import (
     ashby,
     breezy,
     greenhouse,
+    hibob,
     lever,
     personio,
     smartrecruiters,
@@ -107,7 +108,7 @@ class ProbeFetcher(Protocol):
 
     def page(self, url: str) -> FetchedPage: ...
 
-    def text(self, url: str) -> str: ...
+    def text(self, url: str, **kwargs: Any) -> str: ...
 
     def rendered(self, url: str, **kwargs: Any) -> str: ...
 
@@ -129,10 +130,10 @@ class LiveFetcher:
 
         return http.fetch_page(url)
 
-    def text(self, url: str) -> str:
+    def text(self, url: str, **kwargs: Any) -> str:
         from job_scraper import http
 
-        return http.fetch_text(url)
+        return http.fetch_text(url, **kwargs)
 
     def rendered(self, url: str, **kwargs: Any) -> str:
         from job_scraper import http
@@ -339,6 +340,19 @@ PLATFORMS: tuple[Platform, ...] = (
         strategy="static",
         walk="reads the whole board from Breezy's JSON feed",
         not_slugs=frozenset({"www", "app", "assets", "attachments", "api", "marketing"}),
+    ),
+    Platform(
+        key="hibob",
+        label="HiBob",
+        markers=(_p(r"\.careers\.hibob\.com"),),
+        boards=(_p(r"(?P<slug>[a-z0-9][a-z0-9-]*)\.careers\.hibob\.com"),),
+        board_url=lambda m: f"https://{m.group('slug')}.careers.hibob.com/jobs",
+        strategy="static",
+        walk=(
+            "reads the whole board from HiBob's public job-ad API in one response, "
+            "which states no total to check it against"
+        ),
+        not_slugs=frozenset({"www", "stage", "sandbox", "dev"}),
     ),
     Platform(
         key="successfactors_html",
@@ -776,7 +790,7 @@ def _rendering(fetcher: ProbeFetcher) -> Fetch:
 
 def _static(fetcher: ProbeFetcher) -> Fetch:
     def fetch(url: str, *args: Any, **kwargs: Any) -> str:
-        return fetcher.text(url)
+        return fetcher.text(url, **kwargs)
 
     fetch.post_json = fetcher.post_json  # type: ignore[attr-defined]
     return fetch
@@ -810,6 +824,7 @@ def _source_call(board: Board, name: str, page_step: int | None) -> tuple[Callab
         "personio": personio,
         "workday": workday,
         "breezy": breezy,
+        "hibob": hibob,
     }
     return (
         partial(modules[key].extract, source_name=name),
@@ -1212,7 +1227,7 @@ def _step_fingerprint(state: _Probe) -> ProbeResult | None:
     emit = state.emit
     seen, boards = fingerprint(state.url, state.page, state.scans)
     if not seen:
-        emit("   none of the ten supported platforms")
+        emit(f"   none of the {len(PLATFORMS)} supported platforms")
     for platform in PLATFORMS:
         if platform.key in seen:
             emit(f"   {platform.label}: seen in {', '.join(seen[platform.key])}")

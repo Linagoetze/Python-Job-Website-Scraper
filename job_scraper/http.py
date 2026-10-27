@@ -244,7 +244,9 @@ def _record_cache_outcome(url: str, response: requests.Response) -> None:
             _CACHE_STATS.hits += 1
 
 
-def _fetch_text_curl(url: str, *, timeout: int, user_agent: str) -> str:
+def _fetch_text_curl(
+    url: str, *, timeout: int, user_agent: str, headers: dict[str, str] | None = None
+) -> str:
     """Fallback when the Python SSL stack cannot negotiate with the host (e.g. old LibreSSL).
 
     Deliberately uncached: it is the rare escape hatch, not a path worth teaching
@@ -258,6 +260,7 @@ def _fetch_text_curl(url: str, *, timeout: int, user_agent: str) -> str:
             user_agent,
             "--max-time",
             str(timeout),
+            *[arg for name, value in (headers or {}).items() for arg in ("-H", f"{name}: {value}")],
             url,
         ],
         capture_output=True,
@@ -538,8 +541,18 @@ class FetchedPage:
     redirects_known: bool = True
 
 
-def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None) -> str:
+def fetch_text(
+    url: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    user_agent: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> str:
     """GET *url* and return response text. Raises on HTTP errors.
+
+    *headers* are sent beside the User-Agent, for the JSON endpoints that name
+    their tenant in one (HiBob's `companyIdentifier`, SP16). They are part of
+    the request, not of the cache key, so they must be a function of the URL.
 
     Transient 5xx responses are retried (some hosts, e.g. impactpool.org,
     intermittently 500 on pages that succeed moments later).
@@ -554,11 +567,15 @@ def fetch_text(url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | No
     response the cache answered refunds that turn: it cost the site nothing, so
     it must not delay the next request that does reach them.
     """
-    return fetch_page(url, timeout=timeout, user_agent=user_agent).text
+    return fetch_page(url, timeout=timeout, user_agent=user_agent, headers=headers).text
 
 
 def fetch_page(
-    url: str, *, timeout: int = DEFAULT_TIMEOUT, user_agent: str | None = None
+    url: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    user_agent: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> FetchedPage:
     """`fetch_text`, keeping where the request ended up.
 
@@ -569,14 +586,16 @@ def fetch_page(
     says anything at all.
     """
     agent = user_agent or current_user_agent()
-    headers = {"User-Agent": agent}
+    request_headers = {"User-Agent": agent, **(headers or {})}
     _check_robots(url)
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
         with _SESSION_LOCK:
             session = _SESSION
         try:
             with _slot_for(url) as slot:
-                r = session.get(url, headers=headers, timeout=timeout, verify=certifi.where())
+                r = session.get(
+                    url, headers=request_headers, timeout=timeout, verify=certifi.where()
+                )
                 if slot is not None and _refunds_its_turn(r):
                     slot.refund()
             r.raise_for_status()
@@ -591,7 +610,7 @@ def fetch_page(
             )
         except (SSLError, requests.exceptions.Timeout):
             with _slot_for(url):
-                text = _fetch_text_curl(url, timeout=timeout, user_agent=agent)
+                text = _fetch_text_curl(url, timeout=timeout, user_agent=agent, headers=headers)
             return FetchedPage(
                 url=url, final_url=url, redirects=(), text=text, redirects_known=False
             )
