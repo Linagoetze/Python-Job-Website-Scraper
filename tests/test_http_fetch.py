@@ -31,6 +31,8 @@ class _Server:
 
     port: int = 0
     requests: list[tuple[str, str | None]] = field(default_factory=list)
+    # The caller-supplied header each request carried, by lower-cased name.
+    sent: list[str | None] = field(default_factory=list)
     body: str = "<html><body>one</body></html>"
     etag: str = '"v1"'
     status: int = 200  # flipped to 500 to exercise stale_if_error
@@ -50,6 +52,7 @@ def server() -> Iterator[_Server]:
         def do_GET(self) -> None:  # noqa: N802 - stdlib's spelling
             inm = self.headers.get("If-None-Match")
             state.requests.append((self.path, inm))
+            state.sent.append(self.headers.get("companyIdentifier"))
 
             if state.status >= 500:
                 self.send_response(state.status)
@@ -111,6 +114,21 @@ def test_second_fetch_inside_the_ttl_costs_no_request(server, tmp_path):
 # requests-cache reads expire_after=0 as "do not cache", so a test that wants a
 # stored-but-stale entry has to store one and then outlive its TTL.
 _BRIEF_TTL = 1
+
+
+def test_headers_are_sent_with_the_request_and_the_cache_still_answers(server, tmp_path):
+    """SP16: a JSON endpoint that names its tenant in a header (HiBob's
+    companyIdentifier) is fetched with it, and the cached copy serves the
+    second call without a request."""
+    with http_mod.http_cache(tmp_path / "cache.sqlite", ttl=3600):
+        http_mod.fetch_text(server.url, headers={"companyIdentifier": "contoso"})
+        http_mod.fetch_text(server.url, headers={"companyIdentifier": "contoso"})
+    assert server.sent == ["contoso"]
+
+
+def test_a_fetch_without_headers_sends_none_of_them(server):
+    http_mod.fetch_text(server.url)
+    assert server.sent == [None]
 
 
 def test_expired_entry_is_revalidated_with_the_stored_etag(server, tmp_path):

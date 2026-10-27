@@ -116,7 +116,7 @@ the ordering below.
 | 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | done: the reader walks the whole board; Workable guarded in the probe | `sp13-workable-walk` |
 | 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | done: lead-ins, the tie before a figure and a colleague's years read; typicality left unread; 3 rejected rows put to you | `sp14-years-lead-ins` |
 | 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | done: the gate counts remote work "to some extent" as hybrid; 6 listed rows revived at your word, 16 left rejected | `sp15-sida-hybrid-wording` |
-| 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | done: a generic reader on the platform's public job-ad API; source held out, 1 of 3 postings passes and it is a false pass | `sp16-hibob-reader` |
+| 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | done: a generic reader on the platform's public job-ad API; source added and candidate activated, 1 of 3 postings passes and it is a false pass | `sp16-hibob-reader` |
 | 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | not started | `sp17-dsv-facets` |
 
 **Renumbered on 2026-10-26** (owner's decision, see `docs/DECISIONS.md`). The
@@ -5751,11 +5751,10 @@ supplies `description_text` and Layer 5 fetches nothing ("Unreadable pages"
 stayed empty).
 
 **Change.** `extractors/hibob.py` (registry argument: none; the company is the
-URL's first label, with an optional `company=` for a board on the employer's own
-domain), a `Platform` entry in `probe.py` (probing a HiBob board now says
+URL's first label, so a board on an employer's own domain is not supported), a `Platform` entry in `probe.py` (probing a HiBob board now says
 `reuse hibob`; the probe's "none of the N supported platforms" line now counts
 instead of saying "ten"), and `headers=` on `http.fetch_text`/`fetch_page`
-(and the curl fallback) and through the probe's `text`, because no fetcher could
+(and the curl fallback, pinned by a localhost-server test in `test_http_fetch.py`) and through the probe's `text`, because no fetcher could
 send a header on a GET before. Location is the country; the site label and the
 workplace word go into `raw_snippet`; the labelled sections (description,
 responsibilities, requirements, benefits) are joined as `description_text`.
@@ -5765,7 +5764,7 @@ script's recording path, since the source is not in `sources.yaml`), golden for
 three postings with the first checked field by field, and tests for the header,
 the company override, each failure the reader raises on (written to fail
 against a reader that returns `[]`), the workplace words, a site label never
-becoming the location, section joining and the detail URL. Tests: 1570 -> 1588.
+becoming the location, section joining and the detail URL. Tests: 1570 -> 1590. The live probe says `reuse hibob`.
 
 **Scratch run** (scratch store, one-entry sources file): 3 postings, 0 off
 criteria at Layer 0, **1 reaches the sheet**: one rejected for "3-6 years" (read
@@ -5777,14 +5776,22 @@ the employer's standard boilerplate in the posting names its Danish head office,
 which is a listed place. No filter was changed. No aggregator carries this
 employer (no stored row by company).
 
-**Open.** Not added to `sources.yaml`; the entry and registry line are the
-owner's call (see the to-dos). `candidate activate` waits for that.
+**SP5's checks.** Scratch run repeated with the cache on (a hit, same result
+as the uncached run; a second run keeps 0, as it should). Layer 0 excluded
+nothing (`drops --layer 0-rules`: no exclusions). Descriptions read against the
+level: the "3-6 years" posting is `senior (3+yr)`, the other two state no years
+and read `unspecified` / `unresolvable_location`. No hybrid or remote flag to
+join: all three are `on_site`, none `hybrid_confirmed`. No single-country remote
+roles.
+
+**Done at the end.** The owner added the `sources.yaml` entry and
+`candidate activate` removed the candidate (2026-10-27).
 
 ### Your to-dos (SP16)
 
 - [x] Say whether the HiBob board (four postings) is worth SP16 at all. (Built at your word; the board itself yields no genuine posting today.)
 - [x] SP16 stops for an owner decision if the list comes from a private route. (It is a public route; asked anyway.)
-- [ ] Decide whether to add the board as a source (SP12's question: 0 genuine postings of 3 today, one false pass), then `sources candidate activate`.
+- [x] Decide whether to add the board as a source (SP12's question: 0 genuine postings of 3 today, one false pass), then `sources candidate activate`. (Added and activated at your word.)
 
 ### SP17 — Narrow dsv to its one country
 

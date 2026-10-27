@@ -1765,17 +1765,6 @@ def test_hibob_sends_the_subdomain_as_the_company_identifier() -> None:
     ]
 
 
-def test_hibob_company_can_be_named_for_a_board_on_its_own_domain() -> None:
-    seen: list[dict[str, str]] = []
-
-    def fetch(url: str, *a: Any, **k: Any) -> str:
-        seen.append(k.get("headers") or {})
-        return '{"jobAdDetails": []}'
-
-    hibob.extract("https://careers.contoso.example/jobs", fetch, "contoso", company="contoso")
-    assert seen == [{"companyIdentifier": "contoso"}]
-
-
 def test_hibob_refuses_a_board_with_no_company_to_name() -> None:
     with pytest.raises(ValueError, match="no HiBob company"):
         hibob.extract("https://careers.contoso.example/jobs", lambda url, *a, **k: "", "contoso")
@@ -1837,3 +1826,32 @@ def test_hibob_detail_urls_are_the_boards_posting_route() -> None:
     [job] = _hibob({"id": "abc-123"})
     assert job["detail_url"] == "https://contoso.careers.hibob.com/jobs/abc-123"
     assert job["apply_url"] == job["detail_url"]
+
+
+def test_hibob_every_posting_of_the_saved_board_reads_as_the_response_says() -> None:
+    """All three rows, checked against the saved response by hand (SP16): the
+    golden pins the first in full, this pins the other two's fields and the
+    size of every description."""
+    rows = parse_fixture("pas_normal_studios")
+    assert [
+        (r["title"], r["location"], r["department"], len(r["description_text"])) for r in rows
+    ] == [
+        ("Unsolicited Applications", "Denmark", "People & Culture", 768),
+        (
+            "Retail Supervisor (Part-time) San Francisco",
+            "United States",
+            "San Francisco Store",
+            4525,
+        ),
+        ("Strategy & Operations Manager", "Denmark", "Strategy & Operations", 4140),
+    ]
+    assert [r["raw_snippet"] for r in rows[1:]] == [
+        "Retail Supervisor (Part-time) San Francisco San Francisco Store "
+        "San Francisco Flagship Store United States",
+        "Strategy & Operations Manager Strategy & Operations Pas Normal Studios HQ Denmark",
+    ]
+    assert [r["detail_url"].rsplit("/", 1)[1] for r in rows] == [
+        "f6990e90-0294-49fa-97d5-6e49b564b751",
+        "030568fe-98c3-4629-a539-ef1b27bf5ac3",
+        "b8c0d6ed-f216-4247-9b9f-12af98f64037",
+    ]

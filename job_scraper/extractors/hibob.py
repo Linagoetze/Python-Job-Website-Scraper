@@ -56,15 +56,13 @@ def extract(
     listing_url: str,
     fetch_text: Callable[..., str],
     source_name: str,
-    company: str | None = None,
 ) -> list[dict[str, Any]]:
-    """*company* overrides the subdomain for a board served from the employer's own domain."""
     parts = urlsplit(listing_url)
-    identifier = company or company_identifier(listing_url)
+    identifier = company_identifier(listing_url)
     if not parts.scheme or not parts.netloc or not identifier:
         raise ValueError(
             f"{source_name}: no HiBob company in {listing_url}; expected "
-            "https://{company}.careers.hibob.com/jobs or an explicit company="
+            "https://{company}.careers.hibob.com/jobs"
         )
     origin = f"{parts.scheme}://{parts.netloc}"
     api_url = f"{origin}/api/job-ad"
