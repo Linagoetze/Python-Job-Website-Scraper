@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12, SP13, SP15 and SP17 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12, SP13, SP15, SP16 and SP17 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
