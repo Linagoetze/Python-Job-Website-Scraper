@@ -17,6 +17,17 @@ instead of through its own fetcher. A fetcher that cannot POST is refused
 rather than bypassed, so no caller reaches the network by a route it did not
 choose.
 
+The board is walked (SP13). A response holds at most ten postings and, when
+there may be more, a `nextPage` token; the next POST is the same body with that
+token as `"token"`. `total` is the whole board's count, and the walk is
+reconciled against it (see `pagination.py`), so a board of eleven or more reads
+whole or fails the source. Two facts decide where the walk ends, both seen in
+the saved responses: a *full* page carries a token even when it is the last
+(simprints: ten postings, `total: 10`, a token, then an empty page), so a token
+alone does not mean "more"; and the end is therefore an empty page, or a
+response with no token, with the count reached. Before SP13 the reader sent one
+POST and nutrition_international's board of eleven was read as ten.
+
 The listing also says how and where each job is worked, which its description
 often does not (SP4f). `workplace` (remote, hybrid or on_site) goes into
 `raw_snippet`, the text Layer 0's remote keywords and hybrid gate already read.
@@ -31,11 +42,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from job_scraper.extractors import pagination
+
 _API_HEADERS = {
     "Content-Type": "application/json",
     "Accept": "application/json",
 }
 _EMPTY_BODY = {"query": "", "location": [], "department": [], "worktype": [], "remote": []}
+
+# A runaway guard, not an expected bound. A response holds ten postings, so a
+# hundred requests read a board of up to 990: ninety times the larger of the two
+# boards read here (eleven postings) and past any Workable employer a personal
+# job search reads. A walk that reaches it with a token still coming raises.
+_MAX_PAGES = 100
 
 # The workplace values that say something Layer 0 can read, in the words its
 # remote keywords and hybrid gate look for. on_site adds nothing to a location.
@@ -57,10 +76,52 @@ def extract(
     slug = listing_url.rstrip("/").split("/")[-1]
     api_url = f"https://apply.workable.com/api/v3/accounts/{slug}/jobs"
 
-    data = post_json(api_url, _EMPTY_BODY, headers=_API_HEADERS)
+    results: list[dict[str, Any]] = []
+    seen_posts: set[str] = set()
+    seen_tokens: set[str] = set()
+    total: int | None = None
+    body = dict(_EMPTY_BODY)
+
+    for page in range(_MAX_PAGES):
+        data = post_json(api_url, body, headers=_API_HEADERS)
+        data = data if isinstance(data, dict) else {}
+        # The first response's count only, as workday.py does: it is the number
+        # the walk is held to, and a later page must not be able to replace it.
+        if page == 0:
+            total = _declared_total(data)
+        for job in data.get("results") or []:
+            # A page served twice would otherwise count toward `total` and let a
+            # short walk pass; a posting with no shortcode or id cannot be told
+            # apart, so it is kept.
+            key = str(job.get("shortcode") or job.get("id") or "")
+            if key and key in seen_posts:
+                continue
+            seen_posts.add(key)
+            results.append(job)
+        token = data.get("nextPage")
+        if not data.get("results") or not token:
+            break
+        token = str(token)
+        if token in seen_tokens:
+            raise pagination.ShortWalkError(
+                f"{source_name}: {api_url} sent the same nextPage token twice, so the "
+                f"walk is going round in a circle at {len(results)} posting(s). "
+                "Refusing a list that may be short."
+            )
+        seen_tokens.add(token)
+        body = {**_EMPTY_BODY, "token": token}
+    else:
+        raise pagination.ShortWalkError(
+            f"{source_name}: stopped at the {_MAX_PAGES}-page limit holding {len(results)} "
+            "posting(s) with more still coming. Refusing a list that may be short."
+        )
+
+    # However the loop ended, `total` is the board's count: either every
+    # posting is here or the source fails. More is fine (a posting added mid-walk).
+    pagination.reconcile(source_name, listing_url, collected=len(results), total=total)
 
     out: list[dict[str, Any]] = []
-    for job in data.get("results") or []:
+    for job in results:
         title = (job.get("title") or "").strip()
         if not title:
             continue
@@ -90,6 +151,14 @@ def extract(
             }
         )
     return out
+
+
+def _declared_total(data: dict[str, Any]) -> int | None:
+    """The board's `total`, or None if the response does not carry a number."""
+    total = data.get("total")
+    if isinstance(total, int) and not isinstance(total, bool):
+        return total
+    return None
 
 
 def _place(loc: dict[str, Any]) -> str:

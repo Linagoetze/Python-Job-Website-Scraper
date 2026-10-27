@@ -377,6 +377,15 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
 EMPTY_FIXTURES: frozenset[str] = frozenset()
 
 
+# Hand-written pages a captured walk cannot supply (no live board here is long
+# enough to need a second page), appended after the captured ones. Named so that
+# capture_fixtures._page_of does not own them and a re-capture never deletes
+# them; tests/fixtures/README.md says which pages are invented.
+INVENTED_PAGES: dict[str, tuple[str, ...]] = {
+    "nutrition_international": ("nutrition_international.second_page.json",),
+}
+
+
 def fixture_pages(name: str) -> list[Path]:
     """Every saved page of *name*'s fixture, in the order the extractor asked.
 
@@ -393,7 +402,8 @@ def fixture_pages(name: str) -> list[Path]:
         for path in FIXTURES_DIR.glob(f"{stem}.p*.{ext}")
         if (match := page_file.match(path.name))
     ]
-    return [first, *(path for _, path in sorted(numbered))]
+    invented = [FIXTURES_DIR / f for f in INVENTED_PAGES.get(name, ())]
+    return [first, *(path for _, path in sorted(numbered)), *invented]
 
 
 def parse_fixture(name: str) -> list[dict[str, Any]]:

@@ -2102,3 +2102,37 @@ session — see `CLAUDE.md`.
   the noun after "of" must be experience, work, employment, service or practice
   within three words ("5 years of progressive work" binds). Re-measured, none of
   the four review fixes moved a verdict on SP14's corpus or asana's fixture.
+
+- **The Workable reader walks its board by `nextPage` and reconciles with
+  `total` (SP13, 2026-10-27).** Workable's page is 10. `total` is the board's
+  count, not the page's (nutrition_international's saved first page: `total:
+  11`, 10 results, a token). A *full* page carries a token even when it is the
+  last (simprints on 2026-10-08: 10 results, `total: 10`, a token, an empty
+  second page), so a token alone does not mean "more": the walk ends on an empty
+  page or a response with no token, and `pagination.reconcile` then holds it to
+  the *first* response's `total`. Fewer raises `ShortWalkError` (the run keeps
+  the source's stored jobs and names it under Failed sources); more is fine. A
+  token seen twice raises, as does a walk past 100 requests (990 postings, ninety
+  times the larger of the two boards read), rather than stopping silently. A
+  posting returned twice (by shortcode, else id) counts once, or a repeated page
+  could make a short walk reach `total`. **A response with no `total`** falls
+  back to reading until empty and `pagination.unverifiable_end` logs that the
+  guard was blind, as `pagination.py` already says to; raising there would fail
+  a source for a field the API may simply omit on an empty board. The POSTs go
+  through the fetcher's `post_json`, never `http.post_json`.
+  **The golden had pinned a short read:** nutrition_international's count was 10
+  beside a fixture stating 11, green since SP4. It is 11 now; the eleventh
+  posting is on a hand-written second page (`INVENTED_PAGES`, named so a
+  re-capture neither owns nor deletes it; see `tests/fixtures/README.md`). No
+  stored key moves: detail URLs are still built from slug and shortcode, and
+  the golden's first job is unchanged. Workable is `guarded` in the probe, so a
+  short read from it is "a bug in workable.py", not "needs a new extractor".
+  Not repaired: no row was stored from the lost postings (Layer 0 dropped them).
+  **Measured (2026-10-27):** one request each, nutrition_international 3 before
+  and after, simprints 4 before and after (the board has shrunk since 10). The
+  store copy (an approximation of SP7's replay over `source_health`; the new
+  reader was not run across it): nutrition_international would have been named by the one-page rule
+  from its 7th successful run (it sat at 10 for 26 runs, then 6, then 3), and
+  `source_health` should show a different count for any Workable board that was
+  capped. Stored jobs whose key changes: none expected (keys not compared
+  with a live read).

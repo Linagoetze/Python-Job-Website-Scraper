@@ -759,7 +759,12 @@ _GOLDEN: dict[str, dict[str, Any]] = {
     "nutrition_international": {
         # workable.py, moved onto the fetcher's post_json in this same
         # package ahead of its first capture. No bug in the field mapping.
-        "count": 10,
+        # SP13: 11, not 10. The golden had pinned the reader's short read: the
+        # captured first page says `total: 11` beside ten postings and a
+        # `nextPage` token, and the reader sent one POST. The eleventh posting
+        # is on a hand-written second page (INVENTED_PAGES; the captured page
+        # one is real).
+        "count": 11,
         "first_job": {
             "source_name": "nutrition_international",
             "title": "Program Assistant",

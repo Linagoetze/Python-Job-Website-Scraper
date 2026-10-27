@@ -1,0 +1,38 @@
+{
+ "total": 11,
+ "results": [
+  {
+   "id": 6102999,
+   "shortcode": "0000INVENT1",
+   "title": "Monitoring and Evaluation Officer (invented second page)",
+   "remote": false,
+   "location": {
+    "country": "Kenya",
+    "countryCode": "KE",
+    "city": "Nairobi",
+    "region": "Nairobi County"
+   },
+   "locations": [
+    {
+     "country": "Kenya",
+     "countryCode": "KE",
+     "city": "Nairobi",
+     "region": "Nairobi County",
+     "hidden": false
+    }
+   ],
+   "state": "published",
+   "isInternal": false,
+   "code": "",
+   "published": "2026-09-18T00:00:00.000Z",
+   "type": "full",
+   "language": "en",
+   "department": [
+    "Programs"
+   ],
+   "accountUid": "98a35a20-e6c4-4d91-9325-7896ef1cc582",
+   "approvalStatus": "approved",
+   "workplace": "on_site"
+  }
+ ]
+}

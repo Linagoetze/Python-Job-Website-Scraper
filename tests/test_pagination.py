@@ -14,6 +14,7 @@ be captured from a healthy site.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any
@@ -27,6 +28,7 @@ from job_scraper.extractors import (
     smartrecruiters,
     successfactors_html,
     unops,
+    workable,
     workday,
 )
 from job_scraper.extractors.pagination import ShortWalkError
@@ -1106,3 +1108,173 @@ def test_the_pipelines_fetchers_can_post() -> None:
 
     assert http.fetch_text.post_json is http.post_json  # type: ignore[attr-defined]
     assert http.fetch_rendered.post_json is http.post_json  # type: ignore[attr-defined]
+
+
+# --- SP13: Workable's board is walked by `nextPage` token --------------------
+
+_WORKABLE_URL = "https://apply.workable.com/nutritionintl/"
+
+
+def _fixture_json(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
+
+
+class _WorkableBoard:
+    """A replayed fetcher: each POST is answered with the next page in *pages*.
+
+    Past the end it answers `{}`, as the capture script's replay does.
+    """
+
+    def __init__(self, *pages: dict[str, Any]) -> None:
+        self.pages = list(pages)
+        self.bodies: list[dict[str, Any]] = []
+
+    def __call__(self, url: str, *a: Any, **k: Any) -> str:
+        raise AssertionError("workable.py reads JSON, never a page")
+
+    def post_json(self, url: str, body: dict[str, Any], headers: Any = None) -> Any:
+        self.bodies.append(body)
+        return self.pages.pop(0) if self.pages else {}
+
+
+def test_workable_reads_the_eleventh_posting_from_the_second_page() -> None:
+    """The bug SP13 fixes: the reader sent one POST, so a board of 11 read as 10.
+
+    The first page is the real capture (`total: 11`, 10 results, a `nextPage`);
+    the second is invented, see tests/fixtures/README.md.
+    """
+    board = _WorkableBoard(
+        _fixture_json("nutrition_international.json"),
+        _fixture_json("nutrition_international.second_page.json"),
+    )
+    jobs = workable.extract(_WORKABLE_URL, board, "nutrition_international")
+    assert len(jobs) == 11
+
+
+def _wk_posting(code: str) -> dict[str, Any]:
+    return {"id": hash(code) % 10**6, "shortcode": code, "title": f"Role {code}"}
+
+
+def _wk_page(codes: list[str], *, total: int | None, token: str | None) -> dict[str, Any]:
+    page: dict[str, Any] = {"results": [_wk_posting(c) for c in codes]}
+    if total is not None:
+        page["total"] = total
+    if token is not None:
+        page["nextPage"] = token
+    return page
+
+
+def test_workable_posts_the_token_back_with_the_same_body() -> None:
+    board = _WorkableBoard(
+        _fixture_json("nutrition_international.json"),
+        _fixture_json("nutrition_international.second_page.json"),
+    )
+    workable.extract(_WORKABLE_URL, board, "nutrition_international")
+    first, second = board.bodies
+    assert "token" not in first
+    assert second == {**first, "token": _fixture_json("nutrition_international.json")["nextPage"]}
+
+
+def test_workable_a_short_walk_fails_the_source() -> None:
+    """Total 3 promised, an empty page after two: that is not the end of the board."""
+    board = _WorkableBoard(
+        _wk_page(["a", "b"], total=3, token="t1"),
+        _wk_page([], total=3, token=None),
+    )
+    with pytest.raises(ShortWalkError, match="holding 2 posting.*says it has 3"):
+        workable.extract(_WORKABLE_URL, board, "contoso")
+
+
+def test_workable_a_response_with_no_token_ends_the_walk_and_is_checked() -> None:
+    board = _WorkableBoard(_wk_page(["a", "b"], total=3, token=None))
+    with pytest.raises(ShortWalkError, match="holding 2 posting"):
+        workable.extract(_WORKABLE_URL, board, "contoso")
+    assert len(board.bodies) == 1
+
+
+def test_workable_more_than_the_total_is_fine() -> None:
+    """A posting added mid-walk."""
+    board = _WorkableBoard(_wk_page(["a", "b"], total=1, token=None))
+    assert len(workable.extract(_WORKABLE_URL, board, "contoso")) == 2
+
+
+def test_workable_a_full_page_with_a_token_and_an_empty_next_page_is_the_end() -> None:
+    """simprints on 2026-10-08: ten postings, `total: 10`, a token, an empty page.
+
+    The saved simprints page (nine postings, `total: 9`) is real; the token on
+    it is added here, since the board has since shrunk and no longer sends one.
+    A walk that took "a token" to mean "more is coming" would fail this healthy
+    source on every run.
+    """
+    first = _fixture_json("simprints.json")
+    assert first["total"] == len(first["results"]) == 9 and "nextPage" not in first
+    board = _WorkableBoard({**first, "nextPage": "WzEsMl0="}, {"results": []})
+    jobs = workable.extract("https://apply.workable.com/simprints/", board, "simprints")
+    assert len(jobs) == 9
+    assert len(board.bodies) == 2
+
+
+def test_workable_a_repeated_token_raises() -> None:
+    board = _WorkableBoard(
+        _wk_page(["a"], total=5, token="same"),
+        _wk_page(["b"], total=5, token="same"),
+        _wk_page(["c"], total=5, token="same"),
+    )
+    with pytest.raises(ShortWalkError, match="same nextPage token twice"):
+        workable.extract(_WORKABLE_URL, board, "contoso")
+    assert len(board.bodies) == 2
+
+
+def test_workable_a_walk_past_the_page_cap_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(workable, "_MAX_PAGES", 4)
+    board = _WorkableBoard(*(_wk_page([f"p{i}"], total=99, token=f"t{i}") for i in range(10)))
+    with pytest.raises(ShortWalkError, match="4-page limit"):
+        workable.extract(_WORKABLE_URL, board, "contoso")
+    assert len(board.bodies) == 4
+
+
+def test_workable_a_page_served_twice_does_not_count_twice() -> None:
+    """With the repeat counted, 2 postings would reach a total of 3 and pass."""
+    board = _WorkableBoard(
+        _wk_page(["a", "b"], total=3, token="t1"),
+        _wk_page(["a", "b"], total=3, token="t2"),
+        _wk_page([], total=3, token=None),
+    )
+    with pytest.raises(ShortWalkError, match="holding 2 posting"):
+        workable.extract(_WORKABLE_URL, board, "contoso")
+
+
+def test_workable_a_later_total_does_not_replace_the_first() -> None:
+    board = _WorkableBoard(
+        _wk_page(["a", "b"], total=3, token="t1"),
+        _wk_page([], total=0, token=None),
+    )
+    with pytest.raises(ShortWalkError, match="says it has 3"):
+        workable.extract(_WORKABLE_URL, board, "contoso")
+
+
+def test_workable_without_a_total_reads_until_empty_and_says_it_could_not_check(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No `total` key: nothing to reconcile with, so pagination.py's own rule
+    applies (log, never raise): the guard is blind, and the run says so."""
+    board = _WorkableBoard(
+        _wk_page(["a", "b"], total=None, token="t1"),
+        _wk_page(["c"], total=None, token=None),
+    )
+    with caplog.at_level(logging.WARNING):
+        jobs = workable.extract(_WORKABLE_URL, board, "contoso")
+    assert len(jobs) == 3
+    assert "publishes no total" in caplog.text
+
+
+def test_workable_detail_urls_are_built_from_slug_and_shortcode_on_every_page() -> None:
+    board = _WorkableBoard(
+        _wk_page(["a"], total=2, token="t1"),
+        _wk_page(["b"], total=2, token=None),
+    )
+    jobs = workable.extract(_WORKABLE_URL, board, "contoso")
+    assert [j["detail_url"] for j in jobs] == [
+        "https://apply.workable.com/nutritionintl/j/a/",
+        "https://apply.workable.com/nutritionintl/j/b/",
+    ]
