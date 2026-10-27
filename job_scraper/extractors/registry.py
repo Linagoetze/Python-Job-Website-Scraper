@@ -15,6 +15,7 @@ from job_scraper.extractors import (
     gfi_europe,
     giving_what_we_can,
     greenhouse,
+    hibob,
     impactpool,
     jobsinlund,
     jobylon,
@@ -80,6 +81,8 @@ REGISTRY: dict[str, ExtractorFn] = {
     "simprints": partial(workable.extract, source_name="simprints"),
     # --- Breezy HR ---
     "new_incentives": partial(breezy.extract, source_name="new_incentives"),
+    # --- HiBob ---
+    "pas_normal_studios": partial(hibob.extract, source_name="pas_normal_studios"),
     # --- Playwright (site-specific) ---
     "asana": partial(asana.extract, source_name="asana"),
     # --- Personio ---

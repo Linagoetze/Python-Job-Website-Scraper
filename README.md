@@ -1020,7 +1020,7 @@ order:
 3. the page, fetched plainly, and rendered in headless Chromium only if the
    plain page shows no postings: its size, and how many links and elements look
    like postings;
-4. which of the ten supported platforms it shows signs of — in the page, in
+4. which of the eleven supported platforms it shows signs of — in the page, in
    what it loads, and in the redirect chain — and the board URL where one can
    be named;
 5. each matching generic reader, run against that board through the normal
@@ -1119,7 +1119,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1570 tests, about twenty seconds, no network access required.
+1588 tests, about twenty seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
@@ -1151,7 +1151,7 @@ failed capture rather than a crash.
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit — except a
 response recognised as XML, which is saved as-is: an HTML parser corrupts it
-(SP4, found capturing Personio's feed). Every one of the twenty-four
+(SP4, found capturing Personio's feed). Every one of the twenty-five
 extractors now has a saved page, down from thirteen uncovered before SP4:
 SP4 covered the five generic ATS readers (Breezy, Lever, Personio,
 SmartRecruiters, Workable), SP4d covered jobsinlund, SP6 covered the last
@@ -1162,6 +1162,8 @@ employer's own careers page, with its page, and SP10 a generic reader for the
 Jobylon feed that a Swedish careers page fills its list from, covered by one
 employer's capture (the next Jobylon customer's feed would test the layer
 mappings, since which `layers_N` is the department is the customer's choice).
+SP16 added a generic reader for HiBob career sites, which fill themselves from
+the platform's public job-ad API; it is covered by one employer's capture.
 Keeping fixtures current is SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.

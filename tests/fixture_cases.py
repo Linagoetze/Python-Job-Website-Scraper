@@ -41,6 +41,7 @@ from job_scraper.extractors import (  # noqa: E402
     gfi_europe,
     giving_what_we_can,
     greenhouse,
+    hibob,
     impactpool,
     jobsinlund,
     jobylon,
@@ -300,6 +301,12 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "simprints.json",
         "https://apply.workable.com/simprints/",
         lambda url, fetch: workable.extract(url, fetch, source_name="simprints"),
+    ),
+    # --- SP16: the HiBob reader, on the platform's own job-ad API ---
+    "pas_normal_studios": (
+        "pas_normal_studios.json",
+        "https://pns.careers.hibob.com/jobs",
+        lambda url, fetch: hibob.extract(url, fetch, source_name="pas_normal_studios"),
     ),
     # --- SP6: the single-source readers, captured for the first time ---
     "asana": (

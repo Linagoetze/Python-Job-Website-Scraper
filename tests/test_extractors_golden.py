@@ -31,6 +31,7 @@ import pytest
 from job_scraper.extractors import (
     asana,
     ashby,
+    hibob,
     jobylon,
     personio,
     pure_earth,
@@ -38,6 +39,7 @@ from job_scraper.extractors import (
     smartrecruiters,
     workable,
 )
+from job_scraper.extractors.rowcheck import title_read_as_location
 from job_scraper.filtering import _HYBRID_CONFIRMED_REASON, build_hybrid_pattern, matches_rules
 from tests.fixture_cases import EMPTY_FIXTURES, FIXTURE_CASES, FIXTURES_DIR, parse_fixture
 
@@ -794,6 +796,29 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "apply_url": "https://apply.workable.com/simprints/j/3CAA06941B/",
             "raw_snippet": "Director of Strategic Partnerships Partnerships Ghana Remote",
         },
+    },
+    # --- SP16 (2026-10-27): the HiBob reader ---
+    "pas_normal_studios": {
+        # hibob.py, reading the platform's own job-ad API, which a static fetch
+        # of the board page never shows (a shell with seven characters of
+        # text). Every field of the first job was checked against the saved
+        # response by hand: the site name is in the snippet, not the location;
+        # the country is the location; on_site adds no word. The board states
+        # no total, so none is checked.
+        "count": 3,
+        "first_job": {
+            "source_name": "pas_normal_studios",
+            "title": "Unsolicited Applications",
+            "location": "Denmark",
+            "department": "People & Culture",
+            "listing_url": "https://pns.careers.hibob.com/jobs",
+            "detail_url": "https://pns.careers.hibob.com/jobs/f6990e90-0294-49fa-97d5-6e49b564b751",
+            "apply_url": "https://pns.careers.hibob.com/jobs/f6990e90-0294-49fa-97d5-6e49b564b751",
+            "raw_snippet": (
+                "Unsolicited Applications People & Culture Pas Normal Studios HQ Denmark"
+            ),
+        },
+        "description": (768, "Unsolicited Applications We’re always curious"),
     },
     # --- SP6 (2026-10-08): the single-source readers ---
     "asana": {
@@ -1703,3 +1728,112 @@ def test_jobylon_raises_on_a_job_it_cannot_read_rather_than_dropping_it(job: Any
     """Skipping would turn a feed whose shape changed into a shorter list."""
     with pytest.raises(ValueError, match="job 2 of the Jobylon feed"):
         _jobylon(json.dumps([_jobylon_job(), job]))
+
+
+# --- HiBob (SP16) --------------------------------------------------------------
+#
+# Invented postings, except where the saved response is named.
+
+_HIBOB_URL = "https://contoso.careers.hibob.com/jobs"
+
+
+def _hibob(*postings: dict[str, Any]) -> list[dict[str, Any]]:
+    body = json.dumps(
+        {
+            "filterGroups": {},
+            "jobAdDetails": [
+                {"id": f"id-{i}", "title": "Analyst", "country": "Contoso", **p}
+                for i, p in enumerate(postings)
+            ],
+        }
+    )
+    return hibob.extract(_HIBOB_URL, lambda url, *a, **k: body, "contoso")
+
+
+def test_hibob_sends_the_subdomain_as_the_company_identifier() -> None:
+    """The endpoint answers 401 without the header the page's script adds, so a
+    reader that forgets it fails every run; found in SP16 with a plain request."""
+    seen: list[tuple[str, dict[str, str]]] = []
+
+    def fetch(url: str, *a: Any, **k: Any) -> str:
+        seen.append((url, k.get("headers") or {}))
+        return '{"jobAdDetails": []}'
+
+    hibob.extract(_HIBOB_URL, fetch, "contoso")
+    assert seen == [
+        ("https://contoso.careers.hibob.com/api/job-ad", {"companyIdentifier": "contoso"})
+    ]
+
+
+def test_hibob_company_can_be_named_for_a_board_on_its_own_domain() -> None:
+    seen: list[dict[str, str]] = []
+
+    def fetch(url: str, *a: Any, **k: Any) -> str:
+        seen.append(k.get("headers") or {})
+        return '{"jobAdDetails": []}'
+
+    hibob.extract("https://careers.contoso.example/jobs", fetch, "contoso", company="contoso")
+    assert seen == [{"companyIdentifier": "contoso"}]
+
+
+def test_hibob_refuses_a_board_with_no_company_to_name() -> None:
+    with pytest.raises(ValueError, match="no HiBob company"):
+        hibob.extract("https://careers.contoso.example/jobs", lambda url, *a, **k: "", "contoso")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("<html><body>Unauthorized</body></html>", id="not-json"),
+        pytest.param('{"filterGroups": {}}', id="no-postings-list"),
+        pytest.param("[]", id="not-an-object"),
+    ],
+)
+def test_hibob_fails_loudly_on_a_body_it_cannot_read(body: str) -> None:
+    with pytest.raises(ValueError, match="HiBob job-ad API"):
+        hibob.extract(_HIBOB_URL, lambda url, *a, **k: body, "contoso")
+
+
+def test_hibob_reads_an_empty_board_as_empty() -> None:
+    assert hibob.extract(_HIBOB_URL, lambda url, *a, **k: '{"jobAdDetails": []}', "contoso") == []
+
+
+def test_hibob_carries_the_workplace_into_the_snippet() -> None:
+    jobs = _hibob(
+        {"workspaceTypeId": "remote"},
+        {"workspaceTypeId": "hybrid"},
+        {"workspaceTypeId": "on_site"},
+        {},
+    )
+    assert [j["raw_snippet"] for j in jobs] == [
+        "Analyst Contoso Remote",
+        "Analyst Contoso Hybrid",
+        "Analyst Contoso",
+        "Analyst Contoso",
+    ]
+
+
+def test_hibob_location_is_the_country_and_never_the_site_label() -> None:
+    [job] = _hibob({"site": "Head Office", "department": "Retail Store"})
+    assert job["location"] == "Contoso"
+    assert job["department"] == "Retail Store"
+    assert "Head Office" in job["raw_snippet"]
+    assert not title_read_as_location(job["title"], job["location"])
+
+
+def test_hibob_supplies_every_section_of_the_posting_as_plain_text() -> None:
+    [job] = _hibob(
+        {
+            "description": "<p>About <strong>us</strong></p>",
+            "responsibilities": None,
+            "requirements": "<ul><li>Five years</li></ul>",
+            "benefits": "<br>Cake",
+        }
+    )
+    assert job["description_text"] == "About us Five years Cake"
+
+
+def test_hibob_detail_urls_are_the_boards_posting_route() -> None:
+    [job] = _hibob({"id": "abc-123"})
+    assert job["detail_url"] == "https://contoso.careers.hibob.com/jobs/abc-123"
+    assert job["apply_url"] == job["detail_url"]
