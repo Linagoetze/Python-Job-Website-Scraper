@@ -2130,7 +2130,9 @@ session — see `CLAUDE.md`.
   Not repaired: no row was stored from the lost postings (Layer 0 dropped them).
   **Measured (2026-10-27):** one request each, nutrition_international 3 before
   and after, simprints 4 before and after (the board has shrunk since 10). The
-  store copy: nutrition_international would have been named by the one-page rule
+  store copy (an approximation of SP7's replay over `source_health`; the new
+  reader was not run across it): nutrition_international would have been named by the one-page rule
   from its 7th successful run (it sat at 10 for 26 runs, then 6, then 3), and
-  `source_health` will show a different count for any Workable board that was
-  capped. Stored jobs whose key changes: none.
+  `source_health` should show a different count for any Workable board that was
+  capped. Stored jobs whose key changes: none expected (keys not compared
+  with a live read).

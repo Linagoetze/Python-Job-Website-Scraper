@@ -5278,7 +5278,7 @@ short read of 10 and **changed to 11** (the commit says so).
 `{**body, "token": nextPage}` through the same fetcher's `post_json` until a page
 has no results or no token, then `pagination.reconcile` against the first
 response's `total`. Each rule has a test that fails without it (checked by
-removing each guard in turn): short walk raises; a repeated token raises; a
+removing each guard in turn; eight mutations in all, every one caught): short walk raises; a repeated token raises; a
 walk past the cap raises (100 requests, 990 postings: ninety times the larger
 of the two boards, past any employer here); a page served twice does not count
 twice; a later `total` cannot replace the first; a full page with a token and
@@ -5309,13 +5309,16 @@ rewritten; a test shows a short Workable read is "a bug in workable.py", not
 
 **Step 5, measured** (one request each through the reader, nothing saved):
 nutrition_international 3 before, 3 after; simprints 4 before, 4 after (not the
-expected 10: the board shrank). Replayed against a copy of the store: neither
-source is flagged by the one-page rule today; nutrition_international would
-have been from its 7th successful run (22 firing windows) until it fell to 6
-and 3. `source_health` will show a different count for any Workable board that
-was capped. Stored jobs whose key changes: none (nutrition_international has no
-stored job; the 4 simprints jobs are keyed on the same shortcode URLs). I did
-not re-request simprints to compare live shortcodes with those 4 keys; that rests
+expected 10: the board shrank). An approximation of SP7's replay, not the
+replay itself: `constant_page_size` run over a copy of the store's `source_health`
+rows (`ok = 1`), with the new reader not run across the copy. Neither source is
+flagged by the one-page rule today; nutrition_international would have been from
+its 7th successful run (22 firing windows) until it fell to 6 and 3.
+`source_health` should show a different count for any Workable board that was
+capped; that is inferred, not observed. Stored jobs whose key changes: none
+expected (nutrition_international has no stored job; the 4 simprints jobs are
+keyed on shortcode URLs built as before). The keys were not compared with a live
+read: I did not re-request simprints, so that rests
 on the unchanged construction and the golden. The past is not repaired.
 
 **Docs.** README test count; no "Adding a source" text described the limit.
