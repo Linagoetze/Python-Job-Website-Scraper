@@ -113,9 +113,9 @@ the ordering below.
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | done: no private API; a generic Jobylon feed reader, `static`; source added | `sp10-jobylon-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | done: stopped at step 2, no reader; the listing API needs a page-issued token and an aggregator already carries the board; candidate re-checked | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | done: read-only report built; 40 A, 10 B, 2 C, 2 D | `sp12-source-yield` |
-| 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | not started | `sp13-workable-walk` |
+| 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | done: the reader walks the whole board; Workable guarded in the probe | `sp13-workable-walk` |
 | 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | done: lead-ins, the tie before a figure and a colleague's years read; typicality left unread; 3 rejected rows put to you | `sp14-years-lead-ins` |
-| 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | done: the gate counts remote work "to some extent" as hybrid; 22 stored rows put to you | `sp15-sida-hybrid-wording` |
+| 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | done: the gate counts remote work "to some extent" as hybrid; 6 listed rows revived at your word, 16 left rejected | `sp15-sida-hybrid-wording` |
 | 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp16-hibob-reader` |
 | 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | not started | `sp17-dsv-facets` |
 
@@ -5655,13 +5655,25 @@ and impactpool 1**. Of those, 19 read no years requirement (sida 18, impactpool
 1) and 3 would still be rejected on years. **6 are still listed** (sida 5,
 impactpool 1; `misses` is 0), all 6 among the 19.
 
+**Revival, done 2026-10-27 (owner: only the rows still listed).** Selected by
+query: `rejected`, `non_hybrid_conditional_location`, `misses` 0, description
+matching the new pattern, and not excluded on years or PhD. That gave **6 rows:
+sida 5, impactpool 1**; the other 16 stay rejected. Method as SP4e: a backup
+with SQLite's backup API at
+`~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp15-20261027-090433`, one
+transaction, status `new`, the description kept (no re-fetch), `experience_level`
+set to the reading (`unspecified` for all six) and `hybrid_confirmed` 1, so the
+next run does not treat them as pending. Store: rejected 1,885 to 1,879, new 3
+to 9, nothing else moved. Not yet seen in a run.
+
 ### Your to-dos (SP15)
 
 - [x] Before the session, say whether an offer of remote work "to some extent"
       counts as hybrid. (It does.)
-- [ ] Decide which of the 22 rows (sida 21, impactpool 1; the 6 still listed
-      first) you want revived. A revival is a store write; say which and it is
-      done as SP4c's was.
+- [x] Decide which of the 22 rows to revive. **Only the 6 still listed**,
+      done.
+- [ ] After the next run, look at the 6 revived rows in the sheet (sida 5,
+      impactpool 1).
 
 ### SP16 — A generic reader for HiBob career sites
 
