@@ -15,4 +15,10 @@ page is named below as invented.
   source (`name.pN.ext`), so a re-capture neither overwrites nor deletes it.
   Do not scrape another Workable employer to replace it.
 
+- `dsv.unfiltered.html` is the first page of the unfiltered DSV board (2,010
+  postings, every country), captured before SP17 narrowed the source. It is
+  real; the facet-guard test serves it as the answer to a facet the board
+  ignored. It is not a page of `dsv`'s fixture (`dsv.html` + `dsv.p1.html`, the
+  whole Swedish walk, 19 postings), and a re-capture of `dsv` leaves it alone.
+
 `probe/` holds hand-written pages of its own; see its README.
