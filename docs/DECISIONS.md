@@ -2188,3 +2188,43 @@ session — see `CLAUDE.md`.
   list, which priority 2 rules out and jobylon.py already refused. Ashby raises
   only for a listed posting; Workable only for a missing title (a posting with
   no id is still kept, under the listing URL, as before).
+- **dsv's board is narrowed by the search form's country facet, and every row
+  must prove it ([SP17](SOURCES-PLAN.md#sp17--narrow-dsv-to-its-one-country), 2026-10-27).**
+  `?optionsFacetsDD_country=<CC>` on the source's URL is honoured by a plain
+  static fetch (one live request: 19 postings, all in the one country, against
+  about 2,250 unfiltered). The facet's options are filled in by script, so the
+  code was learned from the rows' own locations ("City, region, CC, postcode"),
+  not from the page. **The registry's `base_search_url` had ignored
+  `sources.yaml`'s URL for this reader** (`listing_url` was never read), so the
+  plan's premise that narrowing was a config edit was false; `successfactors_html`
+  now takes `optionsFacetsDD_*` parameters, and only those, from the configured
+  URL. **What proves the facet**: every row's country, the third field of its
+  location. Not the stated total, which describes whatever page came back, and
+  not the facet echoed in the page: the locale links echo the query string
+  whether or not it was applied. A foreign row raises `FacetNotAppliedError`
+  (a `ShortWalkError`, so stored jobs are kept); so does a board where rows
+  exist and none names a country (a restyled column must not read as a correct
+  board). A row with an empty location is let through, as at Layer 1. Facets no
+  row can prove (`_city`, job area) are refused with a `ValueError`. Unchanged:
+  detail URLs, so dedupe keys; unfiltered boards. The probe's handling of the
+  two errors is in the entry below.
+- **dsv is two sources, one per country ([SP17b](SOURCES-PLAN.md#sp17b--a-second-dsv-entry-for-denmark-planned-2026-10-27), 2026-10-27).**
+  The owner's places are not all in one country, and the facet guard proves
+  one country per source, so a wider or multi-valued facet was not an option. `dsv_denmark` is a second registry line on the same reader and the
+  same board; the country facet on each source's `url` does the narrowing, and
+  each entry fails if handed the other's rows. Live: the Danish facet is
+  honoured (15 postings, all `DK`, 2 pages). Dedupe keys are detail URLs, so
+  the two cannot collide. Its rows are mostly Hedehusene, Horsens, Esbjerg and
+  Odense, which Layer 0 drops as before; the entry exists for any of the
+  owner's places that DSV lists there.
+- **The probe reports a refused facet or a moved board as the board's, not the
+  reader's (SP17b follow-up, 2026-10-27).** `successfactors_html`'s
+  `FacetNotAppliedError` and `BoardMovedError` carry their facts as fields
+  (facet, wanted and found country, page; the two totals, page), and the probe
+  reads those, never the wording. A refused facet says to open the url and check
+  the facet value; a moved board says to probe again. This closes the "still
+  reports it as a reader bug" note in two earlier entries. **dsv's fixture is
+  now the whole Swedish walk** (`dsv.html` + `dsv.p1.html`, 19 postings,
+  captured 2026-10-27 with `--pages all`), so the golden runs the real
+  `extract` and the guard over real markup. The unfiltered first page is kept as
+  `dsv.unfiltered.html`, for the ignored-facet test.

@@ -545,7 +545,7 @@ sources:
 | Field | Meaning |
 | --- | --- |
 | `name` | Identifier for the source. **Must match a key in `job_scraper/extractors/registry.py`** — a source with no registered extractor is skipped with a log line. |
-| `url` | The career page or job board to fetch. A Workday `url` may carry the listing's own filter query, as the listing shows it once a filter is ticked (`?locationCountry=<id>`). The reader sends it to Workday as that filter and fails the source if the response does not show it applied. airbus has one because its unfiltered board is past the 2,000 postings Workday will count, which the reader refuses; its filter narrows it to one country, well below that. |
+| `url` | The career page or job board to fetch. A Workday `url` may carry the listing's own filter query, as the listing shows it once a filter is ticked (`?locationCountry=<id>`). The reader sends it to Workday as that filter and fails the source if the response does not show it applied. airbus has one because its unfiltered board is past the 2,000 postings Workday will count, which the reader refuses; its filter narrows it to one country, well below that. A SuccessFactors `url` (dsv) may carry the search form's country facet (`?optionsFacetsDD_country=<CC>`); the reader sends it on every page and fails the source if any row's country differs or none names one. dsv has two, `dsv` (Sweden) and `dsv_denmark`, because its unfiltered board is about 230 pages of postings from every country and the guard checks one country per source. |
 | `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page, and why a Workable source is `dynamic` too: its detail page is a JavaScript shell to a plain fetch. |
 
 The example ships nine entries chosen to exercise a different extractor each, so
@@ -1119,7 +1119,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1600 tests, about twenty seconds, no network access required.
+1617 tests, about twenty seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are

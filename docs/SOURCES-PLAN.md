@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12, SP13 and SP15 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12, SP13, SP15 and SP17 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -5857,9 +5857,100 @@ count. docs/DECISIONS.md: the facet and its guard.
 Branch sp17-dsv-facets. Commit, do not push. Update this plan file.
 ```
 
+### SP17 — result (2026-10-27): reader and guard built; narrowing waits on the owner
+
+- **Live check (one request, nothing saved):** a static fetch honours
+  `optionsFacetsDD_country=<CC>`: page 1 held 10 rows, all in that country,
+  and stated 19 in total (2 pages), against about 2,250 unfiltered. The code
+  is the ISO code the rows' locations carry; the facet's options are script-
+  filled, so it could not be read from the page. robots.txt allowed the path.
+- **The plan's premise was wrong:** `successfactors_html.extract` never read
+  `listing_url`; the registry's `base_search_url` decided the URL, so pasting a
+  facet into `sources.yaml` would have done nothing. The reader now takes
+  `optionsFacetsDD_*` parameters, and only those, from the configured URL.
+- **Guard:** every row's country (third location field) must equal the
+  facet's; a foreign row, or rows where none names a country, raises
+  `FacetNotAppliedError` (a `ShortWalkError`). The stated total and the
+  facet echoed in the page prove nothing (both follow the query). Other facets
+  are refused. 13 tests written first (8 red without the guard), one against
+  the saved unfiltered page. 1599 to 1612 tests.
+- **Location list, for the owner:** it reaches beyond the facet's country, so a
+  one-country facet loses a posting in any listed place outside it. Evidence it
+  would cost nothing today: no dsv row has ever passed Layer 0 outside that
+  country, and the drop log holds no dsv row in a listed place in the other
+  country (the board's rows there are at other sites). It would cost one if DSV
+  lists such a place later.
+- **Measured (2026-10-27): a `--dry-run` of both dsv entries against a copy of
+  the store, four live requests (`--no-cache`).** Before, run 40: 2,226 rows
+  and about 230 pages, 22.7% of that run's drop log (2,226 of 9,823). After:
+  34 rows (19 + 15) on 4 pages, 34 exclusions, about 0.4% of a run's log
+  (34 against roughly 7,600 from the other sources). Marked delisted 0; the 3
+  stored dsv rows were all still listed, and the same 3 were blocklisted at
+  Layer 4 as before, so nothing that passed Layer 0 is lost. The expected "about
+  24 rows" was the plan's figure from run 37; the board holds 19 today.
+- **Source-health warning on the first real run:** `dsv: 19 rows this run, was
+  2,226 (-99%)`. It is the narrowing itself, expected once, not a fault.
+- **Done:** the owner pasted both entries (2026-10-27) and the fixture was
+  re-captured.
+
+### SP17b — A second dsv entry for Denmark (planned 2026-10-27)
+
+**Owner's decision:** keep the listed places in the second country covered
+rather than narrow dsv to one country. The reader's guard checks one country per source, so the
+two countries are two sources, not one wider facet.
+
+- **Entries.** `dsv` keeps `?optionsFacetsDD_country=SE`. A new `dsv_denmark`
+  takes `?optionsFacetsDD_country=DK`, `company: DSV`, `strategy: static`. The
+  `sources.yaml` lines are the owner's.
+- **Registry.** One line, `dsv_denmark`, the same `partial` as `dsv` with
+  `source_name="dsv_denmark"`, `page_step=10` and the same base URL. No new
+  module. Check the registry's name-to-key conventions (`source_health`,
+  `drop_log`, the golden fixture table) before assuming a new name is free.
+- **Dedupe.** Keys come from `detail_url`, which the facet never reaches, so a
+  posting listed under both entries (none expected) would be stored once.
+- **Live check, one request:** `optionsFacetsDD_country=DK` honoured, rows all
+  `DK`, stated total. Expected from the drop log: about 38 distinct Danish
+  postings over the window (14 in run 40), so about 2 to 4 pages. Most are
+  at sites outside the owner's places and will fail Layer 0, as they do today.
+- **Tests.** The guard is country-generic, so no new guard test. Add a registry
+  test that both entries bind the facet-capable reader, and a walk test with
+  `DK` rows and an `SE` row among them failing.
+- **Measure.** Both entries' rows and pages against a copy of the store; the
+  pair should be about 60 rows and 5 pages from about 2,250 and 230.
+- **Docs.** README sentence (dsv now has two entries), DECISIONS entry (why two
+  sources, not one), re-capture a DK fixture only after the owner pastes.
+- **Cost and size:** Sonnet 5, about 1 hr. It follows SP17 and needs no other
+  package.
+
+### SP17b — result (2026-10-27)
+
+- **Live check (one request, nothing saved):** `optionsFacetsDD_country=DK` is
+  honoured by a static fetch: 10 rows on page 1, all `DK`, 15 stated in total
+  (2 pages). robots.txt allowed it. The plan expected about 38; the drop log's
+  38 is distinct postings over the whole window, 15 is the board today.
+- **Built:** one registry line, `dsv_denmark`; one test that both entries bind
+  the checked reader and each refuses the other's rows. 1612 to 1613 tests. No
+  guard change.
+- **Measured:** no row of the second country has ever passed Layer 0 in the
+  drop-log window, so no listed place has appeared there. Both entries
+  together: 34 rows on 4 pages (the dry run above), against about 2,250 and 230.
+- **Owner:** paste both URLs into `sources.yaml` (below); then the fixture
+  re-capture can follow.
+
+**SP17b follow-up (2026-10-27, after the owner pasted both entries):** the probe
+bug is fixed (both errors carry fields; two tests, written red), and dsv's
+fixture was re-captured as the whole walk, 2 pages and 19 postings, via
+`--pages all`. `dsv.html` is now Swedish, so the golden, the stated-total pin
+(19) and the label-count test were updated, and the old first page is kept as
+`dsv.unfiltered.html`. `dsv_denmark` has no fixture of its own: it is the same
+reader, and its guard is covered by the registry test. 1613 to 1617 tests.
+
 ### Your to-dos (SP17)
 
-- [ ] After the session, paste the narrowed `url` into `sources.yaml` yourself.
+- [x] **Decide the places in the second country.** Chosen 2026-10-27: a second
+      source entry, SP17b above.
+- [x] Paste both entries into `sources.yaml` (done 2026-10-27).
+- [ ] Expect one source-health warning on the next real run (dsv, -99%).
 
 ---
 
