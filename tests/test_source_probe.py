@@ -32,7 +32,7 @@ import yaml
 
 from job_scraper import curated, probe
 from job_scraper import http as http_mod
-from job_scraper.extractors import workday
+from job_scraper.extractors import successfactors_html, workday
 from job_scraper.http import FetchedPage
 from job_scraper.robots import RobotsDisallowed, RobotsPolicy
 from job_scraper.tools import sources as sources_cli
@@ -957,6 +957,42 @@ class TestPagination:
         # a second module beside it.
         assert result.kind == probe.NOT_FEASIBLE
         assert "a bug in successfactors_html.py" in result.line
+
+    def _dsv_probe_raising(
+        self, exc: Exception, monkeypatch: pytest.MonkeyPatch, curated_dir: Path, tmp_path: Path
+    ) -> Any:
+        def raising(*args: Any, **kwargs: Any) -> Any:
+            raise exc
+
+        monkeypatch.setattr(successfactors_html, "extract", raising)
+        fetcher = StubFetcher(
+            [], static={DSV: fixture("dsv.html"), f"{DSV}?startrow=0": fixture("dsv.html")}
+        )
+        return run_probe(DSV, fetcher, curated_dir, tmp_path)
+
+    def test_an_ignored_country_facet_is_sent_back_to_the_url_not_blamed(
+        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Read from the exception's fields, so the message here is deliberately useless.
+        exc = successfactors_html.FacetNotAppliedError(
+            "no", facet="optionsFacetsDD_country", wanted="SE", found="DK", url=f"{DSV}?x=1"
+        )
+        result, _ = self._dsv_probe_raising(exc, monkeypatch, curated_dir, tmp_path)
+
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "optionsFacetsDD_country=SE" in result.line
+        assert "DK" in result.line and "SP17" in result.line
+        assert "bug in successfactors_html.py" not in result.line
+
+    def test_a_moved_board_is_told_to_retry_not_blamed(
+        self, curated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        exc = successfactors_html.BoardMovedError("no", before=2296, after=2297, url=f"{DSV}?x=1")
+        result, _ = self._dsv_probe_raising(exc, monkeypatch, curated_dir, tmp_path)
+
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "2296" in result.line and "2297" in result.line
+        assert "bug in successfactors_html.py" not in result.line
 
     def test_a_reader_that_reads_nothing_from_a_full_page_is_its_bug(
         self, curated_dir: Path, tmp_path: Path

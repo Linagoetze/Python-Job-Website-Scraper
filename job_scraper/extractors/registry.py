@@ -103,6 +103,14 @@ REGISTRY: dict[str, ExtractorFn] = {
         page_step=10,
         base_search_url="https://jobs.dsv.com/search/",
     ),
+    # The same board, one country at a time (SP17b): the country facet on each
+    # source's `url` is what narrows it, and the reader checks every row against it.
+    "dsv_denmark": partial(
+        successfactors_html.extract,
+        source_name="dsv_denmark",
+        page_step=10,
+        base_search_url="https://jobs.dsv.com/search/",
+    ),
     "novo_nordisk": partial(
         successfactors_html.extract,
         source_name="novo_nordisk",

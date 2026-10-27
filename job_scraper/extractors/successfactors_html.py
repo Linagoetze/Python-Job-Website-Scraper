@@ -18,6 +18,14 @@ while missing a live posting. DSV's walk of about 230 pages takes four minutes,
 and on 2026-10-09 (run 38) its pages stated 2,296 up to startrow 270 and 2,297
 from 280. So a change in the stated total stops the walk with `BoardMovedError`.
 
+A source's `url` may carry the search form's country facet
+(`?optionsFacetsDD_country=<CC>`), which narrows a worldwide board to one country
+(SP17). A static fetch honours it, but a site that stopped doing so would answer
+with the whole board and look like a busy one, so every row's country (the third
+field of its location) is checked against the facet and a foreign row raises
+`FacetNotAppliedError`. The stated total cannot prove it: it describes whatever page
+was returned, narrowed or not.
+
 Whether a page needs JavaScript is the caller's business, not this module's:
 `sources.yaml`'s `strategy` picks the fetcher, and this extractor uses whatever
 callable it is handed. When that callable renders, it is wrapped with a selector
@@ -51,11 +59,48 @@ class BoardMovedError(pagination.ShortWalkError):
 
     A `ShortWalkError`, so a run treats it as a failed source: stored jobs are
     kept and nothing is delisted. It is raised at the first page that disagrees,
-    because nothing fetched after that point can be trusted either.
+    because nothing fetched after that point can be trusted either. The two
+    totals and the page are fields, not only words in the message: the probe
+    reports a moved board from them, and a reworded message must not be able to
+    break that (the `RobotsDisallowed.url` rule).
     """
+
+    def __init__(self, message: str, *, before: int, after: int, url: str) -> None:
+        super().__init__(message)
+        self.before = before
+        self.after = after
+        self.url = url
+
+
+class FacetNotAppliedError(pagination.ShortWalkError):
+    """The board answered a country facet with postings from outside it (SP17).
+
+    A `ShortWalkError`, so a run treats it as a failed source and keeps the
+    stored jobs. An ignored facet would otherwise read as a board of the wrong
+    size, and a source narrowed on purpose would go on reporting it as quiet.
+    `found` is the country a row named, or "" when no row named one; the fields
+    are for the probe, as `BoardMovedError`'s are.
+    """
+
+    def __init__(self, message: str, *, facet: str, wanted: str, found: str, url: str) -> None:
+        super().__init__(message)
+        self.facet = facet
+        self.wanted = wanted
+        self.found = found
+        self.url = url
 
 
 _WAIT_SELECTOR = 'a[href*="/job/"]'
+
+# The search form's own GET parameters (`optionsFacetsDD_country`, `_city`, ...).
+# They are the only part of a configured URL's query this reader takes over: the
+# rest of a source's URL (a sort order, a view) never mattered to the walk, and
+# tetrapak's already differs from its registry line.
+_FACET_PREFIX = "optionsFacetsDD_"
+_COUNTRY_FACET = _FACET_PREFIX + "country"
+# Row locations read "City, region, CC, postcode" ("Malmo, Skane, SE, 21120").
+# The facet's value is the same ISO code, which is what lets a row prove it.
+_ROW_COUNTRY = re.compile(r"[A-Z]{2}")
 
 # "Results 1 to 10 of 2010" (classic, in an aria-label) and "Showing 1 to 20 of
 # 62 Jobs" (tile, in visible text). One pattern reads both, and it is anchored
@@ -190,6 +235,71 @@ def _set_startrow(base_url: str, startrow: int) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
+def _facets_of(listing_url: str, base_search_url: str) -> dict[str, str]:
+    """The search-form facets on the configured URL, to be applied to the walk.
+
+    Only same-host facets are taken, and only ones the guard can check: a country
+    is proven by every row's location, a city or job area by nothing on the page.
+    Refusing the rest is SP3c's rule (refuse what cannot be translated
+    faithfully), not a limit of the site.
+    """
+    if urlparse(listing_url).netloc != urlparse(base_search_url).netloc:
+        return {}
+    params = parse_qs(urlparse(listing_url).query, keep_blank_values=True)
+    facets = {k: v[0] for k, v in params.items() if k.startswith(_FACET_PREFIX) and v[0]}
+    unchecked = sorted(set(facets) - {_COUNTRY_FACET})
+    if unchecked:
+        raise ValueError(
+            f"{listing_url}: the facet(s) {', '.join(unchecked)} cannot be checked against "
+            "the rows, so a board that ignored them would read as a quiet one. Only "
+            f"{_COUNTRY_FACET} is supported."
+        )
+    return facets
+
+
+def _search_url(base_search_url: str, facets: dict[str, str]) -> str:
+    if not facets:
+        return base_search_url
+    parsed = urlparse(base_search_url)
+    params = {k: v[0] for k, v in parse_qs(parsed.query, keep_blank_values=True).items()}
+    params.update(facets)
+    return urlunparse(parsed._replace(query=urlencode(params)))
+
+
+def _row_country(location: str) -> str | None:
+    """The country code a row's location names, or None if it names none."""
+    tokens = [t.strip() for t in location.split(",")]
+    if len(tokens) >= 3 and _ROW_COUNTRY.fullmatch(tokens[2]):
+        return tokens[2]
+    return None
+
+
+def _check_country(jobs: list[dict[str, Any]], country: str, source_name: str, url: str) -> int:
+    """Raise on the first row outside *country*; return how many rows proved it.
+
+    A row with no location says nothing either way and is let through, as WP8f
+    admits it at Layer 1. A row whose location names no country is the same: the
+    caller fails the walk if no row at all could prove the facet.
+    """
+    proved = 0
+    for job in jobs:
+        found = _row_country(job["location"])
+        if found is None:
+            continue
+        if found.upper() != country.upper():
+            raise FacetNotAppliedError(
+                f"{source_name}: asked for {_COUNTRY_FACET}={country} but {url} lists "
+                f"{job['title']!r} in {found} ({job['location']!r}). The board did not "
+                "apply the facet, so this is not the board that was configured.",
+                facet=_COUNTRY_FACET,
+                wanted=country,
+                found=found,
+                url=url,
+            )
+        proved += 1
+    return proved
+
+
 def _read_fields(container: Any, title: str) -> tuple[str, str]:
     """Location and department for one posting, by whichever layout this row is.
 
@@ -292,6 +402,11 @@ def extract(
     if is_rendering_fetcher(fetch_text):
         fetch_fn = partial(fetch_text, wait_for_selector=_WAIT_SELECTOR)
 
+    facets = _facets_of(listing_url, base_search_url)
+    base_search_url = _search_url(base_search_url, facets)
+    country = facets.get(_COUNTRY_FACET)
+    proved = 0
+
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     startrow = 0
@@ -305,6 +420,8 @@ def extract(
         jobs = _parse_page(soup, base_search_url, source_name)
         if not jobs:
             break
+        if country:
+            proved += _check_country(jobs, country, source_name, url)
 
         # Only a page that parsed can be asked how long the board is. A page
         # whose label cannot be read says nothing about the board, so it is
@@ -315,7 +432,10 @@ def extract(
                 f"{source_name}: the board changed during the walk: it stated {total} "
                 f"posting(s) up to {stated_at} and {declared} at {url}. A posting added "
                 "or removed ahead of the walk moves the rest by a place, so one is read "
-                "twice or never read; refusing a list that may be short."
+                "twice or never read; refusing a list that may be short.",
+                before=total,
+                after=declared,
+                url=url,
             )
         if declared is not None:
             total, stated_at = declared, url
@@ -335,6 +455,17 @@ def extract(
         if len(jobs) < page_step:
             break
         startrow += page_step
+
+    if country and out and not proved:
+        raise FacetNotAppliedError(
+            f"{source_name}: asked for {_COUNTRY_FACET}={country} but no row of {len(out)} "
+            "names its country, so nothing shows the facet was applied. Check the location "
+            "column's markup before trusting this board.",
+            facet=_COUNTRY_FACET,
+            wanted=country,
+            found="",
+            url=url,
+        )
 
     # Whichever of the three exits was taken, the board published a count and
     # this walk is measured against it. The short-page exit is the one that

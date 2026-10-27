@@ -747,6 +747,12 @@ class ReaderRun:
     # Set when the board's filter query was not shown applied: (endpoint, the
     # filter's parameters). Also the reader being right, not broken.
     unapplied: tuple[str, list[str]] | None = None
+    # Set when a SuccessFactors board ignored its country facet: (facet, wanted,
+    # the country a row named or "", the page). The reader is right to refuse.
+    facet_ignored: tuple[str, str, str, str] | None = None
+    # Set when a SuccessFactors board's stated total changed mid-walk: (before,
+    # after, the page). A busy board, not a broken reader.
+    moved: tuple[int, int, str] | None = None
 
     @property
     def ok(self) -> bool:
@@ -897,6 +903,12 @@ def run_reader(
     except workday.FacetNotAppliedError as exc:
         run.error = f"{type(exc).__name__}: {exc}"
         run.unapplied = (exc.endpoint, sorted(exc.facets))
+    except successfactors_html.FacetNotAppliedError as exc:
+        run.error = f"{type(exc).__name__}: {exc}"
+        run.facet_ignored = (exc.facet, exc.wanted, exc.found, exc.url)
+    except successfactors_html.BoardMovedError as exc:
+        run.error = f"{type(exc).__name__}: {exc}"
+        run.moved = (exc.before, exc.after, exc.url)
     except Exception as exc:  # noqa: BLE001 — every failure is part of the report
         run.error = f"{type(exc).__name__}: {exc}"
     return run
@@ -1446,6 +1458,33 @@ def decide(runs: list[ReaderRun], scans: list[PageScan], with_data: PageScan | N
             "one Workday's listing shows once the filter is ticked: a mistyped id, or a "
             "value with no postings today, fails the same way — SP3c in "
             "docs/SOURCES-PLAN.md.",
+            run,
+        )
+    ignored = [r for r in runs if r.facet_ignored is not None]
+    if ignored:
+        run = ignored[0]
+        facet, wanted, found, page = run.facet_ignored or ("", "", "", "")
+        saw = f"a row in {found}" if found else "no row naming its country"
+        return ProbeResult(
+            NOT_FEASIBLE,
+            f"{NOT_FEASIBLE} as it stands — rung 5: {page} was asked for {facet}={wanted} "
+            f"and answered with {saw}, so the facet was not applied (or the location "
+            "column no longer names a country) and this is not the board the url names. "
+            "successfactors_html.py is right to refuse it. Open the url in a browser: "
+            "the form's own facet value may differ from the one in the url — SP17 in "
+            "docs/SOURCES-PLAN.md.",
+            run,
+        )
+    moved = [r for r in runs if r.moved is not None]
+    if moved:
+        run = moved[0]
+        before, after, page = run.moved or (0, 0, "")
+        return ProbeResult(
+            NOT_FEASIBLE,
+            f"{NOT_FEASIBLE} this time — rung 5: the board stated {before} postings and "
+            f"{after} at {page} within one walk, so it changed while it was read. "
+            "successfactors_html.py is right to refuse it. Probe again; a board that "
+            "does this every time needs narrowing (a country facet in its url).",
             run,
         )
     failed = [r for r in runs if r.error is not None]

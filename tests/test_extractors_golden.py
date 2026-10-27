@@ -110,20 +110,25 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         # ("Managerial", "Freight Forwarding"), so it is now read structurally
         # like the tile layout's. `location` is unchanged: the heuristic already
         # landed on it, and `span.jobLocation` holds the same string.
-        "count": 10,
+        "count": 19,
         "first_job": {
             "source_name": "dsv",
-            "title": "Manager - Air Import",
+            "title": "DSV Road söker en Terminalchef till Linköping!",
             "department": "Managerial",
-            "location": "Chester, PA, US, 19013",
-            "listing_url": "https://jobs.dsv.com/search/",
+            "location": "Linkoping, Oestergoetlands, SE, 58278",
+            "listing_url": "https://jobs.dsv.com/search/?optionsFacetsDD_country=SE",
             "detail_url": (
-                "https://jobs.dsv.com/job/Chester-Manager-Air-Import-PA-19013/1402649033/"
+                "https://jobs.dsv.com/job/Linkoping-DSV-Road-s%C3%B6ker-en-Terminalchef-till-"
+                "Link%C3%B6ping%21-Oest-58278/1450849033/"
             ),
             "apply_url": (
-                "https://jobs.dsv.com/job/Chester-Manager-Air-Import-PA-19013/1402649033/"
+                "https://jobs.dsv.com/job/Linkoping-DSV-Road-s%C3%B6ker-en-Terminalchef-till-"
+                "Link%C3%B6ping%21-Oest-58278/1450849033/"
             ),
-            "raw_snippet": "Manager - Air Import Managerial Chester, PA, US, 19013",
+            "raw_snippet": (
+                "DSV Road söker en Terminalchef till Linköping! Managerial "
+                "Linkoping, Oestergoetlands, SE, 58278"
+            ),
         },
     },
     "iss": {

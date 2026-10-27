@@ -519,7 +519,7 @@ def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
 @pytest.mark.parametrize(
     ("name", "reader", "expected"),
     [
-        ("dsv", successfactors_html._declared_total, 2010),
+        ("dsv", successfactors_html._declared_total, 19),
         ("iss", successfactors_html._declared_total, 62),
         ("novo_nordisk", successfactors_html._declared_total, 329),
         ("coloplast", successfactors_html._declared_total, 331),
@@ -594,7 +594,10 @@ def test_successfactors_parses_exactly_what_its_label_counts(name: str, per_page
     )
 
     assert stated == per_page
-    assert len(parse_fixture(name)) == stated
+    # This page's rows, not the fixture's: dsv's fixture is now a two-page walk.
+    assert (
+        len(successfactors_html._parse_page(soup, "https://example.test/search/", name)) == stated
+    )
 
 
 # --- a page that half-renders is short, not empty ---------------------------
@@ -1278,3 +1281,175 @@ def test_workable_detail_urls_are_built_from_slug_and_shortcode_on_every_page() 
         "https://apply.workable.com/nutritionintl/j/a/",
         "https://apply.workable.com/nutritionintl/j/b/",
     ]
+
+
+# --- SuccessFactors: a country facet on the listing URL (SP17) ---------------
+
+_SF_LISTING = "https://jobs.dsv.com/search/?optionsFacetsDD_country=SE"
+
+
+def _sf_country_page(locations: list[str], total: int | None, offset: int = 0) -> str:
+    """A classic-layout page whose rows carry *locations* ("City, region, CC, postcode")."""
+    rows = "".join(
+        f'<tr><td><a href="/job/City-Role-{offset + i}/{offset + i}/">Role {offset + i}</a></td>'
+        f'<td class="colLocation"><span class="jobLocation">{loc}</span></td></tr>'
+        for i, loc in enumerate(locations)
+    )
+    label = ""
+    if total is not None:
+        label = (
+            f'<span class="paginationLabel" aria-label="Search results for . Page 1 of 9, '
+            f'Results 1 to {len(locations)} of {total}">Results</span>'
+        )
+    return f"<html><body>{label}<table>{rows}</table></body></html>"
+
+
+def _sf_facet_walk(pages: dict[int, str], asked: list[str]) -> list[dict[str, Any]]:
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        asked.append(url)
+        return pages[int(url.rsplit("startrow=", 1)[1])]
+
+    return successfactors_html.extract(
+        _SF_LISTING,
+        fetch,
+        source_name="dsv",
+        page_step=10,
+        base_search_url="https://jobs.dsv.com/search/",
+    )
+
+
+_SE = "Malmo, Skane, SE, 21120"
+_DK = "Hedehusene, 84, DK, 2640"
+
+
+def test_successfactors_sends_the_listing_urls_country_facet_on_every_page() -> None:
+    asked: list[str] = []
+    pages = {
+        0: _sf_country_page([_SE] * 10, total=12),
+        10: _sf_country_page([_SE] * 2, total=12, offset=10),
+    }
+
+    rows = _sf_facet_walk(pages, asked)
+
+    assert len(rows) == 12
+    assert all("optionsFacetsDD_country=SE" in url for url in asked)
+    assert len(asked) == 2
+
+
+def test_successfactors_listing_url_facet_is_the_one_recorded_on_the_rows() -> None:
+    rows = _sf_facet_walk({0: _sf_country_page([_SE], total=1)}, [])
+
+    assert "optionsFacetsDD_country=SE" in rows[0]["listing_url"]
+    assert "startrow" not in rows[0]["listing_url"]
+    # Detail URLs key stored jobs (dedupe_key_for_job), so the facet must never reach them.
+    assert rows[0]["detail_url"] == "https://jobs.dsv.com/job/City-Role-0/0/"
+
+
+def test_successfactors_an_ignored_country_facet_fails_the_source() -> None:
+    """The board answers with every country: the facet did nothing."""
+    pages = {0: _sf_country_page([_SE, _DK, _SE, _DK], total=4)}
+
+    with pytest.raises(successfactors_html.FacetNotAppliedError, match="DK"):
+        _sf_facet_walk(pages, [])
+
+
+def test_successfactors_an_ignored_facet_on_the_saved_unfiltered_page_fails_the_source() -> None:
+    """The real unfiltered capture (`dsv.unfiltered.html`), served as the answer to the facet."""
+    html = (FIXTURES_DIR / "dsv.unfiltered.html").read_text(encoding="utf-8")
+
+    with pytest.raises(successfactors_html.FacetNotAppliedError):
+        successfactors_html.extract(
+            _SF_LISTING,
+            lambda url, *a, **k: html,
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
+        )
+
+
+def test_successfactors_a_foreign_row_late_in_the_walk_still_fails_the_source() -> None:
+    pages = {
+        0: _sf_country_page([_SE] * 10, total=12),
+        10: _sf_country_page([_SE, _DK], total=12, offset=10),
+    }
+
+    with pytest.raises(successfactors_html.FacetNotAppliedError):
+        _sf_facet_walk(pages, [])
+
+
+def test_successfactors_a_facet_failure_is_a_failed_source_like_a_short_walk() -> None:
+    assert issubclass(successfactors_html.FacetNotAppliedError, ShortWalkError)
+
+
+def test_successfactors_rows_that_name_no_country_prove_nothing_and_fail() -> None:
+    """A restyled location column must not read as a quiet, correct board."""
+    pages = {0: _sf_country_page(["Malmo", "Lund"], total=2)}
+
+    with pytest.raises(successfactors_html.FacetNotAppliedError, match="no row"):
+        _sf_facet_walk(pages, [])
+
+
+def test_successfactors_one_row_without_a_location_does_not_fail_a_proven_board() -> None:
+    pages = {0: _sf_country_page([_SE, "", _SE], total=3)}
+
+    assert len(_sf_facet_walk(pages, [])) == 3
+
+
+def test_successfactors_a_country_code_is_matched_whole_not_as_a_substring() -> None:
+    pages = {0: _sf_country_page(["Sevilla, Andalusia, ES, 41001", _SE], total=2)}
+
+    with pytest.raises(successfactors_html.FacetNotAppliedError, match="ES"):
+        _sf_facet_walk(pages, [])
+
+
+def test_successfactors_an_empty_filtered_board_is_not_a_failure() -> None:
+    assert _sf_facet_walk({0: _sf_country_page([], total=0)}, []) == []
+
+
+def test_successfactors_without_a_facet_no_country_is_required() -> None:
+    """Unchanged for every other board: the guard is the facet's, not the reader's."""
+    pages = {0: _sf_country_page([_SE, _DK], total=2)}
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        return pages[0]
+
+    rows = successfactors_html.extract(
+        "https://jobs.dsv.com/search/",
+        fetch,
+        source_name="dsv",
+        page_step=10,
+        base_search_url="https://jobs.dsv.com/search/",
+    )
+    assert len(rows) == 2
+
+
+def test_successfactors_refuses_a_facet_no_row_can_prove() -> None:
+    with pytest.raises(ValueError, match="optionsFacetsDD_city"):
+        successfactors_html.extract(
+            "https://jobs.dsv.com/search/?optionsFacetsDD_city=Malmo",
+            lambda url, *a, **k: _sf_country_page([_SE], total=1),
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
+        )
+
+
+def test_dsv_and_dsv_denmark_are_the_same_facet_checked_reader() -> None:
+    """One country per source: Sweden's entry and Denmark's differ by name and facet only."""
+    from job_scraper.extractors.registry import get_extractor
+
+    asked: list[str] = []
+    html = _sf_country_page(["Hedehusene, 84, DK, 2640"] * 2, total=2)
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        asked.append(url)
+        return html
+
+    denmark = get_extractor("dsv_denmark")
+    rows = denmark("https://jobs.dsv.com/search/?optionsFacetsDD_country=DK", fetch)
+    assert {r["source_name"] for r in rows} == {"dsv_denmark"}
+    assert "optionsFacetsDD_country=DK" in asked[0]
+
+    # Sweden's entry, handed Denmark's answer, is refused rather than read as its own.
+    with pytest.raises(successfactors_html.FacetNotAppliedError, match="DK"):
+        get_extractor("dsv")("https://jobs.dsv.com/search/?optionsFacetsDD_country=SE", fetch)

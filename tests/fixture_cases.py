@@ -106,11 +106,16 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
     ),
     "dsv": (
         "dsv.html",
-        "https://jobs.dsv.com/search/",
-        # The parser, not the walk: 201 pages, which is far too much markup to
-        # store. The walk itself is `novo_nordisk`'s to cover.
-        lambda url, fetch: successfactors_html._parse_page(
-            BeautifulSoup(fetch(url), "lxml"), "https://jobs.dsv.com/search/", "dsv"
+        "https://jobs.dsv.com/search/?optionsFacetsDD_country=SE",
+        # The whole walk, two pages (dsv.html + dsv.p1.html), now that the
+        # country facet leaves 19 postings (SP17). The unfiltered board was 201
+        # pages, so this fixture used to be the parser alone.
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
         ),
     ),
     "iss": (
