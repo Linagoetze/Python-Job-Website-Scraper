@@ -1,6 +1,6 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12 and SP13 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
+**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12, SP13 and SP15 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
 Status table below is the live record, so check it rather than this sentence.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
@@ -113,9 +113,9 @@ the ordering below.
 | 10 | A bespoke reader for a rendered, Swedish careers page | 2 hr | Sonnet 5 | `think` | done: no private API; a generic Jobylon feed reader, `static`; source added | `sp10-jobylon-reader` |
 | 11 | A generic reader for Cornerstone (CSOD) career sites | 3 hr | Opus 5 | `think hard` | done: stopped at step 2, no reader; the listing API needs a page-issued token and an aggregator already carries the board; candidate re-checked | `sp11-csod-reader` |
 | 12 | Which sources can never pass the location filter? | 2.5 hr | Opus 5 | `think` | done: read-only report built; 40 A, 10 B, 2 C, 2 D | `sp12-source-yield` |
-| 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | not started | `sp13-workable-walk` |
+| 13 | The Workable reader walks its whole board | 2 hr | Sonnet 5 | `think` | done: the reader walks the whole board; Workable guarded in the probe | `sp13-workable-walk` |
 | 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | done: lead-ins, the tie before a figure and a colleague's years read; typicality left unread; 3 rejected rows put to you | `sp14-years-lead-ins` |
-| 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | not started | `sp15-sida-hybrid-wording` |
+| 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | done: the gate counts remote work "to some extent" as hybrid; 6 listed rows revived at your word, 16 left rejected | `sp15-sida-hybrid-wording` |
 | 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | not started | `sp16-hibob-reader` |
 | 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | not started | `sp17-dsv-facets` |
 
@@ -175,8 +175,7 @@ first.
 SP14 next. **Done 2026-10-26**, ahead of SP13, which it does not depend on;
 the real run came first, so the two excluded Manager roles are stored
 `rejected`, and reviving them is an owner to-do under SP14.
-SP15 once the owner has said whether remote work "to some extent" counts as
-hybrid; if it does not, the package ends there.
+SP15 **done 2026-10-27**: the owner said it counts.
 SP16 only if the owner wants the HiBob employer or others on the platform: the
 board has four postings.
 SP17 whenever convenient: no job is lost meanwhile, and it saves most of dsv's
@@ -5609,11 +5608,82 @@ why.
 Branch sp15-sida-hybrid-wording. Commit, do not push. Update this plan file.
 ```
 
+### SP15 — result (2026-10-27)
+
+**Decision.** The owner said an offer of remote work "to some extent" counts as
+hybrid; recorded in `docs/DECISIONS.md` with what the gate now matches.
+
+**Change.** `build_hybrid_pattern` still returns one compiled pattern, with the
+same callers (Layer 1's `matches_rules`, Layer 5's `_analyze`) and no new rule
+string. Alongside the keywords it now matches a remote-work term and an extent
+word in either order within one clause, in Swedish, English, Danish and German,
+cancelled by a negation in the span. Empty keyword list: still `None`.
+
+**Tests first** (`tests/test_hybrid_wording.py`, invented text throughout; the
+employer's sentence is not quoted). Run on main before the change: **15 failed,
+14 passed** (the 15 are the offers, in four languages, plus Layer 5 confirming a
+Swedish and an English one; the 14 are the stay-rejected cases, the plain word
+"hybrid" and the unconfigured gate). After: 33 pass (two Layer 1 tests added in a follow-up; the two run-together cases were added after the pre-change run and never ran on main). Suite: 1,570. The rejected cases include a
+description that only names the city, ones that rule remote work out (with the
+extent words in the same sentence), a run-on description with a negation, and
+the two words in different sentences.
+
+**Danish and German, checked by test.** Both are covered by cases of each shape
+(`fjernarbejde ... i et vist omfang`, `delvist ... hjemmefra`, `Homeoffice ist
+teilweise möglich`, `zum Teil im Homeoffice`, `in gewissem Umfang`) and by a
+ruled-out case each (`ingen mulighed ... heller ikke delvist`, `Kein Homeoffice
+... auch nicht teilweise`). Neither language has a stored sample, so their
+phrasing is from the tests, not from a posting. **Error direction:** a false
+match keeps an on-site job in the sheet for the owner to read; a missed phrase
+drops a hybrid job permanently. Swedish `delvis` and German `teilweise` are the
+loosest (a bare extent word near a work term), and lean to the false match by
+design. The negation guard is the opposite risk: an unrelated "no"/"not" in the
+same clause as the phrase reads as a rule-out and misses.
+
+**Measured** (a copy of the store in the scratchpad; 1,841 stored descriptions
+judged with main's gate and with the new one, 278 rows with none). **23
+verdicts change, all read by hand and all genuine offers:** sida 21, impactpool
+1 (a sida posting through the aggregator, same wording), ramboll 1 (a Malmö
+posting offering to partly work from home; rejected for another reason, not on
+the hybrid gate). The other 1,818 do not change. **dsv's 11, pwc_sweden's 3 and
+bearingpoint_sweden's 1 hybrid rejections do not change.** Sida is 21, not
+the 20 SP12 counted: one more row has been stored since. Likewise dsv's hybrid
+rejections are 11 in the store now, not SP12's 9 (rows stored since; none of the
+11 changes), and 6 of the 22 are still listed now, where SP12 counted 9 of
+sida's on run 37 (postings have closed since; listed here means `misses` 0 in
+the store, not a fresh read of the board).
+
+**Stored rows** (step 5; nothing written, no revival run). Of the store's
+`non_hybrid_conditional_location` rows, the new pattern would keep **22: sida 21
+and impactpool 1**. Of those, 19 read no years requirement (sida 18, impactpool
+1) and 3 would still be rejected on years. **6 are still listed** (sida 5,
+impactpool 1; `misses` is 0), all 6 among the 19.
+
+**Revival, done 2026-10-27 (owner: only the rows still listed).** Selected by
+query: `rejected`, `non_hybrid_conditional_location`, `misses` 0, description
+matching the new pattern, and not excluded on years or PhD. That gave **6 rows:
+sida 5, impactpool 1**; the other 16 stay rejected. Method as SP4e: a backup
+with SQLite's backup API at
+`~/Documents/job_scraper_backups/jobs.sqlite3.pre-sp15-20261027-090433`, one
+transaction, status `new`, the description kept (no re-fetch), `experience_level`
+set to the reading (`unspecified` for all six) and `hybrid_confirmed` 1, so the
+next run does not treat them as pending. Store: rejected 1,885 to 1,879, new 3
+to 9, nothing else moved. Not yet seen in a run, but checked
+offline on a copy of the live store afterwards: the re-filter pass rejects
+nothing and leaves all 9 `new` rows `new`, and a pipeline test
+(`test_a_revived_hybrid_row_is_neither_refetched_nor_rejected_again`) pins that
+a stored `new` row with `hybrid_confirmed` 1 and its description is neither
+re-fetched nor rejected by the next run (it fails with `hybrid_confirmed` 0).
+Layer 1 is covered too: two tests run the new wording through `matches_rules`.
+
 ### Your to-dos (SP15)
 
-- [ ] Before the session, say whether an offer of remote work "to some extent"
-      counts as hybrid.
-- [ ] After it, decide which of sida's 20 rejected rows you want revived.
+- [x] Before the session, say whether an offer of remote work "to some extent"
+      counts as hybrid. (It does.)
+- [x] Decide which of the 22 rows to revive. **Only the 6 still listed**,
+      done.
+- [ ] After the next run, look at the 6 revived rows in the sheet (sida 5,
+      impactpool 1).
 
 ### SP16 — A generic reader for HiBob career sites
 

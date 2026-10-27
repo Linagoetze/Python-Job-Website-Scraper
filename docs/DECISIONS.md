@@ -2136,3 +2136,32 @@ session — see `CLAUDE.md`.
   `source_health` should show a different count for any Workable board that was
   capped. Stored jobs whose key changes: none expected (keys not compared
   with a live read).
+- **What the hybrid gate counts as hybrid ([SP15](SOURCES-PLAN.md#sp15--sidas-remote-work-wording-reaches-the-hybrid-gate), 2026-10-27).**
+  The owner decided that an offer of remote work "to some extent" is hybrid.
+  `build_hybrid_pattern` therefore returns one compiled pattern: the
+  `conditional_location_keywords` as before, plus a built-in family of
+  phrases (`filtering._PARTIAL_REMOTE`) pairing a remote-work term with an
+  extent word, in either order, in Swedish, English, Danish and German
+  ("distansarbete ... i viss utsträckning", "remote work ... to some extent",
+  "fjernarbejde ... i et vist omfang", "teilweise ... Homeoffice"). It is still
+  the same gate: no new layer, no new rule string, and an empty keyword list
+  still makes the whole thing inert, since the phrases ride on the list. The
+  phrases are in code, not in `rules.json`, because a keyword there is a single
+  word prefix and cannot say "this word near that one". A negation inside the
+  span ("not", "ingen", "kein", "ikke") cancels the match, so a posting that
+  rules remote work out stays on-site; a clause starts at a sentence mark or a
+  capital, since stored descriptions are often run together without
+  punctuation. **Error direction:** a false match keeps an on-site job in the
+  sheet, where the owner reads it and says no; a miss drops a hybrid job for good
+  (a Layer 5 rejection is permanent, SP4c). The phrases therefore lean towards
+  matching. **The wider reading is deliberate (owner, 2026-10-27):** the
+  extent words include `delvis`, `teilweise`, `partly`, `partial` and `in part`,
+  and the remote-work terms include a bare `hemifrån` or `på distans`, so
+  "partly from home" counts without the words "to some extent". The cost is
+  the false match above; the store's 1,818 unchanged verdicts show none today.
+  The opposite risk is the negation guard: an unrelated "no" or "not" in the
+  same clause as the phrase reads as a rule-out and misses it. Not counted:
+  "remote" or "flexible" on its own, a bare "partly remote" with no work term,
+  and a platform's own workplace field (SP4e's readers already carry that).
+  The re-filter pass still never settles a deferred hybrid state (SP4g), so
+  stored `rejected` rows are untouched; reviving them is the owner's call.

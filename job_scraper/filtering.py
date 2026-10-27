@@ -427,17 +427,63 @@ def build_location_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
     return _build_title_keyword_pattern([(loc, "word") for loc in locations])
 
 
+# SP15: an offer of remote work "to some extent" is hybrid, whatever the
+# employer calls it. The keywords in `conditional_location_keywords` cannot say
+# that (they are single prefixes), so the phrase family is built in, in the four
+# languages the owner's sources are written in. It is part of the same pattern,
+# not a layer: the gate still asks one question of one compiled regex.
+#
+# Two orders are read ("remote work ... to some extent" and "partly ... home
+# office"), within one clause and a short span. A negation anywhere in the span
+# ("not", "ingen", "kein", "ikke") cancels the match, so "no remote work, not
+# even to some extent" stays on-site. The clause starts at a sentence mark or a
+# capital, because the stored descriptions are often run together without
+# punctuation. A false match keeps an on-site job for the owner to read; a miss
+# drops a hybrid one for good, so the phrases lean towards matching.
+_REMOTE_WORK = (
+    r"(?:distansarbet\w*|distansjobb\w*|(?:arbeta|jobba|utföras|utföra)\s+(?:på\s+)?(?:distans|hemifrån)"
+    r"|hemarbete\w*|remote\s+work\w*|work(?:ing)?\s+(?:remotely|from\s+home)|home\s+working"
+    r"|telework\w*|telecommut\w*|fjernarbejd\w*|hjemmearbejd\w*|arbejde\s+(?:hjemmefra|på\s+distancen)"
+    r"|home[\s-]?office|mobil\w*\s+arbeit\w*|telearbeit\w*|remote[\s-]arbeit\w*"
+    r"|von\s+zu\s+hause\s+arbeit\w*|på\s+distans|hemifrån)"
+)
+_EXTENT = (
+    r"(?:i\s+viss\s+(?:utsträckning|mån)|i\s+någon\s+(?:utsträckning|mån)|till\s+viss\s+del|delvis"
+    r"|to\s+(?:some|a\s+certain|a\s+limited)\s+(?:extent|degree)|to\s+a\s+degree|in\s+part|partly|partially|partial"
+    r"|i\s+et\s+vist\s+omfang|til\s+en\s+vis\s+grad|delvist|til\s+dels"
+    r"|teilweise|zum\s+teil|in\s+gewissem\s+(?:umfang|maße|maß)|bis\s+zu\s+einem\s+gewissen\s+grad)"
+)
+_NEGATION = (
+    r"(?:inte|ej|ingen|inget|inga|utan|not|no|never|without|cannot|can't|cant|kein\w*|nicht|ohne"
+    r"|ikke|uden|aldrig)"
+)
+# `(?-i:...)` because the whole pattern is case-insensitive and a capital is the
+# only clause marker an unpunctuated description has.
+_CLAUSE_START = r"(?:^|(?<=[.!?;:\n])\s*|(?-i:\b(?=[A-ZÅÄÖÜ])))"
+_NO_NEGATION = rf"(?:(?!\b{_NEGATION}\b)[^.!?;\n])"
+_PARTIAL_REMOTE = (
+    rf"{_CLAUSE_START}{_NO_NEGATION}{{0,80}}?"
+    rf"(?:\b{_REMOTE_WORK}\b{_NO_NEGATION}{{0,60}}?\b{_EXTENT}\b"
+    rf"|\b{_EXTENT}\b{_NO_NEGATION}{{0,60}}?\b{_REMOTE_WORK}\b)"
+)
+
+
 def build_hybrid_pattern(rules: dict[str, Any]) -> re.Pattern[str] | None:
-    """Compile the keyword matcher that gates `conditional_locations`.
+    """Compile the matcher that gates `conditional_locations`.
 
     Keywords match as word-start prefixes, so "hybrid" also covers the Swedish
-    compounds hybridarbete / hybridjobb / hybridlösning, and "hybrid-remote".
-    Returns None when the feature is unconfigured.
+    compounds hybridarbete / hybridjobb / hybridlösning, and "hybrid-remote". An
+    offer of remote work to some extent (`_PARTIAL_REMOTE`) matches as well.
+    Returns None when the feature is unconfigured: the built-in phrases ride on
+    the keyword list, so an empty list still makes the whole gate inert.
     """
     keywords = [
         str(x).strip() for x in (rules.get("conditional_location_keywords") or []) if str(x).strip()
     ]
-    return _build_title_keyword_pattern([(kw, "prefix") for kw in keywords])
+    keyword_pattern = _build_title_keyword_pattern([(kw, "prefix") for kw in keywords])
+    if keyword_pattern is None:
+        return None
+    return re.compile(f"(?:{keyword_pattern.pattern})|(?:{_PARTIAL_REMOTE})", re.IGNORECASE)
 
 
 def _has_confirmed_hybrid(job: JobRecord) -> bool:

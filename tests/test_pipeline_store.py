@@ -298,6 +298,53 @@ def test_hybrid_confirmation_is_persisted_and_ends_the_refetch_loop(
     assert env["fetches"][url] == 1, "no re-fetch: the confirmation was persisted"
 
 
+def test_a_revived_hybrid_row_is_neither_refetched_nor_rejected_again(
+    env: dict[str, Any],
+) -> None:
+    """SP15's revival leaves a rejected conditional-city row `new` with its
+    description kept and hybrid_confirmed set. The next run must keep it as it
+    is: no fetch, no second rejection, whatever the board's listing says."""
+    tmp_path = env["tmp_path"]
+    (tmp_path / "rules.json").write_text(json.dumps(_HYBRID_RULES), encoding="utf-8")
+    conditional = _job("Data Analyst", location="Faraway", slug="revived")
+    env["extracted"][:] = [conditional]
+    url = conditional["detail_url"]
+    text = "We offer the possibility of remote work to some extent. " * 12
+
+    with JobStore(tmp_path / "jobs.sqlite3") as store:
+        run_id = store.begin_run()
+        store.upsert_jobs(
+            [
+                {
+                    "dedupe_key": url,
+                    "source_name": _SOURCE,
+                    "title": "Data Analyst",
+                    "location": "Faraway",
+                    "detail_url": url,
+                    "status": "new",
+                    "experience_level": "unspecified",
+                    "hybrid_confirmed": 1,
+                    "description_text": text,
+                }
+            ],
+            run_id,
+        )
+        store.finish_run(run_id)
+
+    def fake_fetch(u: str, *a: Any, **k: Any) -> str:
+        env["fetches"][u] += 1
+        return posting("nothing to see")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pipeline_mod, "fetch_text", fake_fetch)
+        mp.setattr(pipeline_mod, "fetch_rendered", fake_fetch)
+        result = _run(tmp_path)
+
+    assert env["fetches"][url] == 0
+    assert result.jobs_stored_rechecked == 0
+    assert _db_jobs(tmp_path)[url]["status"] == "new"
+
+
 def test_stored_unconfirmed_conditional_job_is_rechecked_once(
     env: dict[str, Any],
 ) -> None:
