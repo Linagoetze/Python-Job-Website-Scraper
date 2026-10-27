@@ -759,7 +759,7 @@ class TestReaders:
         ]
         assert result.kind == probe.REUSE
         assert "detail_url: https://apply.workable.com/contoso/j/ABC123/" in report
-        assert "follows no next-page token" in report
+        assert "walks the API by its next-page token" in report
 
     def test_lever_and_smartrecruiters_lines_carry_the_org_slug(self) -> None:
         for url, key in (
@@ -815,6 +815,23 @@ class TestPagination:
         assert "bug in workday.py" in result.line
         assert "does not walk this listing" not in result.line
         assert "registry.py (in REGISTRY)" not in report
+
+    def test_a_workable_short_read_is_the_readers_bug_not_a_new_extractor(self) -> None:
+        # SP13: workable.py walks and checks `total`, so a read shorter than
+        # the board says got past its own check (SP3b's review rule).
+        workable = next(p for p in probe.PLATFORMS if p.key == "workable")
+        assert workable.guarded
+        board = probe.Board(workable, "https://apply.workable.com/contoso/", None, "the page")
+        run = probe.ReaderRun(
+            board=board,
+            strategy="static",
+            rows=[{"title": f"Role {n}", "detail_url": f"https://x/{n}"} for n in range(10)],
+            total=probe.DeclaredTotal(11, "11 jobs"),
+        )
+        result = probe.decide([run], [], None)
+        assert result.kind == probe.NOT_FEASIBLE
+        assert "bug in workable.py" in result.line
+        assert "needs a walking reader" not in result.line
 
     def test_a_first_page_reader_is_told_it_needs_a_walk(self) -> None:
         # The case the old path.html test covered, before Workday walked: a

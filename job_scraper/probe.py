@@ -266,9 +266,11 @@ PLATFORMS: tuple[Platform, ...] = (
         board_url=lambda m: f"https://apply.workable.com/{m.group('slug')}/",
         strategy="static",
         walk=(
-            "reads one Workable API response and follows no next-page token, so a board "
-            "longer than one response is not known to read whole (SP4 captures it)"
+            "walks the API by its next-page token to the board's stated total and fails a "
+            "short walk (pagination.py); a full page carries a token even at the end, so "
+            "the walk ends on an empty page with the count reached"
         ),
+        guarded=True,
         not_slugs=frozenset({"api", "j"}),
     ),
     Platform(
