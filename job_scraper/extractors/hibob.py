@@ -78,11 +78,16 @@ def extract(
         )
 
     out: list[dict[str, Any]] = []
-    for job in postings:
-        title = (job.get("title") or "").strip()
-        job_id = str(job.get("id") or "").strip()
+    for position, job in enumerate(postings, start=1):
+        title = str((job or {}).get("title") or "").strip() if isinstance(job, dict) else ""
+        job_id = str(job.get("id") or "").strip() if isinstance(job, dict) else ""
         if not title or not job_id:
-            continue
+            # Skipping would turn an API whose shape changed into a shorter
+            # list that reads as fewer vacancies.
+            raise ValueError(
+                f"{source_name}: posting {position} of the HiBob job-ad API has no id or no "
+                f"title ({str(job)[:80]!r})"
+            )
         dept = (job.get("department") or "").strip()
         site = (job.get("site") or "").strip()
         location = (job.get("country") or "").strip()

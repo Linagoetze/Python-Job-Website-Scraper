@@ -124,7 +124,11 @@ def extract(
     for job in results:
         title = (job.get("title") or "").strip()
         if not title:
-            continue
+            # Skipping would turn an API whose shape changed into a shorter
+            # list that reads as fewer vacancies.
+            raise ValueError(
+                f"{source_name}: a posting of the Workable API has no title ({str(job)[:80]!r})"
+            )
 
         shortcode = (job.get("shortcode") or "").strip()
         depts = job.get("department") or []

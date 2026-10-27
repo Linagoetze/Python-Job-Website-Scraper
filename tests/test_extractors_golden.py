@@ -1855,3 +1855,34 @@ def test_hibob_every_posting_of_the_saved_board_reads_as_the_response_says() -> 
         "030568fe-98c3-4629-a539-ef1b27bf5ac3",
         "b8c0d6ed-f216-4247-9b9f-12af98f64037",
     ]
+
+
+# --- a posting that cannot be read fails the source, it is not skipped -----------
+#
+# Skipping a posting with no title or id turns an API whose shape changed into a
+# shorter list that reads as fewer vacancies (CLAUDE.md, priority 2; jobylon.py
+# already raised). Invented postings.
+
+
+@pytest.mark.parametrize("missing", [{"title": ""}, {"id": ""}, {"title": None, "id": None}])
+def test_hibob_fails_loudly_on_a_posting_with_no_title_or_id(missing: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="HiBob job-ad API"):
+        _hibob(missing)
+
+
+@pytest.mark.parametrize("missing", [{"title": ""}, {"id": ""}, {"title": None, "id": None}])
+def test_ashby_fails_loudly_on_a_listed_posting_with_no_title_or_id(
+    missing: dict[str, Any],
+) -> None:
+    with pytest.raises(ValueError, match="Ashby posting API"):
+        _ashby({"title": "Analyst", "id": "abc", **missing})
+
+
+def test_ashby_still_skips_an_unlisted_posting_however_little_it_carries() -> None:
+    assert _ashby({"isListed": False, "title": "", "id": ""}) == []
+
+
+@pytest.mark.parametrize("title", ["", "   ", None])
+def test_workable_fails_loudly_on_a_posting_with_no_title(title: str | None) -> None:
+    with pytest.raises(ValueError, match="Workable API"):
+        _workable({"title": title})

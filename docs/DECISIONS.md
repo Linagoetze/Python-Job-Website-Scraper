@@ -2183,3 +2183,8 @@ session — see `CLAUDE.md`.
   into an unlisted place and lose it, which is the worse error (priority 1), so
   it was not done. `http.fetch_text` gained `headers=` for this; the probe's
   platform count is now taken from `PLATFORMS`.
+- **A posting with no title or id fails the source, in the HiBob, Ashby and Workable readers ([SP16](SOURCES-PLAN.md#sp16--a-generic-reader-for-hibob-career-sites), 2026-10-27).**
+  They skipped it quietly, so an API that changed shape read as a shorter
+  list, which priority 2 rules out and jobylon.py already refused. Ashby raises
+  only for a listed posting; Workable only for a missing title (a posting with
+  no id is still kept, under the listing URL, as before).

@@ -4367,7 +4367,13 @@ Branch sp8-teamtailor-image-cards. Commit, do not push. Update this plan file.
   the row listing prints a `!` line for it. The same helper serves both.
 - **Pinned.** `FIXTURE_CASES` and golden, first job checked field by field
   against the saved page. `detail_url` keeps the `/en-GB/` the page gives.
-- **SP5's checks.** Scratch-store run: 7 seen, Layer 0 passed 7, Layer 2 dropped
+- **Review follow-up.** A posting with no title or id was skipped quietly by the
+new reader, as it still was by the Ashby and Workable readers; jobylon.py
+already raised. All three now raise (Ashby only for a *listed* posting, since
+an unlisted one is skipped on purpose; Workable for a missing title only, as a
+posting with no id is kept under the listing URL, which this left alone).
+
+**SP5's checks.** Scratch-store run: 7 seen, Layer 0 passed 7, Layer 2 dropped
   3, 4 stored, none rejected at Layer 5; no "Unreadable pages" block. All four
   stored descriptions read `unspecified`, correctly: internships, no years or
   PhD asked. The work type ("Hybrid") reaches `raw_snippet` on every row.
@@ -5762,9 +5768,9 @@ responsibilities, requirements, benefits) are joined as `description_text`.
 **Pinned.** The board's fixture (14 KB, captured with the capture
 script's recording path, since the source is not in `sources.yaml`), golden for
 three postings with the first checked field by field, and tests for the header,
-the company override, each failure the reader raises on (written to fail
+each failure the reader raises on (written to fail
 against a reader that returns `[]`), the workplace words, a site label never
-becoming the location, section joining and the detail URL. Tests: 1570 -> 1590. The live probe says `reuse hibob`.
+becoming the location, section joining and the detail URL. Tests: 1570 -> 1600. The live probe says `reuse hibob`.
 
 **Scratch run** (scratch store, one-entry sources file): 3 postings, 0 off
 criteria at Layer 0, **1 reaches the sheet**: one rejected for "3-6 years" (read
