@@ -578,7 +578,7 @@ it.
 | `exclude_keywords` | A job containing any of these is rejected outright. |
 | `locations` | A job's `location` field must contain one of these. Empty list = no location requirement. |
 | `conditional_locations` | Cities admitted **only** for hybrid roles — see below. Empty list = feature off. |
-| `conditional_location_keywords` | What makes a `conditional_locations` job qualify. Matched as word prefixes, so `hybrid` also covers `hybridarbete`. Empty list makes `conditional_locations` inert. |
+| `conditional_location_keywords` | What makes a `conditional_locations` job qualify. Matched as word prefixes, so `hybrid` also covers `hybridarbete`. An offer of remote work "to some extent" (Swedish, English, Danish or German) also counts, built in. Empty list makes `conditional_locations` inert. |
 | `remote_keywords` | Words that mark a job as location-independent — see the caveat below. |
 | `non_place_locations` | Regions and bare country names that name no specific place — see below. Empty or absent = only the shapes recognised in code. |
 | `remote_regions` | Regions that include where you live. A remote or home-based role across one of them is admitted — see below. Empty or absent = every regional field is settled by layer 5 instead. |
@@ -1119,7 +1119,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1536 tests, about twenty seconds, no network access required.
+1567 tests, about twenty seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
