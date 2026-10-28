@@ -1,7 +1,13 @@
 # Sources plan
 
-**In progress: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6, SP8–SP12, SP13, SP15, SP16 and SP17 are done** (as of 2026-10-27; SP11 ended at its stop-and-ask, with no reader); the
-Status table below is the live record, so check it rather than this sentence.
+> **Closed on 2026-10-28. This file is an archive**, like
+> `docs/REFACTOR-PLAN.md`: consult it on demand (grep for a package name), not
+> at session start. What is left of it is in `docs/OPTIONAL-PLAN.md`, the one
+> live plan, and its audit is `docs/AUDIT-SP.md`. The Status table, header and
+> to-do boxes were brought up to date at closing and are now frozen; the
+> Result sections are as each package wrote them.
+
+**Closed: SP0, SP0b, SP1, SP2, SP2b, SP3, SP3b, SP3c, SP4, SP4b–SP4h, SP6–SP16, SP17 and SP17b are done** (SP11 ended at its stop-and-ask, with no reader); SP5 ran its first batch only, by design, and no second batch was run.
 This file plans the next body of work after the refactor: getting the source
 list — the employers this scraper watches, the ones it has ruled out, and the
 ones still to check — onto a footing where adding a company is a routine rather
@@ -117,7 +123,8 @@ the ordering below.
 | 14 | Layer 5 reads a preference list and a parenthetical range | 2 hr | Opus 5 | `think hard` | done: lead-ins, the tie before a figure and a colleague's years read; typicality left unread; 3 rejected rows put to you | `sp14-years-lead-ins` |
 | 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | done: the gate counts remote work "to some extent" as hybrid; 6 listed rows revived at your word, 16 left rejected | `sp15-sida-hybrid-wording` |
 | 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | done: a generic reader on the platform's public job-ad API; source added and candidate activated, 1 of 3 postings passes and it is a false pass | `sp16-hibob-reader` |
-| 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | not started | `sp17-dsv-facets` |
+| 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | done: the facet is read from the configured URL and every row must prove its country | `sp17-dsv-facets` |
+| 17b | A second dsv entry for Denmark | — | Sonnet 5 | `think` | done: a `dsv_denmark` registry line; the old first page kept as a fixture | `sp17-dsv-facets` |
 
 **Renumbered on 2026-10-26** (owner's decision, see `docs/DECISIONS.md`). The
 remaining packages were put in order and the optional ones moved to
@@ -449,10 +456,10 @@ Branch sp0b-split-plan. Commit, do not push. Update this plan file.
 
 ### Your to-dos
 
-- [ ] Confirm you want the decisions log at `docs/DECISIONS.md` rather than
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* Confirm you want the decisions log at `docs/DECISIONS.md` rather than
       somewhere else. Every future session will read it, so the name matters
       more than it looks.
-- [ ] After it lands, watch one session start and check it is not still pulling
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* After it lands, watch one session start and check it is not still pulling
       the archive in out of habit.
 
 ---
@@ -1431,14 +1438,14 @@ Branch sp3b-workday-walk. One commit per step. Do not push.
 - [x] **During the session:** choose the route in step 2. The session will
       recommend one; the choice is about fragility, and it is yours.
       **Chosen 2026-09-23: (b), the JSON endpoint; `strategy: dynamic` kept.**
-- [ ] If the detail URLs cannot be kept identical, the session stops. Then the
+- [ ] *(Stale at close-out, 2026-10-28: the detail URLs were kept identical.)* If the detail URLs cannot be kept identical, the session stops. Then the
       decision is whether to migrate stored keys, which is a bigger package.
 - [x] Apply any `sources.yaml` change the session prints. **None printed.**
 - [x] **Decide what to do about airbus.** Its board is past Workday's
       2000-posting cap on `total`, so the reader refuses it and it fails every
       run (stored jobs kept). **Decided 2026-09-23: narrow it to the owner's
       chosen country with a facet. Planned as SP3c, below.**
-- [ ] Run it at a civilised hour: it makes live requests to six employers'
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* Run it at a civilised hour: it makes live requests to six employers'
       Workday tenants, and `rules.json` should carry your contact details.
 
 ---
@@ -1669,7 +1676,7 @@ Branch sp3c-workday-facets. One commit per step. Do not push.
       applied, the session stops.~~ **Moot:** the applied id's own count
       proves it, so neither an extra request per run nor an unverified
       filter was needed.
-- [ ] After merging, check the next run's summary: airbus should report the
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* After merging, check the next run's summary: airbus should report the
       country's count instead of failing.
 
 ---
@@ -2254,10 +2261,10 @@ SP4c–SP4h, below.
       2026-10-01, all eight.
 - [x] **Approve, reorder or reject each proposed follow-up package** before it
       goes into the Status table. All six approved 2026-10-01.
-- [ ] **Label a handful of undp, simprints and monday_com rows once SP4d has
+- [ ] *(Stale at close-out, 2026-10-28: SP4d fixed these readers, and undp is retired.)* **Label a handful of undp, simprints and monday_com rows once SP4d has
       landed** (your Q8 answer). undp has been retired since; see SP4d's
       to-dos for the rest.
-- [ ] Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
+- [ ] *(Stale at close-out, 2026-10-28: SP4d fixed these readers.)* Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
       `kognity`, `monday_com` or `simprints` as **not experience-checked**.
 
 ---
@@ -2817,7 +2824,7 @@ chat names them.
 - [x] Read every change from excluded to kept that the session reports, and
       approve or reject the reading on that evidence. **Approved 2026-10-02**,
       all 32.
-- [ ] Look at the 5 `review`-labelled texts that the reading now excludes (4
+- [ ] *(Stale at close-out, 2026-10-28: overtaken by SP4g's re-filter pass.)* Look at the 5 `review`-labelled texts that the reading now excludes (4
       postings; listed in the session's chat). Each is a correct reading
       under Q2, and none is a `new` row.
 - [x] Act with `review` on the 13 `new` export rows the reading would
@@ -3155,7 +3162,7 @@ detail pages that could not be read". Suite: **1,180 passed**.
       empty field is also settled by Workday's exact "Fully Remote" label, or a
       "Location:" line naming worldwide or one of your regions. See
       `docs/DECISIONS.md` and the follow-up note below.
-- [ ] Optionally, `review --reject` the empty-location `new` rows that Q4
+- [ ] *(Stale at close-out, 2026-10-28: overtaken by SP4g's re-filter pass.)* Optionally, `review --reject` the empty-location `new` rows that Q4
       would now drop (35, impactpool 24, path 8, irc 3), keeping the path
       worldwide roster. Otherwise they stay until SP4g re-judges stored rows.
 
@@ -3951,12 +3958,12 @@ amended for the follow-up).
 ### Your to-dos
 
 - [x] Decide on proposal 4 (`rules.json`): done 2026-10-08.
-- [ ] Review the one stored `new` oatly row (the Paris internship), stored
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* Review the one stored `new` oatly row (the Paris internship), stored
       with a blank location before the fix.
-- [ ] Reject coefficient's "Expression of Interest" row the first time it
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* Reject coefficient's "Expression of Interest" row the first time it
       reaches the sheet.
-- [ ] Pick which two or three each time. No need to plan the order in advance.
-- [ ] Keep the running tally in this file honest — including readers that turned
+- [ ] *(Stale at close-out, 2026-10-28: every reader is covered.)* Pick which two or three each time. No need to plan the order in advance.
+- [ ] *(Stale at close-out, 2026-10-28: every reader is covered.)* Keep the running tally in this file honest — including readers that turned
       out to be correct.
 
 ---
@@ -4890,14 +4897,14 @@ the session: the first version of this result said two presses and one GET.
 
 ### Your to-dos (SP8–SP11)
 
-- [ ] Give each session its company's URL in chat (SP8 company 2, SP9
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* Give each session its company's URL in chat (SP8 company 2, SP9
       company 3, SP10 company 9, SP11 company 8 of SP5's batch 1; the names
       are in the chat of that session).
-- [ ] SP10 and SP11 each stop for an owner decision about a private API. That
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* SP10 and SP11 each stop for an owner decision about a private API. That
       is a decision for you, not a formality: say which you want and why.
       **SP11 decided 2026-10-09: no reader** (option 4); SP10's feed was
       judged public, which you confirmed.
-- [ ] SP8 adds a source on its own, SP9–SP11 add theirs as the last step; each
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* SP8 adds a source on its own, SP9–SP11 add theirs as the last step; each
       asks before `candidate activate`.
 
 ---
@@ -5688,7 +5695,7 @@ Layer 1 is covered too: two tests run the new wording through `matches_rules`.
       counts as hybrid. (It does.)
 - [x] Decide which of the 22 rows to revive. **Only the 6 still listed**,
       done.
-- [ ] After the next run, look at the 6 revived rows in the sheet (sida 5,
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* After the next run, look at the 6 revived rows in the sheet (sida 5,
       impactpool 1).
 
 ### SP16 — A generic reader for HiBob career sites
@@ -5950,13 +5957,15 @@ reader, and its guard is covered by the registry test. 1613 to 1617 tests.
 - [x] **Decide the places in the second country.** Chosen 2026-10-27: a second
       source entry, SP17b above.
 - [x] Paste both entries into `sources.yaml` (done 2026-10-27).
-- [ ] Expect one source-health warning on the next real run (dsv, -99%).
+- [x] *(Done in effect; ticked at close-out, 2026-10-28.)* Expect one source-health warning on the next real run (dsv, -99%).
 
 ---
 
 ## What is still unknown
 
-Three open questions, all of which need you rather than a session:
+**All three answered** (noted at close-out, 2026-10-28): the first by SP3's
+probe, the second by SP2, the third by SP0 (a private git repository inside
+`data/curated/`). Kept as they were asked:
 
 1. **Do the new companies run on the five uncovered ATS platforms?** Decides
    whether SP4 blocks SP5. SP3's probe answers it definitively; your recollection

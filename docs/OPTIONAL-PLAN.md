@@ -1,12 +1,18 @@
 # Optional plan
 
-Packages moved out of `docs/SOURCES-PLAN.md` on 2026-10-26 (owner's decision,
-recorded in `docs/DECISIONS.md`). None of them is needed to keep the scraper's
-data safe or to add more companies: each has a workaround, or serves a single
-employer. They keep their prompts so that a session can pick one up without
-re-deriving it. Read this file alongside `CLAUDE.md` and `docs/SOURCES-PLAN.md`,
-whose shared rules, decisions log and "Publishing this file" section apply here
-unchanged: **no candidate's name or URL goes in this file**.
+**The one live plan** since the sources plan closed on 2026-10-28. A session
+reads it at the start, with `CLAUDE.md` and `docs/DECISIONS.md`.
+
+OP1 to OP4 were moved out of `docs/SOURCES-PLAN.md` on 2026-10-26 (owner's
+decision, recorded in `docs/DECISIONS.md`). None of them is needed to keep the
+scraper's data safe or to add more companies: each has a workaround, or serves a
+single employer. They keep their prompts so that a session can pick one up
+without re-deriving it. OP5 onwards are the findings of `docs/AUDIT-SP.md`,
+parked with the trigger that makes each worth doing. `docs/SOURCES-PLAN.md` is
+now an archive; its "Shared rules for the new-extractor packages" still apply
+to a reader package here, so grep for them when a prompt names them. This
+file's own publishing rule is [below](#publishing-this-file): **no candidate's
+name or URL goes in this file**.
 
 ## Status
 
@@ -256,3 +262,27 @@ wanted, parked with `sources candidate add` and its blocker. A per-source
 `enabled: false` key would keep the entry in place and skip it: a config change,
 and its own package. No prompt is written yet; write one if the owner wants it,
 after deciding SP12's type-B sources.
+
+---
+
+## Publishing this file
+
+**Yes, publish it — with the curated lists kept out of it.** This is the rule
+`docs/SOURCES-PLAN.md` set for itself, carried over now that that file is an
+archive; its section of the same name has the full reasoning.
+
+- **Employers followed are already public**, through the extractor registry
+  and the fixture filenames, so a package here may name an active source.
+- **Employers rejected are not.** A board on the tombstone, with the reason it
+  could not be scraped, is a catalogue of other people's anti-bot postures:
+  never name one here, and never quote a row of `excluded_sources.yaml`.
+- **Candidates are not.** A candidate is a statement of intent about a named
+  company: refer to one by its number in the session that found it ("SP5's
+  company 10"), and give its name and URL in chat, never in this file.
+- **Results name extractors and counts, not employers**, wherever an employer
+  was rejected.
+- **The exception that does not widen** (owner's decision, AUDIT-SP Q4,
+  2026-10-28): two tombstoned boards are named in older tracked docs, because
+  they were named while they were sources. Those mentions stay as written. It
+  does not license naming any board that reaches the tombstone or the
+  candidates list from now on.

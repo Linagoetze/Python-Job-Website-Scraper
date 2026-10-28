@@ -1,5 +1,8 @@
 # Final audit
 
+> Its successor, at the close of the sources plan, is
+> [docs/AUDIT-SP.md](AUDIT-SP.md).
+
 An independent read of the code as it exists on `main` at commit `500837a`,
 after all twenty-four work packages. Written for a reader who does not read
 code.

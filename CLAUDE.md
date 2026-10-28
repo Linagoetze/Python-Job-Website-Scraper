@@ -103,9 +103,10 @@ These exist because the codebase has drifted in specific ways. Respect them.
   This is a considered decision, not an oversight: the employers followed are
   already public via the extractor registry, and the test suite is built from
   real cities. Do not launder them out on your own initiative, and do not
-  assume the same latitude extends to `docs/SOURCES-PLAN.md` — that file
-  deliberately keeps candidate and excluded company names out of itself; see
-  its own "Publishing this file" section. What stays private everywhere:
+  assume the same latitude extends to `docs/SOURCES-PLAN.md` or
+  `docs/OPTIONAL-PLAN.md` — those files deliberately keep candidate and
+  excluded company names out of themselves; see each one's "Publishing this
+  file" section. What stays private everywhere:
   `sources.yaml`, `rules.json`, the store, the labelled set, the blocklist, and
   the contact details. Full reasoning:
   [docs/REFACTOR-PLAN.md#place-names-in-this-file-and-in-the-tests](docs/REFACTOR-PLAN.md#place-names-in-this-file-and-in-the-tests).

@@ -14,7 +14,7 @@ produced a decision (`WP8g`, `CU3`, ...) link to that package's full prompt and
 result in `docs/REFACTOR-PLAN.md`, for the incident narrative behind the
 one-line rule.
 
-Read this file, `CLAUDE.md` and `docs/SOURCES-PLAN.md` at the start of every
+Read this file, `CLAUDE.md` and `docs/OPTIONAL-PLAN.md` at the start of every
 session — see `CLAUDE.md`.
 
 ---
@@ -2228,3 +2228,47 @@ session — see `CLAUDE.md`.
   captured 2026-10-27 with `--pages all`), so the golden runs the real
   `extract` and the guard over real markup. The unfiltered first page is kept as
   `dsv.unfiltered.html`, for the ignored-facet test.
+- **The sources plan is closed and archived; startup reads change (owner's
+  decision, close-out, 2026-10-28).** `docs/SOURCES-PLAN.md` is an archive like
+  `docs/REFACTOR-PLAN.md`, read on demand by grep. Its header, Status table and
+  to-do boxes were brought up to date as [AUDIT-SP](AUDIT-SP.md) section 2
+  sorted them, and are frozen; no Result section was rewritten.
+  `docs/OPTIONAL-PLAN.md` is the one live plan, and a session reads it at the
+  start with `CLAUDE.md` and this file. It now carries its own "Publishing this
+  file" rule rather than borrowing the archive's.
+- **Python 3.13 is the supported version (owner's decision, 2026-10-28).** It is
+  what `CLAUDE.md` says and what CI tests; the README now says so too.
+  `pyproject.toml` still says `>=3.10`: with `>=3.13`, ruff's UP017 asks for
+  `datetime.UTC` in four places of code, and the close-out package changed no
+  code. Raising the floor is OP16 in `docs/OPTIONAL-PLAN.md`.
+- **`scripts/refresh_label_locations.py` is a sanctioned writer of
+  `data/curated/labels.csv` (owner's decision, AUDIT-SP Q3, 2026-10-28).**
+  Beside `tools/sources.py`, it is the only other writer in that directory: it
+  writes the `location` column only, dry run by default, with a timestamped
+  backup and a temp file plus `os.replace()`. `CLAUDE.md`'s curated-directory
+  rule names it.
+- **The two tombstoned boards named in tracked docs stay as written (owner's
+  decision, AUDIT-SP Q4, 2026-10-28).** Both were named while they were
+  sources, as any active source is named through the registry. "Publishing this
+  file" covers what the curated lists say about a board, not the history of a
+  board that was once followed. A name that reaches the tombstone or the
+  candidates list from now on is still never written into a tracked file.
+- **AUDIT-SP's findings are parked in `docs/OPTIONAL-PLAN.md`, each with a
+  trigger (owner's decision, 2026-10-28).** None was fixed in the close-out
+  package apart from the documentation ones (F6, F8 to F11). Each other finding
+  and question is an OP entry with the event that makes it worth doing; its
+  prompt is written when that event happens, not before. The owner's open
+  decisions are listed there too.
+- **Two report files are written without a temp file, and that is correct
+  ([AUDIT.md](AUDIT.md#are-all-writes-still-safe--yes-where-it-matters);
+  [WP5](REFACTOR-PLAN.md#wp5--sqlite-store-part-2-cut-over-and-delete-the-csv-store)).**
+  `data/jobs_sources.csv` and the drop-log CSV export are regenerable reports,
+  not stores; the atomic-write rule is about live data files.
+- **The run summary prints to stderr, and stays there
+  ([AUDIT.md](AUDIT.md#e-leave-these-alone)).** It matters only when output is
+  redirected to a file, which nothing does.
+- **The title-keyword pattern is built twice a run, and stays so
+  ([WP8](REFACTOR-PLAN.md#wp8--trim-the-ladder-prune-the-keywords)).** Once for
+  the run and once for the re-filter pass: 0.275 ms a run in all, measured.
+  Hoisting it would thread a compiled pattern through three call sites to save
+  nothing measurable.
