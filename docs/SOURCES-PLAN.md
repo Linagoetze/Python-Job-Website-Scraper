@@ -2261,11 +2261,11 @@ SP4c–SP4h, below.
       2026-10-01, all eight.
 - [x] **Approve, reorder or reject each proposed follow-up package** before it
       goes into the Status table. All six approved 2026-10-01.
-- [ ] *(Stale at close-out, 2026-10-28: SP4d fixed these readers, and undp is retired.)* **Label a handful of undp, simprints and monday_com rows once SP4d has
+- [ ] **Label a handful of undp, simprints and monday_com rows once SP4d has
       landed** (your Q8 answer). undp has been retired since; see SP4d's
-      to-dos for the rest.
-- [ ] *(Stale at close-out, 2026-10-28: SP4d fixed these readers.)* Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
-      `kognity`, `monday_com` or `simprints` as **not experience-checked**.
+      to-dos for the rest. *(Stale at close-out, 2026-10-28: SP4d fixed these readers.)*
+- [ ] Until a fix lands, treat any spreadsheet row from `jobsinlund`, `undp`,
+      `kognity`, `monday_com` or `simprints` as **not experience-checked**. *(Stale at close-out, 2026-10-28: SP4d fixed these readers.)*
 
 ---
 
