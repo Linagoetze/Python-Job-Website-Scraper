@@ -1,9 +1,10 @@
 # CLAUDE.md
 
 Persistent instructions for Claude Code working in this repository.
-Read this file, `docs/DECISIONS.md` and `docs/SOURCES-PLAN.md` at the start of
-every session. `docs/REFACTOR-PLAN.md` is an archive of the finished refactor —
-consult it on demand (grep for a package name), not at session start.
+Read this file, `docs/DECISIONS.md` and `docs/OPTIONAL-PLAN.md` at the start of
+every session. `docs/SOURCES-PLAN.md` and `docs/REFACTOR-PLAN.md` are archives
+of the finished sources plan and refactor — consult them on demand (grep for a
+package name), not at session start.
 
 ## What this project is
 
@@ -27,16 +28,25 @@ Priorities, in order:
 ```
 job_scraper/
   run.py              CLI entry point, summary rendering
+  __main__.py         `python -m job_scraper`, a shorthand for run.py
   pipeline.py         Orchestration: fetch -> extract -> filter -> store
   http.py             requests + Playwright fetchers
+  robots.py           robots.txt, fetched once per host and cached for the run
   config_loader.py    Path defaults, YAML/JSON loading
   filtering.py        Rules, location, title keywords
-  experience_filter.py Layer 3 (title) and Layer 5 (detail page)
+  experience_filter.py Layers 2 and 3 (title) and Layer 5 (detail page)
   urlutil.py          URL normalisation and dedupe keys
-  blocklist.py        Permanently rejected postings
+  page_sizes.py       Usual page sizes, for the one-page-run warning and the probe
+  blocklist.py        Review statuses on stored jobs; the legacy blocklist import
+  review.py           `review`: record decisions against the spreadsheet's jobs
+  drops.py            `drops`: read the drop log (what each layer excluded, and why)
+  eval.py             `eval`: score the ladder against the hand-labelled gold set
+  scoring.py          LLM scoring of stored descriptions against the profile
   curated.py          The two curated source lists (tombstone, candidates)
   probe.py            The feasibility probe behind `sources probe`; reports, never writes
-  extractors/         One module per ATS or site, registry.py maps names
+  config/             Tracked .example twins, title_exclude_keywords.csv
+  extractors/         One module per ATS or site, registry.py maps names;
+                      pagination.py and rowcheck.py are shared by the readers
   storage/            SQLite store (db.py, internal) and xlsx store (presentation)
   tools/              Maintenance commands, incl. sources.py (the curated lists)
 ```
@@ -93,13 +103,17 @@ These exist because the codebase has drifted in specific ways. Respect them.
   This is a considered decision, not an oversight: the employers followed are
   already public via the extractor registry, and the test suite is built from
   real cities. Do not launder them out on your own initiative, and do not
-  assume the same latitude extends to `docs/SOURCES-PLAN.md` — that file
-  deliberately keeps candidate and excluded company names out of itself; see
-  its own "Publishing this file" section. What stays private everywhere:
+  assume the same latitude extends to `docs/SOURCES-PLAN.md` or
+  `docs/OPTIONAL-PLAN.md` — those files deliberately keep candidate and
+  excluded company names out of themselves; see each one's "Publishing this
+  file" section. What stays private everywhere:
   `sources.yaml`, `rules.json`, the store, the labelled set, the blocklist, and
   the contact details. Full reasoning:
   [docs/REFACTOR-PLAN.md#place-names-in-this-file-and-in-the-tests](docs/REFACTOR-PLAN.md#place-names-in-this-file-and-in-the-tests).
-- **`data/curated/` is written only through `job_scraper/tools/sources.py`.**
+- **`data/curated/` is written only through `job_scraper/tools/sources.py`**,
+  and `labels.csv` also through `scripts/refresh_label_locations.py`, which
+  rewrites its location column atomically with a backup (owner's decision,
+  2026-10-28).
   Never hand-edit a file there, never rewrite one wholesale, and never open one
   in a spreadsheet application. The tool appends one record at a time, writes
   via a temp file and `os.replace()`, and leaves a timestamped backup beside the
@@ -145,9 +159,9 @@ These exist because the codebase has drifted in specific ways. Respect them.
 - [ ] `ruff check .` passes.
 - [ ] `ruff format --check .` passes.
 - [ ] `python -m job_scraper.run --help` still works.
-- [ ] The plan file the package belongs to (`docs/SOURCES-PLAN.md` for an SP
-      package) updated: package marked done, with a result. New decisions
-      recorded in `docs/DECISIONS.md`, not in a plan file.
+- [ ] The plan file, `docs/OPTIONAL-PLAN.md`, updated: package marked done,
+      with a result. New decisions recorded in `docs/DECISIONS.md`, not in a
+      plan file.
 - [ ] README and the run summary reflect any user-visible change; anything a
       later session would otherwise re-derive is in `docs/DECISIONS.md`. Seven
       prompts can forget; a checklist item does not.

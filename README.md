@@ -104,7 +104,7 @@ so a page that starts to read is checked then.
 
 ## Requirements
 
-- Python 3.10 or newer (developed on 3.13)
+- Python 3.13
 - macOS or Linux
 - ~400 MB of disk for the headless Chromium that Playwright downloads
 
@@ -411,7 +411,7 @@ Where the blocks land, top to bottom, all under the funnel's closing totals and
 all absent when they have nothing to say: failed sources, refused sources,
 tombstoned sources, source health, empty sources, one-page sources, unreadable
 pages, then the dry-run notice. None of them is a filter layer, none skips or
-delists a source, and a source that drops everything at Layer 0 is not one of
+delists a source, and a source that drops everything at Layer 1 is not one of
 them: that is a question across runs, and
 [`source_yield`](#which-sources-never-pass-the-location-filter) answers it.
 
@@ -548,8 +548,8 @@ sources:
 | `url` | The career page or job board to fetch. A Workday `url` may carry the listing's own filter query, as the listing shows it once a filter is ticked (`?locationCountry=<id>`). The reader sends it to Workday as that filter and fails the source if the response does not show it applied. airbus has one because its unfiltered board is past the 2,000 postings Workday will count, which the reader refuses; its filter narrows it to one country, well below that. A SuccessFactors `url` (dsv) may carry the search form's country facet (`?optionsFacetsDD_country=<CC>`); the reader sends it on every page and fails the source if any row's country differs or none names one. dsv has two, `dsv` (Sweden) and `dsv_denmark`, because its unfiltered board is about 230 pages of postings from every country and the guard checks one country per source. |
 | `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page, and why a Workable source is `dynamic` too: its detail page is a JavaScript shell to a plain fetch. |
 
-The example ships nine entries chosen to exercise a different extractor each, so
-there's one working example per supported ATS.
+The example ships nine entries chosen to exercise a different extractor each.
+SuccessFactors, HiBob and Jobylon have no example entry.
 
 ### `job_scraper/config/rules.json`
 
@@ -574,7 +574,7 @@ it.
 
 | Key | Meaning |
 | --- | --- |
-| `include_keywords` | A job must contain at least one of these. Empty list = no keyword requirement. |
+| `include_keywords` | A job must contain at least one of these. Empty list = no keyword requirement. Leave it empty for now: the store does not keep the department and snippet a run matches on, so the end-of-run re-filter would permanently reject jobs the run admitted (OP5 in [docs/OPTIONAL-PLAN.md](docs/OPTIONAL-PLAN.md) fixes that). |
 | `exclude_keywords` | A job containing any of these is rejected outright. |
 | `locations` | A job's `location` field must contain one of these. Empty list = no location requirement. |
 | `conditional_locations` | Cities admitted **only** for hybrid roles — see below. Empty list = feature off. |
@@ -695,9 +695,10 @@ entirely — a fresh setup has nothing to import.
 ## Output files
 
 Everything under `data/` is generated and gitignored, apart from `data/curated/`,
-which is hand-maintained. Deleting `data/curated/` costs you nothing the scraper
-needs; deleting the rest costs you the run history, the dedupe state and every
-review decision you have recorded.
+which is hand-maintained. A run does not need `data/curated/`, but nothing can
+regenerate it either: the two source lists and the gold set exist only there, so
+back it up and never delete it. Deleting the rest costs you the run history, the
+dedupe state and every review decision you have recorded.
 
 ### `data/jobs.sqlite3`
 
@@ -716,7 +717,7 @@ The one you actually read. Two sheets:
 
 - **Jobs** — the postings you have not reviewed yet, and nothing else:
   `#`, `source_name`, `title`, `location`, `score`, `score_reasoning`,
-  `score_flags`, `detail_url` and `apply_url`, with a frozen header row, real
+  `score_flags`, `experience_level`, `detail_url` and `apply_url`, with a frozen header row, real
   clickable links, and rows from the **two most recent runs filled light green**
   so new postings stand out. The three `score` columns stay empty unless you
   run the optional scoring stage; when they are filled, the sheet is sorted
@@ -739,8 +740,9 @@ Regenerated from scratch on every run.
 source_name,listing_url
 ```
 
-Which sources were scraped successfully this run. Useful for spotting a source
-that has quietly started failing — compare it against `sources.yaml`.
+Which sources were scraped successfully this run. Nothing reads it. To spot a
+source that has started failing, read the run summary's Failed sources block,
+which names each one and its error.
 
 ## Reviewing what it found
 
@@ -853,16 +855,16 @@ python -m job_scraper.tools.source_yield --places 0 --db /path/to/a/copy.sqlite3
 never reads `rules.json`. For each configured source, over the drop log's last
 ten scrape runs, it prints the source's `strategy` (a `dynamic` one costs a
 browser render per fetch), its runs in `source_health` and in the window, rows
-seen, rows that passed Layer 0, Layer 0 drops by rule, the rows ever stored and
+seen, rows that passed Layer 1, Layer 1 drops by rule, the rows ever stored and
 the date of the last, its share of the drop log, and the distinct locations it
 was dropped on, most frequent first (`--places N`, 0 for all). A row that
-Layer 0 *deferred* (a conditional city, a placeholder, an empty field) counts as
+Layer 1 *deferred* (a conditional city, a placeholder, an empty field) counts as
 a pass, even when Layer 5 later dropped it. Each source gets a class, with the
 evidence beside it:
 
 | class | meaning |
 | --- | --- |
-| **A** working | passed Layer 0 in the window, or has ever stored a row. A stored row is history, so such a source is never B. |
+| **A** working | passed Layer 1 in the window, or has ever stored a row. A stored row is history, so such a source is never B. |
 | **B** truthfully elsewhere | no pass, nothing ever stored, and every value it was dropped on is shaped like a place. Read the places to see it is a board of somewhere else. |
 | **C** starved, not dead | no pass, but the location field cannot carry the verdict: a quarter or more of its drops are empty, a placeholder, a label, a grade or the title; one value on five or more postings; nothing listed at all; or every drop is one rule other than "city not on the list", which is a configuration question. Treat it as a bug report, never as B. |
 | **D** too new to say | fewer than five scrape runs in the window (`--min-runs`). The line says which class its evidence points at so far. |
@@ -1125,8 +1127,9 @@ wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
 tested against saved copies of the real pages they read, in `tests/fixtures/`:
 each one must still parse to more than zero postings, and each is pinned to the
-exact output it produced when it was captured, so a site redesign fails the
-build instead of quietly returning less. `ruff check .` and
+number of postings it produced when it was captured and to its first posting in
+full, so a site redesign fails the build instead of quietly returning less.
+Later postings are checked only for a title. `ruff check .` and
 `ruff format --check .` are the other two gates, and CI runs all three.
 
 To refresh a saved page after a site redesign:
@@ -1202,29 +1205,31 @@ site:
 
 | Path | What's in it |
 | --- | --- |
-| `job_scraper/` | `run.py` (CLI), `pipeline.py` (the run), the filter modules, `http.py`, `urlutil.py`, `curated.py` and `probe.py` (the curated source lists, and the feasibility probe behind `sources probe`), plus the commands you run between scrapes: `review.py`, `drops.py`, `eval.py`, and `scoring.py` for the optional LLM stage |
+| `job_scraper/` | `run.py` (CLI), `pipeline.py` (the run), the filter modules, `http.py`, `robots.py`, `urlutil.py`, `page_sizes.py`, `blocklist.py` (review statuses), `curated.py` and `probe.py` (the curated source lists, and the feasibility probe behind `sources probe`), plus the commands you run between scrapes: `review.py`, `drops.py`, `eval.py`, and `scoring.py` for the optional LLM stage |
 | `job_scraper/config/` | your `sources.yaml`, `rules.json` and (for scoring) `profile.md` — all gitignored, created from the `.example` files — plus `title_exclude_keywords.csv` |
 | `job_scraper/extractors/` | one module per site or ATS platform, wired up in `registry.py` |
 | `job_scraper/storage/` | the SQLite job store (`db.py`) and the xlsx writer |
 | `job_scraper/tools/` | maintenance commands |
 | `data/` | generated output: `jobs.sqlite3` (the store), `jobs.xlsx`, `jobs_sources.csv`. All regenerable from a scrape except the store's own review history |
-| `data/curated/` | hand-maintained, not regenerable and all gitignored: `excluded_sources.yaml` (boards ruled out for good) and `candidate_sources.yaml` (boards still to check), both written by `tools/sources.py` rather than by hand; the `labels.csv` gold set the eval harness reads; and the legacy `blocklist.csv`. Every one has a tracked `.example` twin |
-| `scripts/` | the deprecated scrape-and-blocklist wrapper, the fixture-capture helper the tests are built from, and two one-offs: `migrate_curated_to_yaml.py` and `recover_skipped_sources.py` |
+| `data/curated/` | hand-maintained, not regenerable and all gitignored: `excluded_sources.yaml` (boards ruled out for good) and `candidate_sources.yaml` (boards still to check), both written by `tools/sources.py` rather than by hand; the `labels.csv` gold set the eval harness reads; and the legacy `blocklist.csv`. Every one but `labels.csv` has a tracked `.example` twin |
+| `scripts/` | the deprecated scrape-and-blocklist wrapper, the fixture-capture helper the tests are built from, `refresh_label_locations.py` (copies fixed locations into the gold set), and two one-offs: `migrate_curated_to_yaml.py` and `recover_skipped_sources.py` |
 | `tests/` | pytest suite, plus `tests/fixtures/` — saved copies of the real career pages each extractor is tested against |
-| `docs/` | `DECISIONS.md` (the living decisions log), `SOURCES-PLAN.md` (the plan for the current source-list work), `REFACTOR-PLAN.md` (the archive of the finished refactor) and `AUDIT.md` (an independent read of the finished code) |
+| `docs/` | `DECISIONS.md` (the living decisions log), `OPTIONAL-PLAN.md` (the one live plan), `SOURCES-PLAN.md` and `REFACTOR-PLAN.md` (the archives of the finished source-list work and refactor), and `AUDIT.md` and `AUDIT-SP.md` (independent reads of the code at the close of each) |
 
 ## How this is built and maintained
 
 The interesting part of this repository is not the scraper — it is the paper
-trail beside it. Five documents, all public:
+trail beside it. Seven documents, all public:
 
 | File | What it is |
 | --- | --- |
 | [CLAUDE.md](CLAUDE.md) | The standing instructions any Claude Code session reads before touching this repo: the four priorities above, the design principles the code has drifted against before, what must never be touched, and the definition of done. |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | The living decisions log every session reads at the start: what was tried and rejected, with the measurement attached. Every package that lands a decision appends to it — it is the part of this paper trail that never closes. |
-| [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md) | The plan for the source-list work that follows the refactor, shaped the same way: one package per session, a prompt written before the work, a result written after it. |
+| [docs/OPTIONAL-PLAN.md](docs/OPTIONAL-PLAN.md) | The one live plan: the packages left when the source-list work closed, each parked with the trigger that makes it worth doing. |
+| [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md) | The archive of the source-list work that followed the refactor, closed on 2026-10-28 and shaped the same way: one package per session, a prompt written before the work, a result written after it. Read on demand, not at session start. |
 | [docs/REFACTOR-PLAN.md](docs/REFACTOR-PLAN.md) | The archive of the finished twenty-six-package refactor: every package's prompt and result, kept for the full incident narratives behind a decision. No longer read at session start — its decisions log now lives in `docs/DECISIONS.md`. |
-| [docs/AUDIT.md](docs/AUDIT.md) | An independent read of the finished code, checking every claim the plan makes against what is actually there rather than trusting the plan's own status table. Left exactly as written, including the findings that were later fixed. |
+| [docs/AUDIT.md](docs/AUDIT.md) | An independent read of the finished code, checking every claim the plan makes against what is actually there rather than trusting the plan's own status table. Left as written, including the findings that were later fixed, apart from one line at its top pointing to its successor. |
+| [docs/AUDIT-SP.md](docs/AUDIT-SP.md) | The same kind of read at the close of the source-list work. Its findings are triaged into `docs/OPTIONAL-PLAN.md`. |
 
 Read `docs/DECISIONS.md` for the reasoning behind a specific rule — it is
 distilled to what a later session would otherwise have to re-derive. Read
@@ -1232,8 +1237,8 @@ distilled to what a later session would otherwise have to re-derive. Read
 in full — a live store modified by accident, a private file staged into a
 public repo, a golden test that passed on 9 of 37 postings — because a fix
 without the reasoning behind it gets undone by the next person who finds it
-odd. Its own Future work section is superseded by `docs/SOURCES-PLAN.md`; the
-refactor itself is closed.
+odd. Its own Future work section is superseded by `docs/SOURCES-PLAN.md`, which
+is closed in turn; what is left is in `docs/OPTIONAL-PLAN.md`.
 
 ## License
 
