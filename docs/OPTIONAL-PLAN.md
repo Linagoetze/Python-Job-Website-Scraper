@@ -79,8 +79,9 @@ deliberate edit.
 ```
 think
 
-Read CLAUDE.md, docs/DECISIONS.md, docs/SOURCES-PLAN.md and
-docs/OPTIONAL-PLAN.md, then work on OP1
+Read CLAUDE.md, docs/DECISIONS.md and docs/OPTIONAL-PLAN.md.
+docs/SOURCES-PLAN.md is an archive: grep it for the SP sections named
+below rather than reading it end to end. Work on OP1
 only. SP3 must be merged, and SP8 if it has landed (it adds a check to the same
 report: rebase over it rather than overwrite it).
 
@@ -140,8 +141,9 @@ removes an entry on evidence, and it needs two pieces of evidence where
 ```
 think
 
-Read CLAUDE.md, docs/DECISIONS.md, docs/SOURCES-PLAN.md and
-docs/OPTIONAL-PLAN.md, then work on OP2
+Read CLAUDE.md, docs/DECISIONS.md and docs/OPTIONAL-PLAN.md.
+docs/SOURCES-PLAN.md is an archive: grep it for the SP sections named
+below rather than reading it end to end. Work on OP2
 only. SP2b must be merged. Read SP2b's prompt and result, and the two
 DECISIONS.md entries on `recheck` and `activate` ("the second exception, and
 each needs its own evidence"), before changing anything: this is that
@@ -227,8 +229,9 @@ as SP11.
 ```
 think hard
 
-Read CLAUDE.md, docs/DECISIONS.md, docs/SOURCES-PLAN.md and
-docs/OPTIONAL-PLAN.md, then work on OP3
+Read CLAUDE.md, docs/DECISIONS.md and docs/OPTIONAL-PLAN.md.
+docs/SOURCES-PLAN.md is an archive: grep it for the SP sections named
+below rather than reading it end to end. Work on OP3
 only, following "Shared rules for the new-extractor packages", and read SP3b's
 result and docs/DECISIONS.md's Workday entries and SP11's prompt first: this is
 the same kind of choice. SP3 and SP5's batch 1 must be merged, and OP1 if it
