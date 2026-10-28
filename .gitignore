@@ -9,6 +9,15 @@ __pycache__/
 # Machine-local Claude Code permissions (contains absolute paths).
 .claude/settings.local.json
 
+# Everything under data/ is local by default: the store, its backups, its
+# sidecars and every export hold personal data, and a list of extensions let
+# `data/jobs.sqlite3.bak` and `data/jobs.json` through (AUDIT-SP F6). The
+# curated directory is re-included as a directory only, so that the rules
+# below can re-include its .example twins: git never looks inside a directory
+# that is itself ignored, so `data/*` alone would hide them for good.
+data/*
+!data/curated/
+
 # Generated output.
 data/*.csv
 data/*.xlsx
