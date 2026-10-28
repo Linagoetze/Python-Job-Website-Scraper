@@ -86,7 +86,7 @@ plan's own account.
 | SP12 | Read-only yield report | yes | `tools/source_yield.py` opens the store with `mode=ro` |
 | SP13 | Workable walks its board | yes | `workable.py` walk; `test_workable_reads_the_eleventh_posting_from_the_second_page`; `INVENTED_PAGES`; `tests/fixtures/README.md` |
 | SP14 | Lead-ins, the tie before a figure, a colleague's years | yes | `TestSP14Findings` and three further classes in `tests/test_experience_filter.py` |
-| SP15 | "Remote work to some extent" counts as hybrid; 6 rows revived | yes (code) | `tests/test_hybrid_wording.py`; `test_a_revived_hybrid_row_is_neither_refetched_nor_rejected_again`. What became of the 6 rows is a question (Q1) |
+| SP15 | "Remote work to some extent" counts as hybrid; 6 rows revived | yes (code) | `tests/test_hybrid_wording.py`; `test_a_revived_hybrid_row_is_neither_refetched_nor_rejected_again`. The 6 rows were later rejected by the owner (Q1, answered) |
 | SP16 | Generic HiBob reader; GET headers | yes | `extractors/hibob.py`, Platform entry in `probe.py`, `headers=` in `http.py`, localhost test |
 | SP17 | Facet read from the configured URL; every row proves the country | yes | `successfactors_html._facets_of`, `_check_country`, `FacetNotAppliedError` |
 | SP17b | Second dsv entry; old page kept | yes | `dsv_denmark` registry line and test; `tests/fixtures/dsv.unfiltered.html` |
@@ -115,7 +115,7 @@ plan's own account.
     country every run); SP6's oatly row and coefficient row (the store holds no
     `new` row for either source); SP8 to SP11's three items (each session was
     given its URL and each decision is recorded); SP15's "look at the 6 revived
-    rows" (they were all `rejected` before the next run; see Q1); SP17's
+    rows" (the owner reviewed and rejected all six before the next run; Q1); SP17's
     "expect a -99% warning on the next real run" (run 41 on 27 October was that
     run: dsv 2,226 to 19).
   - *Stale:* SP3b's "if the detail URLs cannot be kept identical" (they were);
@@ -734,8 +734,8 @@ git -C data/curated status --short
 
 1. **The six rows SP15 revived** (27 October) were all `rejected` before run 41
    started, and the drop log holds no exclusion for them, which matches a
-   `review` command (it writes no drop-log row). Was that you? If not, it is a
-   bug to chase before anything else here.
+   `review` command (it writes no drop-log row). Was that you? **Answered
+   2026-10-28: yes, the owner rejected them with `review`. Not a bug.**
 2. **Python 3.10 or 3.13?** `pyproject.toml` and the README promise 3.10; only
    3.13 is tested.
 3. **Does `CLAUDE.md`'s "`data/curated/` is written only through
