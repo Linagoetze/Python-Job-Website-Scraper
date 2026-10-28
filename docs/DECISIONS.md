@@ -2249,10 +2249,8 @@ session — see `CLAUDE.md`.
   rule names it.
 - **The two tombstoned boards named in tracked docs stay as written (owner's
   decision, AUDIT-SP Q4, 2026-10-28).** Both were named while they were
-  sources, as any active source is named through the registry. "Publishing this
-  file" covers what the curated lists say about a board, not the history of a
-  board that was once followed. A name that reaches the tombstone or the
-  candidates list from now on is still never written into a tracked file.
+  sources. A name that reaches the tombstone or the candidates list from now on
+  is still never written into a tracked file.
 - **AUDIT-SP's findings are parked in `docs/OPTIONAL-PLAN.md`, each with a
   trigger (owner's decision, 2026-10-28).** None was fixed in the close-out
   package apart from the documentation ones (F6, F8 to F11). Each other finding

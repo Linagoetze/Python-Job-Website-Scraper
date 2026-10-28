@@ -32,7 +32,7 @@ name or URL goes in this file**.
 | 12 | Dead code and the duplicated constant | 0.5 hr | Sonnet 5 | none | parked | — | [F13](AUDIT-SP.md#f13-dead-code-and-a-duplicated-constant) |
 | 13 | Retire the two one-shot scripts and their machinery | 1 hr | Sonnet 5 | `think` | parked | `op13-retire-one-shots` | [Q5](AUDIT-SP.md#questions-for-the-owner) |
 | 14 | Drop `data/jobs_sources.csv` | 0.5 hr | Sonnet 5 | none | parked | `op14-drop-jobs-sources` | [Q6](AUDIT-SP.md#questions-for-the-owner) |
-| 15 | README split into docs guides; DECISIONS headings and an index | 2.5 hr | Opus 5 | `think` | parked | `op15-docs-structure` | [section 7](AUDIT-SP.md#7-readme-for-github) and [section 8](AUDIT-SP.md#8-docs-and-repo-hygiene) |
+| 15 | README split into docs guides; DECISIONS headings and an index | 3 hr | Opus 5 | `think` | parked | `op15-docs-structure` | [section 7](AUDIT-SP.md#7-readme-for-github) and [section 8](AUDIT-SP.md#8-docs-and-repo-hygiene) |
 | 16 | Raise `requires-python` to 3.13 | 0.25 hr | Sonnet 5 | none | parked | — | close-out |
 | 17 | `source_yield` still says "Layer 0" | 0.25 hr | Sonnet 5 | none | parked | — | [section 7, item 1](AUDIT-SP.md#7-readme-for-github) |
 | 18 | A tracked `.example` twin for `labels.csv` | 0.25 hr | Sonnet 5 | none | parked | — | [section 7, item 3](AUDIT-SP.md#7-readme-for-github) |
@@ -366,9 +366,9 @@ Every real run writes it and nothing reads it; the Failed sources block does its
 
 - **Trigger:** if the repository gets outside attention.
 - **Reference:** [AUDIT-SP](AUDIT-SP.md) [section 7](AUDIT-SP.md#7-readme-for-github) and [section 8](AUDIT-SP.md#8-docs-and-repo-hygiene).
-- **Size and model:** 2.5 hr, Opus 5, `think`.
+- **Size and model:** 3 hr, Opus 5, `think`.
 
-Move the run-summary, sources and operations reference sections into guides under `docs/`, leaving a short summary and a link in the README; group `docs/DECISIONS.md`'s entries under topic headings, verbatim, with an index at the top. The owner approves the shape first. The prompt is written when the trigger fires.
+Move the run-summary, sources and operations reference sections into guides under `docs/`, leaving a short summary and a link in the README; group `docs/DECISIONS.md`'s entries under topic headings, verbatim, with an index at the top. Bring along the sources plan's [Documentation each package must update](SOURCES-PLAN.md#documentation-each-package-must-update) table: it is live policy left in an archive. Re-key its surfaces to the new layout and give it a live home, `CLAUDE.md` or `docs/DECISIONS.md`, as the audit proposed; until then `CLAUDE.md`'s Definition of done covers most of it. The owner approves the shape first. The prompt is written when the trigger fires.
 
 ## OP16 — Raise `requires-python` to 3.13
 
@@ -407,8 +407,7 @@ sources plan and its audit.
   each type-B source (OP4 waits on this), and revive or leave the three
   `rejected` rows SP14's reading now keeps.
 - **Time Machine** (SP0's to-do): whether to back up the machine as a whole.
-  Unrelated to the scraper, and the one thing that would cover `data/` beyond
-  the curated repository.
+  Unrelated to the scraper.
 
 ---
 

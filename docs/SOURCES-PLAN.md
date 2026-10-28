@@ -124,7 +124,7 @@ the ordering below.
 | 15 | sida's remote-work wording reaches the hybrid gate | 1.5 hr | Sonnet 5 | `think` | done: the gate counts remote work "to some extent" as hybrid; 6 listed rows revived at your word, 16 left rejected | `sp15-sida-hybrid-wording` |
 | 16 | A generic reader for HiBob career sites | 2 hr | Sonnet 5 | `think` | done: a generic reader on the platform's public job-ad API; source added and candidate activated, 1 of 3 postings passes and it is a false pass | `sp16-hibob-reader` |
 | 17 | Narrow dsv to its one country | 1.5 hr | Sonnet 5 | `think` | done: the facet is read from the configured URL and every row must prove its country | `sp17-dsv-facets` |
-| 17b | A second dsv entry for Denmark | — | Sonnet 5 | `think` | done: a `dsv_denmark` registry line; the old first page kept as a fixture | `sp17-dsv-facets` |
+| 17b | A second dsv entry for Denmark | — | — | — | done: a `dsv_denmark` registry line; the old first page kept as a fixture | `sp17-dsv-facets` |
 
 **Renumbered on 2026-10-26** (owner's decision, see `docs/DECISIONS.md`). The
 remaining packages were put in order and the optional ones moved to
