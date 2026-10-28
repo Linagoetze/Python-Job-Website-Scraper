@@ -104,7 +104,7 @@ so a page that starts to read is checked then.
 
 ## Requirements
 
-- Python 3.10 or newer (developed on 3.13)
+- Python 3.13
 - macOS or Linux
 - ~400 MB of disk for the headless Chromium that Playwright downloads
 
