@@ -50,6 +50,7 @@ from job_scraper.extractors import (  # noqa: E402
     mammut,
     niras,
     personio,
+    pinpoint,
     pure_earth,
     sida,
     smartrecruiters,
@@ -328,6 +329,14 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "coefficient_giving.json",
         "https://jobs.ashbyhq.com/coefficientgiving",
         lambda url, fetch: ashby.extract(url, fetch, source_name="coefficient_giving"),
+    ),
+    "leep": (
+        # A Pinpoint board (pinpoint.py). LEEP's own opportunities page is a
+        # Framer shell that fetches this feed in the browser; the source points
+        # at the board, and the feed is the one request.
+        "leep.json",
+        "https://leadelimination.pinpointhq.com",
+        lambda url, fetch: pinpoint.extract(url, fetch, source_name="leep"),
     ),
     "mammut": (
         "mammut.html",

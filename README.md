@@ -549,7 +549,9 @@ sources:
 | `strategy` | `static` for plain HTTP, `dynamic` to render the page in headless Chromium first. Use `dynamic` when the jobs only appear after JavaScript runs. It also chooses how each posting's detail page is fetched, which is why the Workday sources stay `dynamic` although their reader takes the listing from Workday's JSON rather than the rendered page, and why a Workable source is `dynamic` too: its detail page is a JavaScript shell to a plain fetch. |
 
 The example ships nine entries chosen to exercise a different extractor each.
-SuccessFactors, HiBob and Jobylon have no example entry.
+SuccessFactors, HiBob, Jobylon and Pinpoint have no example entry. A Pinpoint
+source's `url` is the board (`https://<board>.pinpointhq.com`), not an
+employer's page that embeds it: the reader refuses any other host.
 
 ### `job_scraper/config/rules.json`
 
@@ -1121,7 +1123,7 @@ to edit the file by hand.
 python -m pytest -q
 ```
 
-1617 tests, about twenty seconds, no network access required.
+1638 tests, about twenty seconds, no network access required.
 `tests/test_filter_audit.py` holds the filter decisions the SP4b audit found
 wrong. Each was pinned as a strict `xfail` and turned green when its fix
 landed; none is left. Extractors are
@@ -1154,7 +1156,7 @@ failed capture rather than a crash.
 Captured pages go through a sanitiser first, which strips the inline
 third-party config that a whole-page save would otherwise commit — except a
 response recognised as XML, which is saved as-is: an HTML parser corrupts it
-(SP4, found capturing Personio's feed). Every one of the twenty-five
+(SP4, found capturing Personio's feed). Every one of the twenty-six
 extractors now has a saved page, down from thirteen uncovered before SP4:
 SP4 covered the five generic ATS readers (Breezy, Lever, Personio,
 SmartRecruiters, Workable), SP4d covered jobsinlund, SP6 covered the last
@@ -1167,6 +1169,10 @@ employer's capture (the next Jobylon customer's feed would test the layer
 mappings, since which `layers_N` is the department is the customer's choice).
 SP16 added a generic reader for HiBob career sites, which fill themselves from
 the platform's public job-ad API; it is covered by one employer's capture.
+A generic reader for Pinpoint boards followed, reading each board's public
+`postings.json`, covered by one employer's capture as well. The probe does
+not recognise Pinpoint yet, so a Pinpoint board probes as `needs a new
+extractor`: look for a `<board>.pinpointhq.com` link on the rendered page.
 Keeping fixtures current is SP6 of
 [docs/SOURCES-PLAN.md](docs/SOURCES-PLAN.md), which superseded the refactor
 plan's old Future work section.

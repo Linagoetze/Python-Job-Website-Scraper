@@ -2270,3 +2270,24 @@ session — see `CLAUDE.md`.
   the run and once for the re-filter pass: 0.275 ms a run in all, measured.
   Hoisting it would thread a compiled pattern through three call sites to save
   nothing measurable.
+- **Pinpoint is read through its public postings feed, by one generic reader
+  (2026-11-20).** `extractors/pinpoint.py` asks `<board>.pinpointhq.com` for
+  `/postings.json`, the feed the platform's own career pages are built on: one
+  response, every published posting under `data`, no total or cursor. A source
+  names the board, never an employer's page that embeds it (LEEP's Framer page
+  is a shell to a static fetch and fills itself from this feed), and the reader
+  refuses any other host rather than read an empty page as an empty board.
+  The location is the location record's `name`, the board's own label, not its
+  `city`: remote postings are filed under an office city they are not tied to.
+  `workplace_type` joins `raw_snippet` as Ashby's does (SP4f). All four text
+  sections (description, key responsibilities, skills and knowledge,
+  benefits) are joined after their headings as `description_text`, because the
+  skills section is where the years Layer 5 reads are stated. The probe does
+  not recognise Pinpoint yet; that is OP19.
+- **`leep` stays a source though its first run passed nothing (owner's
+  decision, 2026-11-20).** Its scratch run read both postings and Layer 1
+  dropped both on "remote keyword overridden by a named city" ("Indonesia -
+  Remote", Indonesia preferred, not required). SP12's rule would park a source
+  that passes nothing; the owner keeps this one, a small board whose postings
+  change, at the cost of one request per run. The Layer 1 reading of such a
+  location is not changed by this.

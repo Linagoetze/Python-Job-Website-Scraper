@@ -36,6 +36,7 @@ name or URL goes in this file**.
 | 16 | Raise `requires-python` to 3.13 | 0.25 hr | Sonnet 5 | none | parked | — | close-out |
 | 17 | `source_yield` still says "Layer 0" | 0.25 hr | Sonnet 5 | none | parked | — | [section 7, item 1](AUDIT-SP.md#7-readme-for-github) |
 | 18 | A tracked `.example` twin for `labels.csv` | 0.25 hr | Sonnet 5 | none | parked | — | [section 7, item 3](AUDIT-SP.md#7-readme-for-github) |
+| 19 | The probe recognises Pinpoint | 0.5 hr | Sonnet 5 | `think` | parked | `op19-probe-pinpoint` | the Pinpoint reader, 2026-11-20 |
 
 ### Why each is optional, and the workaround meanwhile
 
@@ -393,6 +394,14 @@ The README now calls the location layer Layer 1, as the run summary does; the co
 - **Size and model:** 0.25 hr, Sonnet 5.
 
 `CLAUDE.md` asks every private file for a tracked twin, and `labels.csv` has none (`tests/fixtures/eval_labels.csv` has fewer columns). The ignore rules now let a new `data/curated/*.example.*` through. Invented rows only, and the README's Layout row changes with it. The prompt is written when the trigger fires.
+
+## OP19 — The probe recognises Pinpoint
+
+- **Trigger:** the next career page whose rendered links point at a `<board>.pinpointhq.com` posting.
+- **Reference:** the Pinpoint reader (`extractors/pinpoint.py`, 2026-11-20), and `docs/DECISIONS.md`, "Pinpoint is read through its public postings feed".
+- **Size and model:** 0.5 hr, Sonnet 5, `think`.
+
+A generic reader for Pinpoint landed without a Platform entry in `probe.py`, so the probe still says "none of the 11 supported platforms" for a Pinpoint board or a page that embeds one, and its verdict is `needs a new extractor`. Add the twelfth entry: fingerprint the `pinpointhq.com` host in links, loaded resources and redirects; name the board as the host's origin; run `pinpoint.extract`, which reads one response and states no total. The probe's own tests, and README's "eleven supported platforms", move with it. The prompt is written when the trigger fires.
 
 ## Owner decisions pending
 

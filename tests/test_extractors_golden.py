@@ -34,6 +34,7 @@ from job_scraper.extractors import (
     hibob,
     jobylon,
     personio,
+    pinpoint,
     pure_earth,
     sida,
     smartrecruiters,
@@ -873,6 +874,32 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             ),
         },
         "description": (1304, "Open Philanthropy is now Coefficient Giving."),
+    },
+    "leep": {
+        # pinpoint.py, first capture 2026-11-20. Two postings, a bare `data`
+        # list with no total; both match the rendered opportunities page
+        # (title, "Indonesia - Remote", Program). The location is the record's
+        # label, not its city (Jakarta), because both postings are fully remote
+        # and only prefer Indonesia. Every field of the first job was checked
+        # against the saved feed by hand; the feed's title has a trailing space.
+        "count": 2,
+        "first_job": {
+            "source_name": "leep",
+            "title": "Senior Program Manager Indonesia",
+            "location": "Indonesia - Remote",
+            "department": "Program",
+            "listing_url": "https://leadelimination.pinpointhq.com",
+            "detail_url": (
+                "https://leadelimination.pinpointhq.com/en/postings/"
+                "9e239f5b-f0db-4f81-b4d1-bd264d231053"
+            ),
+            "apply_url": (
+                "https://leadelimination.pinpointhq.com/en/postings/"
+                "9e239f5b-f0db-4f81-b4d1-bd264d231053"
+            ),
+            "raw_snippet": "Senior Program Manager Indonesia Program Indonesia - Remote Remote",
+        },
+        "description": (6409, "Application Deadline: 25 November 2026"),
     },
     "mammut": {
         # mammut.py. No bug: all 17 rows match the page. The location is the
@@ -1891,3 +1918,114 @@ def test_ashby_still_skips_an_unlisted_posting_however_little_it_carries() -> No
 def test_workable_fails_loudly_on_a_posting_with_no_title(title: str | None) -> None:
     with pytest.raises(ValueError, match="Workable API"):
         _workable({"title": title})
+
+
+# --- Pinpoint -------------------------------------------------------------------
+#
+# Invented postings unless a test says otherwise. The board is the source's URL;
+# the reader asks for that board's postings.json and nothing else.
+
+_PINPOINT_BOARD = "https://contoso.pinpointhq.com"
+
+
+def _pinpoint(*postings: dict[str, Any]) -> list[dict[str, Any]]:
+    body = json.dumps(
+        {
+            "data": [
+                {"title": "Analyst", "url": f"{_PINPOINT_BOARD}/en/postings/1", **p}
+                for p in postings
+            ]
+        }
+    )
+    return pinpoint.extract(_PINPOINT_BOARD, lambda url, *a, **k: body, "contoso")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("<html><body>Something went wrong</body></html>", id="not-json"),
+        pytest.param('{"meta": {}}', id="no-data-list"),
+        pytest.param("[]", id="not-an-object"),
+    ],
+)
+def test_pinpoint_fails_loudly_on_a_body_it_cannot_read(body: str) -> None:
+    """A body without a `data` list is a broken read, not an empty board."""
+    with pytest.raises(ValueError, match="Pinpoint feed"):
+        pinpoint.extract(_PINPOINT_BOARD, lambda url, *a, **k: body, "contoso")
+
+
+def test_pinpoint_reads_an_empty_board_as_empty() -> None:
+    """The other half: a board with nothing open says so, and that is not an error."""
+    assert pinpoint.extract(_PINPOINT_BOARD, lambda url, *a, **k: '{"data": []}', "contoso") == []
+
+
+@pytest.mark.parametrize("missing", [{"title": ""}, {"url": ""}, {"title": None, "url": None}])
+def test_pinpoint_fails_loudly_on_a_posting_with_no_title_or_url(missing: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="Pinpoint feed"):
+        _pinpoint(missing)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://contoso.pinpointhq.com",
+        "https://contoso.pinpointhq.com/",
+        "https://contoso.pinpointhq.com/en/postings/9e239f5b",
+    ],
+)
+def test_pinpoint_asks_for_the_board_s_feed_from_any_page_on_it(url: str) -> None:
+    asked: list[str] = []
+    pinpoint.extract(url, lambda u, *a, **k: asked.append(u) or '{"data": []}', "contoso")
+    assert asked == ["https://contoso.pinpointhq.com/postings.json"]
+
+
+@pytest.mark.parametrize(
+    "url", ["https://leadelimination.org/opportunities", "https://pinpointhq.com/"]
+)
+def test_pinpoint_refuses_a_url_that_names_no_board(url: str) -> None:
+    # The employer's own page is the wrong URL for the source: a static fetch
+    # of it holds no postings, so reading it would look like an empty board.
+    with pytest.raises(ValueError, match="not a Pinpoint board URL"):
+        pinpoint.extract(url, lambda u, *a, **k: '{"data": []}', "contoso")
+
+
+def test_pinpoint_carries_the_workplace_type_into_the_snippet() -> None:
+    jobs = _pinpoint(
+        {"location": {"name": "Fabrikam City"}, "workplace_type": "hybrid"},
+        {"location": {"name": "Fabrikam City"}, "workplace_type": "remote"},
+        {"location": {"name": "Fabrikam City"}, "workplace_type": "onsite"},
+    )
+    assert [j["raw_snippet"] for j in jobs] == [
+        "Analyst Fabrikam City Hybrid",
+        "Analyst Fabrikam City Remote",
+        "Analyst Fabrikam City",
+    ]
+
+
+def test_pinpoint_falls_back_to_city_and_province_without_a_label() -> None:
+    [job] = _pinpoint({"location": {"name": "", "city": "Northwind", "province": "Contoso"}})
+    assert job["location"] == "Northwind, Contoso"
+
+
+def test_pinpoint_supplies_every_section_after_its_heading() -> None:
+    [job] = _pinpoint(
+        {
+            "description": "<div>About the role</div>",
+            "key_responsibilities": "<ul><li>Run things</li></ul>",
+            "key_responsibilities_header": "Key Responsibilities",
+            "skills_knowledge_expertise": "<ul><li>5+ years of experience</li></ul>",
+            "skills_knowledge_expertise_header": "What We Are Looking For",
+            "benefits": "",
+            "benefits_header": "Benefits",
+        }
+    )
+    assert job["description_text"] == (
+        "About the role\n\nKey Responsibilities\nRun things\n\n"
+        "What We Are Looking For\n5+ years of experience"
+    )
+
+
+def test_pinpoint_keeps_the_captured_skills_section() -> None:
+    """Real data: the years of experience Layer 5 reads are in this section."""
+    [first, *_] = parse_fixture("leep")
+    assert "What We’re Looking For\n" in first["description_text"]
