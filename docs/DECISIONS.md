@@ -2291,3 +2291,20 @@ session — see `CLAUDE.md`.
   that passes nothing; the owner keeps this one, a small board whose postings
   change, at the cost of one request per run. The Layer 1 reading of such a
   location is not changed by this.
+- **giving_what_we_can's reader raises when it cannot find its roles, and an
+  empty board raises too (2026-11-20, after run 46).** The careers page moved
+  from /get-involved/careers to /careers (the old URL redirects) and was
+  redesigned; the old reader's anchor, `h2#current-openings`, went with it, and
+  the reader returned `[]` from run 40 (2026-10-27) to run 46 while the page
+  listed a role. The Empty sources block flagged it every run, but it could not
+  be told from a quiet board. The reader now reads `section#open-roles`, one
+  row per `li > a`, title from the first column, the Team column as
+  `department`; the page states no place, so `location` stays empty for Layer 5.
+  It raises `UnreadablePageError` (a `ValueError`) on a missing section, a
+  section with no rows, or a row with no title. A genuinely empty board
+  therefore fails the source until its wording is seen and taught to the
+  reader, which is the `EMPTY_FIXTURES` rule: a reader may return `[]` only
+  beside a stated empty. The fixture is run 46's own response from the HTTP
+  cache, passed through `capture_fixtures.sanitise_html`, with no new request
+  (owner's choice, 2026-11-20). The owner moved `sources.yaml`'s `url` to
+  /careers the same day.
