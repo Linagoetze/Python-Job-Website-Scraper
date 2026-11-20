@@ -415,12 +415,6 @@ sources plan and its audit.
   ([AUDIT-SP Q8](AUDIT-SP.md#questions-for-the-owner)): keep, remove or park
   each type-B source (OP4 waits on this), and revive or leave the three
   `rejected` rows SP14's reading now keeps.
-- **Keep or park `leep`** (2026-11-20): its scratch run read both postings
-  and Layer 1 dropped both on "remote keyword overridden by a named city":
-  the location is "Indonesia - Remote", and the postings say Indonesia is
-  preferred, not required. By SP12's rule a source that passes nothing is not
-  worth a fetch per run; whether that drop is right for these postings is the
-  owner's to say.
 - **Time Machine** (SP0's to-do): whether to back up the machine as a whole.
   Unrelated to the scraper.
 

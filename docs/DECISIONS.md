@@ -2284,3 +2284,10 @@ session — see `CLAUDE.md`.
   benefits) are joined after their headings as `description_text`, because the
   skills section is where the years Layer 5 reads are stated. The probe does
   not recognise Pinpoint yet; that is OP19.
+- **`leep` stays a source though its first run passed nothing (owner's
+  decision, 2026-11-20).** Its scratch run read both postings and Layer 1
+  dropped both on "remote keyword overridden by a named city" ("Indonesia -
+  Remote", Indonesia preferred, not required). SP12's rule would park a source
+  that passes nothing; the owner keeps this one, a small board whose postings
+  change, at the cost of one request per run. The Layer 1 reading of such a
+  location is not changed by this.
