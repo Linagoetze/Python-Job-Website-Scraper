@@ -2308,3 +2308,20 @@ session — see `CLAUDE.md`.
   cache, passed through `capture_fixtures.sanitise_html`, with no new request
   (owner's choice, 2026-11-20). The owner moved `sources.yaml`'s `url` to
   /careers the same day.
+- **SuccessFactors boards page by `startrow` or by `pageNumber`, chosen per
+  registry line (2026-11-20, after run 46).** tetrapak failed run 46 with a
+  short walk: 10 of a stated 12. Its listing had never before held more than 9
+  postings, so its second page had never been asked for. Its career-site-builder
+  front end ignores `startrow` and renders page one again (measured: the same
+  ten postings, "1 to 10 of 12"); it reads a zero-based `pageNumber`, which its
+  config script echoes as `appParams.pageNumber`, and `pageNumber=1` renders
+  the last two. The reader now takes `page_param` (`startrow`, the default, or
+  `pageNumber`), and tetrapak's registry line sets `pageNumber`. The walk still
+  counts in rows, so its other checks are unchanged. A URL parameter keeps this
+  at rung 1-2: no button is pressed, no token is read, and the path stays on
+  `/search/`, which robots.txt allows. A board given the wrong parameter serves
+  page one again, and the walk already refuses that. Live, through the
+  registry: 12 of 12 in two renders. Dedupe keys are detail URLs, so they do
+  not move. Its fixture is the whole two-page walk (`tetrapak.html` +
+  `tetrapak.p1.html`, 12 postings), captured by the owner the same day with
+  `--pages all`.
