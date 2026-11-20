@@ -24,6 +24,7 @@ from job_scraper.extractors import (
     mammut,
     niras,
     personio,
+    pinpoint,
     pure_earth,
     sida,
     smartrecruiters,
@@ -169,6 +170,10 @@ REGISTRY: dict[str, ExtractorFn] = {
     # --- Pure Earth (own careers page, static) ---
     "pure_earth": partial(pure_earth.extract, source_name="pure_earth"),
     # --- PwC Sweden (Jobylon feed, static) ---
+    # --- Pinpoint (public postings.json, static) ---
+    # LEEP's own opportunities page is a Framer site that fills itself from
+    # this feed in the browser; the feed carries the full posting text.
+    "leep": partial(pinpoint.extract, source_name="leep"),
     "pwc_sweden": partial(
         jobylon.extract,
         source_name="pwc_sweden",
