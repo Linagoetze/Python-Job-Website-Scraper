@@ -297,7 +297,7 @@ The store does not keep the department and snippet a run matched on, so the end-
 - **Reference:** [AUDIT-SP](AUDIT-SP.md) [F2](AUDIT-SP.md#f2-fjallraven-has-returned-nothing-for-ten-runs-and-nobody-has-looked).
 - **Size and model:** 1 hr, Sonnet 5, `think`.
 
-Empty in every run since 30 September. With the owner's approval, capture the page once and compare it with the saved fixture, then record the answer in `docs/DECISIONS.md` so the Empty sources block can be read as known. `giving_what_we_can`, empty since 27 October, goes in the same session. The prompt is written when the trigger fires.
+Empty in every run since 30 September. With the owner's approval, capture the page once and compare it with the saved fixture, then record the answer in `docs/DECISIONS.md` so the Empty sources block can be read as known. `giving_what_we_can`, empty since 27 October, was a redesigned page its reader no longer recognised: **fixed on 2026-11-20** (branch `fix-gwwc-reader`; the reader now raises rather than return an empty list, see `docs/DECISIONS.md`), so only `fjallraven` is left here. The prompt is written when the trigger fires.
 
 ## OP7 — The goldens check row 1 only, and five tests skip on a missing fixture
 

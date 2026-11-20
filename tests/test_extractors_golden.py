@@ -464,18 +464,20 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     "giving_what_we_can": {
-        # Not a bug: the only listing on this page has no location anywhere in
-        # its markup, just a closed-applications note. Pinned empty.
+        # Re-captured after the October 2026 redesign (/careers, a roles
+        # table). Not a bug: the page states no place for a role, so location
+        # is pinned empty and Layer 5 reads it from the posting page. The
+        # department is the table's Team column.
         "count": 1,
         "first_job": {
             "source_name": "giving_what_we_can",
-            "title": "Head of Marketing",
-            "department": "",
+            "title": "Product Engineer, Platform",
+            "department": "Product Engineering",
             "location": "",
-            "listing_url": "https://www.givingwhatwecan.org/get-involved/careers",
-            "detail_url": "https://www.givingwhatwecan.org/head-of-marketing",
-            "apply_url": "https://www.givingwhatwecan.org/head-of-marketing",
-            "raw_snippet": "Head of Marketing",
+            "listing_url": "https://www.givingwhatwecan.org/careers",
+            "detail_url": "https://www.givingwhatwecan.org/careers/product-engineer-platform",
+            "apply_url": "https://www.givingwhatwecan.org/careers/product-engineer-platform",
+            "raw_snippet": "Product Engineer, Platform Product Engineering",
         },
     },
     "jpal": {
