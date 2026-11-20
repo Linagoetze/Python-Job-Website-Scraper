@@ -2322,4 +2322,6 @@ session — see `CLAUDE.md`.
   `/search/`, which robots.txt allows. A board given the wrong parameter serves
   page one again, and the walk already refuses that. Live, through the
   registry: 12 of 12 in two renders. Dedupe keys are detail URLs, so they do
-  not move. tetrapak still has no fixture.
+  not move. Its fixture is the whole two-page walk (`tetrapak.html` +
+  `tetrapak.p1.html`, 12 postings), captured by the owner the same day with
+  `--pages all`.
