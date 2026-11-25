@@ -23,7 +23,7 @@ name or URL goes in this file**.
 | 3 | A generic reader for Taleo career sites | 3 hr | Opus 5 | `think hard` | not started | `op3-taleo-reader` | SP16 |
 | 4 | A per-source `enabled: false` | — | — | — | proposed, no prompt yet | — | SP12's proposal |
 | 5 | The re-filter pass rejects rows `include_keywords` admitted | 1 hr | Sonnet 5 | `think` | parked | `op5-refilter-keywords` | [F1](AUDIT-SP.md#f1-the-end-of-run-re-filter-can-permanently-reject-a-job-the-run-just-kept) |
-| 6 | `fjallraven` returns no rows | 1 hr | Sonnet 5 | `think` | parked | `op6-empty-sources` | [F2](AUDIT-SP.md#f2-fjallraven-has-returned-nothing-for-ten-runs-and-nobody-has-looked) |
+| 6 | `fjallraven` returns no rows | 1 hr | Sonnet 5 | `think` | done 2026-11-25: dropped as a source | `fix-oatly-tetrapak-paging` | [F2](AUDIT-SP.md#f2-fjallraven-has-returned-nothing-for-ten-runs-and-nobody-has-looked) |
 | 7 | The goldens check row 1 only, and five tests skip on a missing fixture | 1.5 hr | Sonnet 5 | `think` | parked | `op7-every-row-checks` | [F3](AUDIT-SP.md#f3-the-golden-tests-look-at-each-saved-pages-first-posting-only) |
 | 8 | SuccessFactors reads its URL from the registry | 2 hr | Opus 5 | `think` | parked | `op8-successfactors-config` | [F7](AUDIT-SP.md#f7-successfactors-sources-keep-their-configuration-in-the-registry) |
 | 9 | A dry run can migrate the schema | 0.5 hr | Sonnet 5 | `think` | parked | `op9-dry-run-schema` | [F5](AUDIT-SP.md#f5-a-dry-run-can-still-change-the-stores-schema) |
@@ -292,6 +292,13 @@ after deciding SP12's type-B sources.
 The store does not keep the department and snippet a run matched on, so the end-of-run pass and `retrofilter` mark such a row `rejected`, permanently. The owner chooses the direction first: skip the checks the pass cannot reproduce, or refuse to run while `include_keywords` is set. The README warns beside the key until this is done. The prompt is written when the trigger fires.
 
 ## OP6 — `fjallraven` returns no rows
+
+**Done, 2026-11-25** (branch `fix-oatly-tetrapak-paging`). Run 47 found its
+robots.txt saying `Disallow: /`, so the page could not be captured and compared
+as planned. The owner dropped the source: its registry line, golden case and
+fixture are removed, and the `sources.yaml` entry is the owner's to delete. See
+`docs/DECISIONS.md`, "fjallraven is dropped as a source". The plan as first
+written follows.
 
 - **Trigger:** the owner finds postings on the live board.
 - **Reference:** [AUDIT-SP](AUDIT-SP.md) [F2](AUDIT-SP.md#f2-fjallraven-has-returned-nothing-for-ten-runs-and-nobody-has-looked).

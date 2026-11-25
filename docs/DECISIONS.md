@@ -2308,3 +2308,51 @@ session — see `CLAUDE.md`.
   cache, passed through `capture_fixtures.sanitise_html`, with no new request
   (owner's choice, 2026-11-20). The owner moved `sources.yaml`'s `url` to
   /careers the same day.
+- **Teamtailor's reader follows "Show more" and checks the stated count
+  (2026-11-25, after run 47).** A board of more than 20 postings shows 20 and
+  `<div id="show_more_button"><a href="/jobs/show_more?page=2">`. The link
+  answers with a Turbo Stream (`text/vnd.turbo-stream.html`, to a plain GET with
+  no special `Accept`): one `append` to `jobs_list_container` per posting, each
+  card inside a `<template>`, then an `update` of `show_more_button` holding the
+  next link, or nothing on the last page. The reader read the first page only,
+  so oatly returned 20 of its stated "23 jobs" in every run, and the one-page
+  block named it. BeautifulSoup files a template's text as `TemplateString`,
+  which `get_text()` leaves out: read in place, every page-2 title was empty and
+  every card was skipped, so each template's markup is parsed again as a
+  fragment of its own. The walk is now checked with `pagination.reconcile`
+  against the count the list states above its cards ("23 jobs", "1 job", in an
+  `<h2>` or, on storytel's layout, a `<span>`), which matched the rows read on
+  every saved Teamtailor fixture that has one. A board short of its count now
+  fails the source instead of being read short. Two older layouts
+  (seven_perigee's and futurelearn's) state no count, and a count not in English
+  reads as none: one page is accepted as before, silently, and a multi-page walk
+  without a count logs `unverifiable_end`. Checked against run 47's cached page 1 and one live GET of
+  page 2: 23 of 23, department, location and work type read. The tests use
+  invented markup, not the live answer. Cost: one more request per run for each
+  board over 20 postings, oatly alone today.
+- **Tetra Pak's walk pages by a zero-based `pageNumber`, not `startrow`
+  (2026-11-25, after runs 46 and 47).** The board passed 10 postings for the
+  first time in run 46 (12, then 11), and both runs failed with a short walk:
+  10 held, 11 or 12 stated. Its career-site-builder page reads which page to
+  show from its own search settings, which carry `pageNumber` and no
+  `startrow`; a static GET with `pageNumber=2` echoed `pageNumber: "2"`, and
+  without it the setting is empty. Two owner-approved renders measured it:
+  `pageNumber=2` was labelled "21 to 11 of 11 results" with no rows, and
+  `pageNumber=1` "11 to 11 of 11 results" with the missing posting, its URL in
+  the stored keys' form. So the index starts at 0. `successfactors_html.extract`
+  takes `page_param` (`"startrow"`, the default, counting rows;
+  `"pageNumber"`, counting pages from 0), refuses any other value before a
+  request, and only tetrapak's registry line sets it. DSV, Novo Nordisk,
+  Coloplast and ISS are unchanged. The probe still pages by `startrow` for any
+  SuccessFactors board; a career-site-builder board probed today would read
+  short there.
+- **fjallraven is dropped as a source (owner's decision, 2026-11-25).**
+  `career.fjallraven.com/robots.txt` says `Disallow: /`, seen in run 47, after
+  it returned 0 rows in runs 40 to 44 and 2 in runs 45 and 46 (OP6). Its
+  registry line, its golden case and `tests/fixtures/fjallraven.html` are
+  removed; the layouts it covered are pinned by planted, seven_perigee and oatly,
+  which include cards with a location and no department. Its stored rows stay
+  as history, as undp's did. The `sources.yaml` entry is the owner's to remove.
+  Until it is, the run skips the source as having no extractor. It is not on the
+  tombstone: the owner said drop, not tombstone, and tombstoning would bring the
+  publishing rule that keeps a tombstoned board's name out of the plan files.
