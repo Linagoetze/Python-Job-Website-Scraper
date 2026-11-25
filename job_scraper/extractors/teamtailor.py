@@ -6,7 +6,7 @@ Handles the common Teamtailor HTML patterns:
   - <a href="/jobs/ID-slug"><span title="Title">Title</span><div>Dept · Location</div></a>
     (Storytel, redesigned 2026-08 markup: title and metadata both inside <a>)
   - <a href="/jobs/ID-slug">Title</a><div>[Org ·] [Dept ·] Location [· WorkType]</div>
-    (Fjällräven, Founders Pledge, FutureLearn, Planted, Seven Perigee, redesigned
+    (Founders Pledge, FutureLearn, Planted, Seven Perigee, redesigned
     2026-08 markup: bare text title inside <a>, metadata <div> is a *sibling* of
     <a>, not a child. Segment count varies per posting — some have no department,
     FutureLearn's board additionally prefixes a brand/org segment — so dept and
@@ -227,7 +227,7 @@ def _read_cards(
 
         # Title: prefer <h3>, then a <span title="..."> (redesigned Storytel),
         # fall back to first direct child <div>, then the anchor's own bare text
-        # (redesigned Fjällräven/Founders Pledge/FutureLearn/Planted/Seven Perigee)
+        # (redesigned Founders Pledge/FutureLearn/Planted/Seven Perigee)
         h3 = a.find("h3")
         title_span: Tag | None = None
         if h3:

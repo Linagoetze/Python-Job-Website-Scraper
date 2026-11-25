@@ -195,11 +195,6 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
         "https://www.bearingpoint.com/en-se/careers/open-roles/",
         lambda url, fetch: bearingpoint.extract(url, fetch, source_name="bearingpoint_sweden"),
     ),
-    "fjallraven": (
-        "fjallraven.html",
-        "https://career.fjallraven.com/jobs",
-        lambda url, fetch: teamtailor.extract(url, fetch, source_name="fjallraven"),
-    ),
     "founders_pledge": (
         "founders_pledge.html",
         "https://careers.founderspledge.com/jobs",

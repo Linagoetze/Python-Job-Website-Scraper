@@ -60,7 +60,6 @@ REGISTRY: dict[str, ExtractorFn] = {
     "storytel": partial(teamtailor.extract, source_name="storytel"),
     "planted": partial(teamtailor.extract, source_name="planted"),
     "lifesum": partial(teamtailor.extract, source_name="lifesum"),
-    "fjallraven": partial(teamtailor.extract, source_name="fjallraven"),
     # Oatly had a reader of its own until SP6 (2026-10-08), whose capture found
     # it blank on location and department for every posting. The generic reader
     # read the same page correctly; the store adds the /en-GB/ locale itself.
