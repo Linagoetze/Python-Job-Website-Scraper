@@ -131,6 +131,22 @@ FIXTURE_CASES: dict[str, tuple[str, str, Extractor]] = {
             BeautifulSoup(fetch(url), "lxml"), "https://jobs.issworld.com/search/", "iss"
         ),
     ),
+    "tetrapak": (
+        "tetrapak.html",
+        "https://jobs.tetrapak.com/search/?searchResultView=LIST",
+        # The whole walk, two rendered pages (tetrapak.html + tetrapak.p1.html),
+        # captured by the owner on 2026-11-20 once the walk paged by
+        # `pageNumber`. The registry's base URL, not this one, is what is
+        # fetched, so the rows' `listing_url` is the registry's.
+        lambda url, fetch: successfactors_html.extract(
+            url,
+            fetch,
+            source_name="tetrapak",
+            page_step=10,
+            base_search_url="https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden",
+            page_param="pageNumber",
+        ),
+    ),
     "jobsinlund": (
         "jobsinlund.json",
         "https://jobsinlund.com/?language[]=en&location.address=Lund",

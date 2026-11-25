@@ -468,6 +468,23 @@ _GOLDEN: dict[str, dict[str, Any]] = {
             "raw_snippet": "Product Engineer, Platform Product Engineering",
         },
     },
+    "tetrapak": {
+        # 2026-11-20: the board's front end ignores `startrow` and pages by a
+        # zero-based `pageNumber`, so this is the first fixture with its second
+        # page. Three of the twelve are "Multiple Locations", the board's own
+        # label for a posting filed under several sites; it is left as stated.
+        "count": 12,
+        "first_job": {
+            "source_name": "tetrapak",
+            "title": "Process Engineer",
+            "department": "Engineering",
+            "location": "Lund, Sweden",
+            "listing_url": "https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden",
+            "detail_url": "https://jobs.tetrapak.com/job/Process-Engineer/101213-en_GB",
+            "apply_url": "https://jobs.tetrapak.com/job/Process-Engineer/101213-en_GB",
+            "raw_snippet": "Process Engineer Engineering Lund, Sweden",
+        },
+    },
     "jpal": {
         # WP11 (2026-09-02): re-captured as the whole five-page walk, not just
         # page 0, so the count is the listing's real length. The old count of 9

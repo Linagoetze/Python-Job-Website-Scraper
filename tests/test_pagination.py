@@ -18,6 +18,7 @@ import json
 import logging
 import re
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -32,6 +33,7 @@ from job_scraper.extractors import (
     workday,
 )
 from job_scraper.extractors.pagination import ShortWalkError
+from job_scraper.extractors.registry import REGISTRY
 from tests.fixture_cases import FIXTURES_DIR, parse_fixture
 
 _LISTING_URL = "https://www.povertyactionlab.org/careers"
@@ -483,6 +485,65 @@ def test_successfactors_a_posting_added_ahead_of_the_walk_stops_it_there() -> No
     assert asked == [0, 10]
 
 
+def test_successfactors_walks_a_board_that_pages_by_page_number() -> None:
+    """Tetra Pak's shape (2026-11-20): 12 postings, ten a page, `pageNumber` from 0.
+
+    Its front end ignores `startrow` and renders page one again, which run 46
+    refused as a short list. Asked by `pageNumber`, the second page is the two
+    postings the first never reaches.
+    """
+    base = "https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden"
+    pages = {0: _sf_rows_page(list(range(10)), total=12), 1: _sf_rows_page([10, 11], total=12)}
+    asked: list[int] = []
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        query = parse_qs(urlparse(url).query)
+        assert "startrow" not in query
+        assert query["locationsearch"] == ["Sweden"]
+        asked.append(int(query["pageNumber"][0]))
+        return pages[asked[-1]]
+
+    jobs = successfactors_html.extract(
+        base,
+        fetch,
+        source_name="tetrapak",
+        page_step=10,
+        base_search_url=base,
+        page_param="pageNumber",
+    )
+    assert asked == [0, 1]
+    assert len(jobs) == 12
+
+
+def test_successfactors_the_wrong_page_parameter_is_refused_not_shortened() -> None:
+    """What run 46 saw: a board ignoring `startrow` serves page one again."""
+    page = _sf_rows_page(list(range(10)), total=12)
+    with pytest.raises(ShortWalkError, match="holding 10 .* says it has 12"):
+        successfactors_html.extract(
+            "https://jobs.tetrapak.com/search/",
+            lambda url, *a, **k: page,
+            source_name="tetrapak",
+            page_step=10,
+            base_search_url="https://jobs.tetrapak.com/search/",
+        )
+
+
+def test_successfactors_an_unknown_page_parameter_is_refused() -> None:
+    with pytest.raises(ValueError, match="unknown page_param 'page'"):
+        successfactors_html.extract(
+            "https://jobs.tetrapak.com/search/",
+            lambda url, *a, **k: "",
+            source_name="tetrapak",
+            page_step=10,
+            base_search_url="https://jobs.tetrapak.com/search/",
+            page_param="page",
+        )
+
+
+def test_tetrapak_is_registered_to_page_by_page_number() -> None:
+    assert REGISTRY["tetrapak"].keywords["page_param"] == "pageNumber"
+
+
 def test_successfactors_a_moved_board_fails_the_source_like_a_short_walk() -> None:
     """A run counts it as a failed source: stored jobs kept, nothing delisted."""
     assert issubclass(successfactors_html.BoardMovedError, ShortWalkError)
@@ -511,77 +572,6 @@ def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
         base_search_url="https://jobs.dsv.com/search/",
     )
     assert len(jobs) == 15
-
-
-def _csb_walk(pages: dict[int, str], asked: list[int]) -> list[dict[str, Any]]:
-    """Walk a career-site-builder board, which pages by a zero-based `pageNumber`."""
-
-    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
-        assert "startrow=" not in url
-        index = int(url.rsplit("pageNumber=", 1)[1])
-        asked.append(index)
-        return pages[index]
-
-    return successfactors_html.extract(
-        "https://jobs.tetrapak.com/search/?searchResultView=LIST",
-        fetch,
-        source_name="tetrapak",
-        page_step=10,
-        base_search_url="https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden",
-        page_param="pageNumber",
-    )
-
-
-def test_successfactors_pages_by_page_number_where_the_board_does() -> None:
-    """tetrapak at 11 postings: page index 1, not row 10, holds the eleventh."""
-    pages = {
-        0: _sf_rows_page(list(range(10)), total=11),
-        1: _sf_rows_page([10], total=11),
-    }
-    asked: list[int] = []
-    assert len(_csb_walk(pages, asked)) == 11
-    assert asked == [0, 1]
-
-
-def test_successfactors_a_board_that_ignores_its_page_parameter_still_fails() -> None:
-    """Runs 46 and 47: every page is page one, so the walk is short and says so."""
-    page = _sf_rows_page(list(range(10)), total=11)
-    with pytest.raises(ShortWalkError, match="says it has 11"):
-        _csb_walk({0: page, 1: page}, [])
-
-
-def test_successfactors_startrow_stays_the_default() -> None:
-    """The other instances count rows; only a registry line opts out."""
-    asked: list[int] = []
-    pages = {
-        0: _sf_rows_page(list(range(10)), total=15),
-        10: _sf_rows_page(list(range(10, 15)), total=15),
-    }
-    assert len(_sf_walk(pages, asked)) == 15
-    assert asked == [0, 10]
-
-
-def test_successfactors_an_unknown_page_parameter_is_refused_before_any_request() -> None:
-    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
-        raise AssertionError("no request should be made")
-
-    with pytest.raises(ValueError, match="unknown page_param"):
-        successfactors_html.extract(
-            "https://jobs.dsv.com/search/",
-            fetch,
-            source_name="dsv",
-            page_step=10,
-            base_search_url="https://jobs.dsv.com/search/",
-            page_param="page",
-        )
-
-
-def test_tetrapak_is_registered_to_page_by_page_number() -> None:
-    from job_scraper.extractors.registry import get_extractor
-
-    reader = get_extractor("tetrapak")
-    assert reader is not None
-    assert reader.keywords["page_param"] == "pageNumber"
 
 
 # --- the totals, read from the real saved pages -----------------------------

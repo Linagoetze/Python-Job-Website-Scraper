@@ -2308,6 +2308,32 @@ session — see `CLAUDE.md`.
   cache, passed through `capture_fixtures.sanitise_html`, with no new request
   (owner's choice, 2026-11-20). The owner moved `sources.yaml`'s `url` to
   /careers the same day.
+- **SuccessFactors boards page by `startrow` or by `pageNumber`, chosen per
+  registry line (2026-11-20, after run 46).** tetrapak failed run 46 with a
+  short walk: 10 of a stated 12. Its listing had never before held more than 9
+  postings, so its second page had never been asked for. Its career-site-builder
+  front end ignores `startrow` and renders page one again (measured: the same
+  ten postings, "1 to 10 of 12"); it reads a zero-based `pageNumber`, which its
+  config script echoes as `appParams.pageNumber`, and `pageNumber=1` renders
+  the last two. The reader now takes `page_param` (`startrow`, the default, or
+  `pageNumber`), and tetrapak's registry line sets `pageNumber`. The walk still
+  counts in rows, so its other checks are unchanged. A URL parameter keeps this
+  at rung 1-2: no button is pressed, no token is read, and the path stays on
+  `/search/`, which robots.txt allows. A board given the wrong parameter serves
+  page one again, and the walk already refuses that. Live, through the
+  registry: 12 of 12 in two renders. Dedupe keys are detail URLs, so they do
+  not move. Its fixture is the whole two-page walk (`tetrapak.html` +
+  `tetrapak.p1.html`, 12 postings), captured by the owner the same day with
+  `--pages all`.
+- **Run 47's tetrapak failure was a stale checkout, not a second bug
+  (2026-11-25).** The `pageNumber` fix above was merged on 2026-11-20, but the
+  local `main` was never pulled, so run 47 ran the old reader and failed the
+  same way (10 of a stated 11). A second branch re-derived the same fix before
+  anyone fetched; it was merged into this one in favour of the first. Fetch
+  before diagnosing a failed source. Two renders that day agreed with the
+  entry above (`pageNumber=1`: "11 to 11 of 11 results"). The probe still pages
+  every SuccessFactors board by `startrow`, so a career-site-builder board
+  probed today would read short there.
 - **Teamtailor's reader follows "Show more" and checks the stated count
   (2026-11-25, after run 47).** A board of more than 20 postings shows 20 and
   `<div id="show_more_button"><a href="/jobs/show_more?page=2">`. The link
@@ -2326,26 +2352,10 @@ session — see `CLAUDE.md`.
   fails the source instead of being read short. Two older layouts
   (seven_perigee's and futurelearn's) state no count, and a count not in English
   reads as none: one page is accepted as before, silently, and a multi-page walk
-  without a count logs `unverifiable_end`. Checked against run 47's cached page 1 and one live GET of
-  page 2: 23 of 23, department, location and work type read. The tests use
-  invented markup, not the live answer. Cost: one more request per run for each
+  without a count logs `unverifiable_end`. Checked against run 47's cached
+  page 1 and one live GET of page 2: 23 of 23, department, location and work
+  type read. The tests use invented markup, not the live answer. Cost: one more request per run for each
   board over 20 postings, oatly alone today.
-- **Tetra Pak's walk pages by a zero-based `pageNumber`, not `startrow`
-  (2026-11-25, after runs 46 and 47).** The board passed 10 postings for the
-  first time in run 46 (12, then 11), and both runs failed with a short walk:
-  10 held, 11 or 12 stated. Its career-site-builder page reads which page to
-  show from its own search settings, which carry `pageNumber` and no
-  `startrow`; a static GET with `pageNumber=2` echoed `pageNumber: "2"`, and
-  without it the setting is empty. Two owner-approved renders measured it:
-  `pageNumber=2` was labelled "21 to 11 of 11 results" with no rows, and
-  `pageNumber=1` "11 to 11 of 11 results" with the missing posting, its URL in
-  the stored keys' form. So the index starts at 0. `successfactors_html.extract`
-  takes `page_param` (`"startrow"`, the default, counting rows;
-  `"pageNumber"`, counting pages from 0), refuses any other value before a
-  request, and only tetrapak's registry line sets it. DSV, Novo Nordisk,
-  Coloplast and ISS are unchanged. The probe still pages by `startrow` for any
-  SuccessFactors board; a career-site-builder board probed today would read
-  short there.
 - **fjallraven is dropped as a source (owner's decision, 2026-11-25).**
   `career.fjallraven.com/robots.txt` says `Disallow: /`, seen in run 47, after
   it returned 0 rows in runs 40 to 44 and 2 in runs 45 and 46 (OP6). Its

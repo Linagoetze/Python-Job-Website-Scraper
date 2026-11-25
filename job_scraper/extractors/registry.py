@@ -132,9 +132,8 @@ REGISTRY: dict[str, ExtractorFn] = {
     # postings are all on /search/, which robots.txt allows, so this reads the
     # page a visitor sees instead of the endpoint they asked crawlers to leave
     # alone. The location filter lives in the URL, as it did in the old module's
-    # request body. Its pages are chosen by a zero-based `pageNumber`; it ignores
-    # `startrow`, which never mattered until the board first passed ten postings
-    # (run 46) and the walk's second page held no new posting.
+    # request body. Its front end ignores `startrow` and pages by a zero-based
+    # `pageNumber` (2026-11-20, the first run whose listing needed a second page).
     "tetrapak": partial(
         successfactors_html.extract,
         source_name="tetrapak",

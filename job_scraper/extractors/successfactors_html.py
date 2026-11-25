@@ -4,12 +4,8 @@ These portals serve job listings as server-rendered HTML at a /search/ or
 /search URL. Job links follow the pattern:
     <a href="/job/{Location}-{Title}/{ID}/">…</a>
 
-Pagination uses a ?startrow=N query parameter, the row a page starts at. Loop
-until a page returns no job links or the page_step would exceed a reasonable
-upper bound. The career-site-builder front end (Tetra Pak) ignores `startrow`
-and reads `pageNumber`, a zero-based page index, instead: its page's search settings
-carry a `pageNumber` and no `startrow`, and a walk at `startrow=10` read no new
-posting. Its registry line passes `page_param="pageNumber"`. Both layouts state
+Pagination uses a ?startrow=N query parameter. Loop until a page returns no job
+links or the page_step would exceed a reasonable upper bound. Both layouts state
 how many postings there are — "Page 1 of 201, Results 1 to 10 of 2010" in the
 classic pagination label, "Showing 1 to 20 of 62 Jobs" on the tile skin — so a
 walk is checked against that count before it returns; see `pagination.py`.
@@ -29,6 +25,13 @@ with the whole board and look like a busy one, so every row's country (the third
 field of its location) is checked against the facet and a foreign row raises
 `FacetNotAppliedError`. The stated total cannot prove it: it describes whatever page
 was returned, narrowed or not.
+
+Most instances page by offset (`?startrow=N`). Tetra Pak's career-site-builder
+front end does not: it ignores `startrow` and renders page one again, and reads
+a zero-based `?pageNumber=N` instead, which its own config script echoes as
+`appParams.pageNumber` (measured 2026-11-20: `pageNumber=1` renders "11 to 12 of
+12 results"). The registry line picks the parameter with `page_param`. A board
+given the wrong one serves page one twice, which the walk already refuses.
 
 Whether a page needs JavaScript is the caller's business, not this module's:
 `sources.yaml`'s `strategy` picks the fetcher, and this extractor uses whatever
@@ -230,17 +233,20 @@ def _declared_total(soup: Any) -> int | None:
     return None
 
 
-# The two ways an instance is told which page to show. `startrow` counts rows,
-# `pageNumber` counts pages from zero (tetrapak, 2026-11-25: `pageNumber=1` was
-# labelled "11 to 11 of 11 results", `pageNumber=2` "21 to 11 of 11").
-_PAGE_PARAMS = frozenset({"startrow", "pageNumber"})
+# How a board is told which page to serve. The value is a function of the
+# walk's offset and the page size, so the walk itself counts in rows throughout.
+_PAGE_PARAMS: dict[str, Callable[[int, int], int]] = {
+    "startrow": lambda startrow, page_step: startrow,
+    "pageNumber": lambda startrow, page_step: startrow // page_step,
+}
 
 
-def _page_url(base_url: str, page_index: int, page_step: int, page_param: str) -> str:
-    value = page_index * page_step if page_param == "startrow" else page_index
+def _set_startrow(
+    base_url: str, startrow: int, *, page_param: str = "startrow", page_step: int = 1
+) -> str:
     parsed = urlparse(base_url)
     params = parse_qs(parsed.query, keep_blank_values=True)
-    params[page_param] = [str(value)]
+    params[page_param] = [str(_PAGE_PARAMS[page_param](startrow, page_step))]
     # preserve other params (q, sortColumn, sortDirection …)
     new_query = urlencode({k: v[0] for k, v in params.items()})
     return urlunparse(parsed._replace(query=new_query))
@@ -408,7 +414,7 @@ def extract(
     if page_param not in _PAGE_PARAMS:
         raise ValueError(
             f"{source_name}: unknown page_param {page_param!r}; expected one of "
-            f"{sorted(_PAGE_PARAMS)}"
+            f"{', '.join(sorted(_PAGE_PARAMS))}"
         )
 
     # ISS's listing is built by AJAX, so it needs a selector wait before the
@@ -427,13 +433,13 @@ def extract(
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    page_index = 0
+    startrow = 0
 
     total: int | None = None
     stated_at = ""
 
     while True:
-        url = _page_url(base_search_url, page_index, page_step, page_param)
+        url = _set_startrow(base_search_url, startrow, page_param=page_param, page_step=page_step)
         soup = BeautifulSoup(fetch_fn(url), "lxml")
         jobs = _parse_page(soup, base_search_url, source_name)
         if not jobs:
@@ -472,7 +478,7 @@ def extract(
             break
         if len(jobs) < page_step:
             break
-        page_index += 1
+        startrow += page_step
 
     if country and out and not proved:
         raise FacetNotAppliedError(
