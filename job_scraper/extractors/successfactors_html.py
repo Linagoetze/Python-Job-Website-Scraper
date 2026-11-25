@@ -4,8 +4,12 @@ These portals serve job listings as server-rendered HTML at a /search/ or
 /search URL. Job links follow the pattern:
     <a href="/job/{Location}-{Title}/{ID}/">…</a>
 
-Pagination uses a ?startrow=N query parameter. Loop until a page returns no job
-links or the page_step would exceed a reasonable upper bound. Both layouts state
+Pagination uses a ?startrow=N query parameter, the row a page starts at. Loop
+until a page returns no job links or the page_step would exceed a reasonable
+upper bound. The career-site-builder front end (Tetra Pak) ignores `startrow`
+and reads `pageNumber`, a zero-based page index, instead: its page's search settings
+carry a `pageNumber` and no `startrow`, and a walk at `startrow=10` read no new
+posting. Its registry line passes `page_param="pageNumber"`. Both layouts state
 how many postings there are — "Page 1 of 201, Results 1 to 10 of 2010" in the
 classic pagination label, "Showing 1 to 20 of 62 Jobs" on the tile skin — so a
 walk is checked against that count before it returns; see `pagination.py`.
@@ -226,10 +230,17 @@ def _declared_total(soup: Any) -> int | None:
     return None
 
 
-def _set_startrow(base_url: str, startrow: int) -> str:
+# The two ways an instance is told which page to show. `startrow` counts rows,
+# `pageNumber` counts pages from zero (tetrapak, 2026-11-25: `pageNumber=1` was
+# labelled "11 to 11 of 11 results", `pageNumber=2` "21 to 11 of 11").
+_PAGE_PARAMS = frozenset({"startrow", "pageNumber"})
+
+
+def _page_url(base_url: str, page_index: int, page_step: int, page_param: str) -> str:
+    value = page_index * page_step if page_param == "startrow" else page_index
     parsed = urlparse(base_url)
     params = parse_qs(parsed.query, keep_blank_values=True)
-    params["startrow"] = [str(startrow)]
+    params[page_param] = [str(value)]
     # preserve other params (q, sortColumn, sortDirection …)
     new_query = urlencode({k: v[0] for k, v in params.items()})
     return urlunparse(parsed._replace(query=new_query))
@@ -390,8 +401,15 @@ def extract(
     source_name: str,
     page_step: int,
     base_search_url: str,
+    page_param: str = "startrow",
 ) -> list[dict[str, Any]]:
     from job_scraper.http import is_rendering_fetcher  # avoid circular import
+
+    if page_param not in _PAGE_PARAMS:
+        raise ValueError(
+            f"{source_name}: unknown page_param {page_param!r}; expected one of "
+            f"{sorted(_PAGE_PARAMS)}"
+        )
 
     # ISS's listing is built by AJAX, so it needs a selector wait before the
     # job links exist. Test the fetcher's *capability* and wrap the callable we
@@ -409,13 +427,13 @@ def extract(
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    startrow = 0
+    page_index = 0
 
     total: int | None = None
     stated_at = ""
 
     while True:
-        url = _set_startrow(base_search_url, startrow)
+        url = _page_url(base_search_url, page_index, page_step, page_param)
         soup = BeautifulSoup(fetch_fn(url), "lxml")
         jobs = _parse_page(soup, base_search_url, source_name)
         if not jobs:
@@ -454,7 +472,7 @@ def extract(
             break
         if len(jobs) < page_step:
             break
-        startrow += page_step
+        page_index += 1
 
     if country and out and not proved:
         raise FacetNotAppliedError(

@@ -513,6 +513,77 @@ def test_successfactors_stops_cleanly_once_it_has_them_all() -> None:
     assert len(jobs) == 15
 
 
+def _csb_walk(pages: dict[int, str], asked: list[int]) -> list[dict[str, Any]]:
+    """Walk a career-site-builder board, which pages by a zero-based `pageNumber`."""
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        assert "startrow=" not in url
+        index = int(url.rsplit("pageNumber=", 1)[1])
+        asked.append(index)
+        return pages[index]
+
+    return successfactors_html.extract(
+        "https://jobs.tetrapak.com/search/?searchResultView=LIST",
+        fetch,
+        source_name="tetrapak",
+        page_step=10,
+        base_search_url="https://jobs.tetrapak.com/search/?q=&locationsearch=Sweden",
+        page_param="pageNumber",
+    )
+
+
+def test_successfactors_pages_by_page_number_where_the_board_does() -> None:
+    """tetrapak at 11 postings: page index 1, not row 10, holds the eleventh."""
+    pages = {
+        0: _sf_rows_page(list(range(10)), total=11),
+        1: _sf_rows_page([10], total=11),
+    }
+    asked: list[int] = []
+    assert len(_csb_walk(pages, asked)) == 11
+    assert asked == [0, 1]
+
+
+def test_successfactors_a_board_that_ignores_its_page_parameter_still_fails() -> None:
+    """Runs 46 and 47: every page is page one, so the walk is short and says so."""
+    page = _sf_rows_page(list(range(10)), total=11)
+    with pytest.raises(ShortWalkError, match="says it has 11"):
+        _csb_walk({0: page, 1: page}, [])
+
+
+def test_successfactors_startrow_stays_the_default() -> None:
+    """The other instances count rows; only a registry line opts out."""
+    asked: list[int] = []
+    pages = {
+        0: _sf_rows_page(list(range(10)), total=15),
+        10: _sf_rows_page(list(range(10, 15)), total=15),
+    }
+    assert len(_sf_walk(pages, asked)) == 15
+    assert asked == [0, 10]
+
+
+def test_successfactors_an_unknown_page_parameter_is_refused_before_any_request() -> None:
+    def fetch(url: str, *args: Any, **kwargs: Any) -> str:
+        raise AssertionError("no request should be made")
+
+    with pytest.raises(ValueError, match="unknown page_param"):
+        successfactors_html.extract(
+            "https://jobs.dsv.com/search/",
+            fetch,
+            source_name="dsv",
+            page_step=10,
+            base_search_url="https://jobs.dsv.com/search/",
+            page_param="page",
+        )
+
+
+def test_tetrapak_is_registered_to_page_by_page_number() -> None:
+    from job_scraper.extractors.registry import get_extractor
+
+    reader = get_extractor("tetrapak")
+    assert reader is not None
+    assert reader.keywords["page_param"] == "pageNumber"
+
+
 # --- the totals, read from the real saved pages -----------------------------
 
 
