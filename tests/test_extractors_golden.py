@@ -311,8 +311,9 @@ _GOLDEN: dict[str, dict[str, Any]] = {
         },
     },
     # --- WP8e (2026-08-20): fixtures captured to investigate "no location given"
-    # drops. Five of these (fjallraven, founders_pledge, futurelearn, planted,
-    # seven_perigee) share teamtailor.py's fix above but needed a second one:
+    # drops. Four of these (founders_pledge, futurelearn, planted, seven_perigee;
+    # a fifth, fjallraven, was dropped as a source on 2026-11-25) share
+    # teamtailor.py's fix above but needed a second one:
     # their redesigned markup puts the metadata <div> as a *sibling* of <a>, not
     # a child, with a varying number of "·"-joined segments (sometimes no
     # department at all) and a structurally-detected work-type tag ("Hybrid",
@@ -322,19 +323,6 @@ _GOLDEN: dict[str, dict[str, Any]] = {
     # giving_what_we_can, jpal and path are pinned with an empty location as-is
     # — confirmed genuinely absent from the page, not an extractor gap; see the
     # WP8e Result section in docs/REFACTOR-PLAN.md.
-    "fjallraven": {
-        "count": 3,
-        "first_job": {
-            "source_name": "fjallraven",
-            "title": "Administrator",
-            "department": "",
-            "location": "Solna, Sweden",
-            "listing_url": "https://career.fjallraven.com/jobs",
-            "detail_url": "https://career.fjallraven.com/jobs/8044352-administrator",
-            "apply_url": "https://career.fjallraven.com/jobs/8044352-administrator",
-            "raw_snippet": "Administrator Solna, Sweden",
-        },
-    },
     "founders_pledge": {
         "count": 6,
         "first_job": {

@@ -2325,3 +2325,44 @@ session — see `CLAUDE.md`.
   not move. Its fixture is the whole two-page walk (`tetrapak.html` +
   `tetrapak.p1.html`, 12 postings), captured by the owner the same day with
   `--pages all`.
+- **Run 47's tetrapak failure was a stale checkout, not a second bug
+  (2026-11-25).** The `pageNumber` fix above was merged on 2026-11-20, but the
+  local `main` was never pulled, so run 47 ran the old reader and failed the
+  same way (10 of a stated 11). A second branch re-derived the same fix before
+  anyone fetched; it was merged into this one in favour of the first. Fetch
+  before diagnosing a failed source. Two renders that day agreed with the
+  entry above (`pageNumber=1`: "11 to 11 of 11 results"). The probe still pages
+  every SuccessFactors board by `startrow`, so a career-site-builder board
+  probed today would read short there.
+- **Teamtailor's reader follows "Show more" and checks the stated count
+  (2026-11-25, after run 47).** A board of more than 20 postings shows 20 and
+  `<div id="show_more_button"><a href="/jobs/show_more?page=2">`. The link
+  answers with a Turbo Stream (`text/vnd.turbo-stream.html`, to a plain GET with
+  no special `Accept`): one `append` to `jobs_list_container` per posting, each
+  card inside a `<template>`, then an `update` of `show_more_button` holding the
+  next link, or nothing on the last page. The reader read the first page only,
+  so oatly returned 20 of its stated "23 jobs" in every run, and the one-page
+  block named it. BeautifulSoup files a template's text as `TemplateString`,
+  which `get_text()` leaves out: read in place, every page-2 title was empty and
+  every card was skipped, so each template's markup is parsed again as a
+  fragment of its own. The walk is now checked with `pagination.reconcile`
+  against the count the list states above its cards ("23 jobs", "1 job", in an
+  `<h2>` or, on storytel's layout, a `<span>`), which matched the rows read on
+  every saved Teamtailor fixture that has one. A board short of its count now
+  fails the source instead of being read short. Two older layouts
+  (seven_perigee's and futurelearn's) state no count, and a count not in English
+  reads as none: one page is accepted as before, silently, and a multi-page walk
+  without a count logs `unverifiable_end`. Checked against run 47's cached
+  page 1 and one live GET of page 2: 23 of 23, department, location and work
+  type read. The tests use invented markup, not the live answer. Cost: one more request per run for each
+  board over 20 postings, oatly alone today.
+- **fjallraven is dropped as a source (owner's decision, 2026-11-25).**
+  `career.fjallraven.com/robots.txt` says `Disallow: /`, seen in run 47, after
+  it returned 0 rows in runs 40 to 44 and 2 in runs 45 and 46 (OP6). Its
+  registry line, its golden case and `tests/fixtures/fjallraven.html` are
+  removed; the layouts it covered are pinned by planted, seven_perigee and oatly,
+  which include cards with a location and no department. Its stored rows stay
+  as history, as undp's did. The `sources.yaml` entry is the owner's to remove.
+  Until it is, the run skips the source as having no extractor. It is not on the
+  tombstone: the owner said drop, not tombstone, and tombstoning would bring the
+  publishing rule that keeps a tombstoned board's name out of the plan files.

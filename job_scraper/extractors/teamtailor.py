@@ -6,7 +6,7 @@ Handles the common Teamtailor HTML patterns:
   - <a href="/jobs/ID-slug"><span title="Title">Title</span><div>Dept · Location</div></a>
     (Storytel, redesigned 2026-08 markup: title and metadata both inside <a>)
   - <a href="/jobs/ID-slug">Title</a><div>[Org ·] [Dept ·] Location [· WorkType]</div>
-    (Fjällräven, Founders Pledge, FutureLearn, Planted, Seven Perigee, redesigned
+    (Founders Pledge, FutureLearn, Planted, Seven Perigee, redesigned
     2026-08 markup: bare text title inside <a>, metadata <div> is a *sibling* of
     <a>, not a child. Segment count varies per posting — some have no department,
     FutureLearn's board additionally prefixes a brand/org segment — so dept and
@@ -20,6 +20,22 @@ Handles the common Teamtailor HTML patterns:
 
 A row whose location is its title (or the title shortened) is a layout the reader
 has misread, not a posting: `extract` raises rather than return it (SP8).
+
+A board of more than 20 postings shows 20 and a "Show more" link,
+`<div id="show_more_button"><a href="/jobs/show_more?page=2">`. That link answers
+with a Turbo Stream, not a page: each posting is an `append` to
+`jobs_list_container` wrapped in a `<template>`, and an `update` of
+`show_more_button` carries the next link, or nothing on the last page. The walk
+follows it to the end. BeautifulSoup keeps a template's text out of
+`get_text()`, so each template's markup is parsed again as a fragment of its own
+before its cards are read; read in place, every title came back empty and every
+card was skipped. Until 2026-11-25 the reader read the first 20 only, and oatly
+returned 20 of 23 in every run.
+
+The list states its length ("23 jobs", "1 job") above the cards, and a walk is
+checked against that count when there is one (`pagination.reconcile`). Three
+older layouts state none; for them a single page is accepted as before, and a
+walk that followed the link says it could not be checked.
 """
 
 from __future__ import annotations
@@ -31,9 +47,18 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
+from job_scraper.extractors import pagination
 from job_scraper.extractors.rowcheck import title_read_as_location
 
 _JOB_PATH = re.compile(r"/jobs/\d+")
+# The list's own count, above the cards: "23 jobs", "1 job". English only,
+# because every board followed shows it in English; a board whose count reads
+# otherwise is read as stating none.
+_STATED_COUNT = re.compile(r"^\s*(\d+)\s+jobs?\s*$", re.I)
+_LIST_CONTAINER = {"data-blocks--jobs-target": "jobsListContainer"}
+_SHOW_MORE_ID = "show_more_button"
+# A board of 1,000 postings is 50 pages; the cap stops a link that never ends.
+_MAX_PAGES = 50
 _MIDDOT = "·"
 _WORK_TYPES = frozenset({"hybrid", "remote", "on-site", "onsite", "on site"})
 
@@ -106,14 +131,89 @@ def _check_row(source_name: str, row: dict[str, Any]) -> None:
         )
 
 
+def _stated_count(soup: BeautifulSoup) -> int | None:
+    """The count the list states above its cards, or None if it states none."""
+    container = soup.find(attrs=_LIST_CONTAINER)
+    if not isinstance(container, Tag):
+        return None
+    for text in container.find_all(string=_STATED_COUNT):
+        if text.find_parent(id="jobs_list_container") is None:
+            match = _STATED_COUNT.match(str(text))
+            if match:
+                return int(match.group(1))
+    return None
+
+
+def _show_more_href(scope: Tag | None) -> str | None:
+    """The next page's link inside *scope*, the show-more block or its update."""
+    if scope is None:
+        return None
+    link = scope.find("a", href=True)
+    return str(link["href"]) if isinstance(link, Tag) else None
+
+
+def _stream_parts(body: str) -> tuple[BeautifulSoup, str | None]:
+    """A show-more answer: its appended cards as one fragment, and the next link.
+
+    Each `<template>`'s markup is re-parsed, because BeautifulSoup files a
+    template's text as `TemplateString`, which `get_text()` leaves out.
+    """
+    stream = BeautifulSoup(body, "lxml")
+    cards: list[str] = []
+    next_href: str | None = None
+    for part in stream.find_all("turbo-stream"):
+        template = part.find("template")
+        if not isinstance(template, Tag):
+            continue
+        fragment = BeautifulSoup(template.decode_contents(), "lxml")
+        if part.get("target") == _SHOW_MORE_ID:
+            next_href = _show_more_href(fragment)
+        elif part.get("action") == "append":
+            cards.append(template.decode_contents())
+    return BeautifulSoup("".join(cards), "lxml"), next_href
+
+
 def extract(
     listing_url: str,
     fetch_text: Callable[[str], str],
     source_name: str,
 ) -> list[dict[str, Any]]:
-    html = fetch_text(listing_url)
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(fetch_text(listing_url), "lxml")
     seen: set[str] = set()
+    out = _read_cards(soup, listing_url, source_name, seen)
+    total = _stated_count(soup)
+    next_href = _show_more_href(soup.find(id=_SHOW_MORE_ID))
+
+    url = listing_url
+    pages = 1
+    while next_href:
+        if pages >= _MAX_PAGES:
+            raise pagination.ShortWalkError(
+                f"{source_name}: still offered a next page after {_MAX_PAGES} pages "
+                f"holding {len(out)} posting(s); refusing a list that may be short"
+            )
+        url = urljoin(listing_url, next_href)
+        cards, next_href = _stream_parts(fetch_text(url))
+        pages += 1
+        added = _read_cards(cards, listing_url, source_name, seen)
+        if not added:
+            break  # settled below: the end of the list only if the count agrees
+        out.extend(added)
+
+    if total is not None:
+        pagination.reconcile(source_name, url, collected=len(out), total=total)
+    elif pages > 1:
+        pagination.unverifiable_end(source_name, url, collected=len(out))
+    return out
+
+
+def _read_cards(
+    soup: BeautifulSoup,
+    listing_url: str,
+    source_name: str,
+    seen: set[str],
+) -> list[dict[str, Any]]:
+    """Every posting card in *soup* not already in *seen*, which it extends."""
     out: list[dict[str, Any]] = []
 
     for a in soup.find_all("a", href=True):
@@ -127,7 +227,7 @@ def extract(
 
         # Title: prefer <h3>, then a <span title="..."> (redesigned Storytel),
         # fall back to first direct child <div>, then the anchor's own bare text
-        # (redesigned Fjällräven/Founders Pledge/FutureLearn/Planted/Seven Perigee)
+        # (redesigned Founders Pledge/FutureLearn/Planted/Seven Perigee)
         h3 = a.find("h3")
         title_span: Tag | None = None
         if h3:
